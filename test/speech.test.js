@@ -113,3 +113,12 @@ test('board: a busy one-off run stays in its project; quiet rows fold into one l
   const sp = splitGroup(rows, false); assert.deepEqual(sp.cards.map((r) => r.state), ['working', 'turn']); assert.deepEqual(sp.quiet.map((r) => r.state), ['idle', 'done', 'idle']);
   assert.equal(splitGroup(rows, true).cards.length, 5);
 });
+
+test('calls rail: "Follow: everything" goes to a session that needs Tom; following a project goes to its most urgent session', () => {
+  const { followTarget } = new Function(grab(/const BORDER = [^\n]*/) + '\n' + grab(/const boardKey = [^\n]*/) + '\n' + grab(/function followTarget\(rows, follow\) \{[\s\S]*?\n\}/) + '\nreturn { followTarget };')();
+  const gg = { key: '/w/gladiator-game', name: 'gladiator-game' }, ms = { key: '/w/MarketSimulator', name: 'MarketSimulator' };
+  const rows = [{ id: 'a', state: 'working', mtime: 3, group: ms }, { id: 'b', state: 'blocked', mtime: 1, group: gg }, { id: 'c', state: 'turn', mtime: 5, group: ms }, { id: 'd', state: 'idle', mtime: 9, group: ms }];
+  assert.equal(followTarget(rows, 'all').id, 'b');                                     // the one that needs Tom, wherever it is
+  assert.equal(followTarget(rows.filter((r) => r.id !== 'b'), 'all'), null);           // nobody needs Tom: the server's most active session
+  assert.equal(followTarget(rows, 'g:/w/MarketSimulator').id, 'a');                     // in a project: working before your turn before idle
+});

@@ -55,9 +55,21 @@
   .gchip i { width:10px; height:10px; border-radius:50%; background:var(--pc); flex:none } .gchip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap } .gchip small { color:var(--dim); white-space:nowrap }
   .gchip.hl { box-shadow:0 0 0 2px var(--pc), 0 0 14px var(--pc) } .tile.guest { display:none !important }
   body.tree #stage, body.board #stage, body.board #tree { display:none } body.tree #tree { display:block } body.board #boardv { display:block } body.board #present, body.board #gantt { display:none !important }
-  #roster { display:none; width:232px; flex:none; flex-direction:column; gap:5px; padding:10px 8px; overflow-x:hidden; overflow-y:auto; border-right:1px solid var(--line); background:var(--panel) }
+  #side { display:none; width:240px; flex:none; flex-direction:column; min-height:0; border-right:1px solid var(--line); background:var(--panel) }
+  @media (min-width:900px) { body:not(.tree):not(.board):not(.compact) #side { display:flex } }
+  #roster { display:none; flex:1; min-height:0; flex-direction:column; gap:5px; padding:10px 8px; overflow-x:hidden; overflow-y:auto }
+  /* Calls: the other ongoing calls, by project, the ones that need Tom first; click one to join it */
+  #calls { flex:none; max-height:48%; overflow:auto; display:flex; flex-direction:column; gap:4px; padding:10px 8px 8px; border-bottom:1px solid var(--line) }
+  #calls .ch { display:flex; align-items:center; gap:6px } #calls .ch h3 { margin:0 2px 0 6px } #calls select { flex:1; min-width:0; font:inherit; font-size:11.5px; background:var(--panel2); color:inherit; border:1px solid var(--line); border-radius:6px; padding:2px 4px }
+  #calls .cmin { background:none; border:0; color:var(--dim); cursor:pointer; font:inherit; padding:0 4px } #calls.min .crow, #calls.min .cq, #calls.min .cg, #calls.min .cwhy { display:none }
+  #calls .cwhy { font-size:11px; color:var(--dim); padding:0 6px } #calls .cg { font-size:10.5px; font-weight:700; color:var(--pc); margin:4px 6px 0 }
+  .crow { display:flex; flex-direction:column; gap:1px; padding:5px 8px; border:0; border-left:3px solid var(--pc); border-radius:8px; background:var(--panel2); cursor:pointer; min-width:0; text-align:left; color:inherit; font:inherit }
+  .crow.cur { box-shadow:inset 0 0 0 1px var(--pc) } .crow .cn { display:flex; align-items:center; gap:6px; font-size:12px; min-width:0 } .crow .cn b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600 } .crow .cn small { color:var(--dim); white-space:nowrap; margin-left:auto }
+  .crow .ca { font-size:11px; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .cdot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--line) } .cdot.blocked { background:#ff4d4d; box-shadow:0 0 6px #ff4d4d } .cdot.working, .cdot.waiting { background:var(--gold) } .cdot.turn { background:var(--ok) }
+  .cq { align-self:flex-start; margin-left:6px; background:none; border:0; color:var(--dim); cursor:pointer; font:inherit; font-size:11.5px; padding:1px 2px }
   @media (min-width:900px) { body.rost:not(.tree):not(.board) #roster { display:flex } }
-  #roster h3 { margin:2px 6px 4px; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--dim) }
+  #calls h3, #roster h3 { margin:2px 6px 4px; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--dim) }
   .rr { display:flex; flex-direction:column; gap:2px; padding:6px 9px; border-radius:9px; border-left:3px solid transparent; background:var(--panel2); cursor:pointer; min-width:0 }
   .rr:hover { background:#2a2f45 } .rr.sel { outline:1px solid var(--accent) }
   .rr .n { display:flex; align-items:center; gap:7px; min-width:0 } .rr .dot { width:9px; height:9px; border-radius:50%; flex:none } .rr b { font-size:12.5px; overflow-wrap:anywhere; min-width:0 } .rr .ro { color:var(--dim); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0 }
@@ -302,7 +314,7 @@
 </div>
 
 <main>
-  <nav id="roster" aria-label="Agents"></nav>
+  <aside id="side"><div id="calls" aria-label="Calls"></div><nav id="roster" aria-label="Agents"></nav></aside>
   <section id="center">
     <div id="present"><div class="pwin term"><div class="pbar"><i class="r"></i><i class="y"></i><i class="g"></i><span id="ptitle"></span><span id="pbadge"></span></div><div id="pbody"></div><div id="pstat"></div></div><div id="ptodo" style="display:none"></div><div id="pcap"></div><div id="pcam" class="tile working"></div></div>
     <div id="guests" aria-label="On the line"></div><div id="stage"></div><div id="tree"></div><div id="boardv"></div>
@@ -1841,7 +1853,9 @@ async function fillProjects() {   // live view: follow the latest activity anywh
 }
 $('#liveProj').onchange = () => { Q.delete('proj'); prefs.proj = $('#liveProj').value; S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; savePrefs(); S.cur = null; followCurrent(); };
 async function followCurrent(gentle = false) {
-  const cur = await (await fetch('/api/current?proj=' + encodeURIComponent(Q.get('proj') || prefs.proj || '') + (S.pin ? '&id=' + encodeURIComponent(S.pin) : '') + (S.cur && !S.pin ? '&sproj=' + encodeURIComponent(S.cur.proj) + '&sid=' + encodeURIComponent(S.cur.id) : ''))).json();
+  const auto = !S.pin && S.autoPin, pid = S.pin || (auto && auto.id), pproj = auto ? auto.proj : Q.get('proj') || prefs.proj || '';   // the rail's follow target, asked like a pin
+  const cur = await (await fetch('/api/current?proj=' + encodeURIComponent(pproj) + (pid ? '&id=' + encodeURIComponent(pid) : '') + (S.cur && !pid ? '&sproj=' + encodeURIComponent(S.cur.proj) + '&sid=' + encodeURIComponent(S.cur.id) : ''))).json();
+  if (auto && cur.id !== auto.id) S.autoPin = null;
   if (!cur.id) { $('#empty').classList.add('on'); return false; } $('#empty').classList.remove('on');
   if (S.pin && cur.id !== S.pin) { S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; savePrefs(); }   // the pinned session is gone: follow the latest one instead of staying silently pinned
   if (S.cur && S.cur.id === cur.id && S.cur.proj === cur.proj) return false;
@@ -1901,7 +1915,7 @@ const boardOpen = new Set();
 function boardTool(tool, arg) {
   const t = String(tool), shell = /^(Bash|exec_command|shell|terminal)$/.test(t), name = t.replace(/^mcp__.+?__(?=[^_])/, '').replace(/_/g, ' ');
   let a = String(arg || '').split('\n').find((l) => l.trim()) || ''; a = a.replace(/^\s*cd \S+\s*(?:&&|;)\s*/, '').replace(/\s+-?\s*<<-?\s*['"]?\w+['"]?\s*$/, ' script');   // "python3 - <<'PY'" is a python3 script
-  if (/await tools\./.test(a) || t === 'write_stdin') a = '';   // a Codex exec script's JS wrapper is not what it does
+  if (/await tools\.|\bawait\b|=>|\bconst\b|Promise\./.test(a) || t === 'write_stdin') a = '';   // a Codex exec script's JS wrapper is not what it does
   return t === 'write_stdin' ? L('attend une commande', 'waiting on a command') : ((shell ? '' : name + ' ') + a.slice(0, 60)).trim() || name;
 }
 const GCOL = (key) => (key && key !== '_other' ? PAL[hash(String(key)) % PAL.length] : '#6b7089');   // one colour per project, the same everywhere
@@ -1927,6 +1941,46 @@ async function renderBoardView() {
       return `<div class="bgroup${sp.cards.length ? '' : ' quiet'}" style="--pc:${GCOL(g.key)}"><h3 class="bgh"><span class="gdot"></span>${esc(g.name)} <span class="dim">${g.rows.length}${BORDER.filter((k) => c[k] && k !== 'idle' && k !== 'done').map((k) => `<span class="sx">${BSTATE[k][0]} ${c[k]}</span>`).join('')}</span>${sp.cards.length ? '' : fold}</h3>${sp.cards.length ? `<div class="bgrid">${sp.cards.map(card).join('')}${fold}</div>` : ''}</div>`; }).join('');   // a group with nothing going on is one line
   } catch {} finally { boardBusy = false; }
 }
+// ---- Calls rail (call view): the other ongoing calls, live, by project, the ones that need Tom on top; a click joins one.
+// Follow: everything (the call goes to a session that needs Tom, else the most recently active one), one project, or the pinned session.
+const FOLLOW_HOLD = 20000, callsOpen = new Set();
+// Which session the call should go to on its own: in "everything", one that needs Tom; in a project, its most urgent session (a pin always wins)
+function followTarget(rows, follow) {
+  const pool = follow && follow.startsWith('g:') ? rows.filter((r) => boardKey(r) === follow.slice(2)) : rows.filter((r) => r.state === 'blocked');
+  return pool.sort((a, b) => BORDER.indexOf(a.state) - BORDER.indexOf(b.state) || b.mtime - a.mtime)[0] || null;
+}
+async function renderCalls() {
+  const box = $('#calls'); if (!box || document.hidden || !S.live || document.body.classList.contains('board') || document.body.classList.contains('tree') || getComputedStyle($('#side')).display === 'none') return;
+  let rows; try { rows = (await (await fetch('/api/board')).json()) || []; } catch { return; }
+  const follow = prefs.follow || 'all', cur = S.cur || {}, t = !S.pin && followTarget(rows, follow);
+  if (!S.pin) {   // follow: switch with a hold so the call does not flicker between sessions
+    const there = t && cur.id === t.id, hold = Date.now() - (S.switchAt || 0) < FOLLOW_HOLD;
+    if (t && !there && !hold) { S.autoPin = { proj: t.proj, id: t.id }; S.switchAt = Date.now(); S.why = (t.state === 'blocked' ? L('a basculé : ', 'switched: ') + (t.group ? t.group.name : t.title) + ' ' + L('vous attend', 'needs you') : L('suit ', 'following ') + (t.group ? t.group.name : t.title)); S.cur = null; followCurrent(true); }
+    else if (!t && S.autoPin && !hold) { S.autoPin = null; S.why = ''; S.cur = null; followCurrent(true); }   // nothing needs Tom any more: back to the most active session
+  }
+  const groups = new Map(); for (const r of rows) { const k = boardKey(r); if (!groups.has(k)) groups.set(k, { key: k, name: k === '_other' ? L('Autres', 'Other') : r.group.name, rows: [] }); groups.get(k).rows.push(r); }
+  const row = (r) => `<button class="crow${cur.id === r.id ? ' cur' : ''}" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" style="--pc:${GCOL(boardKey(r))}" title="${esc(r.title)}"><span class="cn"><i class="cdot ${r.state}"></i><b>${esc(r.title)}</b><small>👥 ${(r.subTotal || 0) + 1}</small></span><span class="ca">${esc(r.tool ? boardTool(r.tool, r.arg) : L(BSTATE[r.state][2], BSTATE[r.state][1]) + ', ' + agoStr(r.ageMs != null ? r.ageMs : Date.now() - r.mtime))}</span></button>`;
+  const urgent = rows.filter((r) => r.state === 'blocked'), opts = [['all', L('Suivre : tout', 'Follow: everything')], ...[...groups.values()].filter((g) => g.key !== '_other' && (g.rows.some((r) => r.state !== 'idle' && r.state !== 'done') || 'g:' + g.key === follow)).map((g) => ['g:' + g.key, L('Suivre : ', 'Follow: ') + g.name])];   // projects with something going on
+  const sel = S.pin ? 'pin' : follow, options = (S.pin ? [['pin', L('Épinglé', 'Pinned')]] : []).concat(opts).map(([v, l]) => `<option value="${esc(v)}"${v === sel ? ' selected' : ''}>${esc(l)}</option>`).join('');
+  let html = `<div class="ch"><h3>${L('Appels', 'Calls')}</h3><select id="follow" aria-label="${esc(L('Quel appel suivre', 'Which call to follow'))}">${options}</select><button class="cmin" title="${esc(L('Replier', 'Fold'))}">${box.classList.contains('min') ? '▸' : '▾'}</button></div>${!S.pin && (S.why || follow === 'all') ? `<div class="cwhy">${esc(S.why || L('l’appel le plus actif, ou celui qui vous attend', 'the most active call, or one that needs you'))}</div>` : ''}`;
+  if (urgent.length) html += urgent.map(row).join('');
+  const mine = cur.id && rows.find((r) => r.id === cur.id), first = mine ? boardKey(mine) : '';
+  for (const g of [...groups.values()].sort((a, b) => (b.key === first) - (a.key === first))) {   // the call on screen's project first
+    const sp = splitGroup(g.rows.filter((r) => r.state !== 'blocked'), callsOpen.has(g.key)); if (!sp.cards.length && !sp.quiet.length) continue;
+    html += `<div class="cg" style="--pc:${GCOL(g.key)}">${esc(g.name)}</div>` + sp.cards.map(row).join('') + (sp.quiet.length ? `<button class="cq" data-g="${esc(g.key)}">＋ ${sp.quiet.length} ${L('inactives', 'quiet')}</button>` : '');
+  }
+  if (box._h !== html) { box._h = html; box.innerHTML = html; }
+}
+setInterval(renderCalls, 3000);
+$('#calls').onclick = (e) => {
+  if (e.target.closest('.cmin')) { $('#calls').classList.toggle('min'); $('#calls')._h = ''; renderCalls(); return; }
+  const q = e.target.closest('.cq'); if (q) { callsOpen.add(q.dataset.g); $('#calls')._h = ''; renderCalls(); return; }
+  const c = e.target.closest('.crow'); if (c) { S.why = ''; openSession(c.dataset.p, c.dataset.i).then(renderCalls); }
+};
+$('#calls').onchange = (e) => {
+  if (e.target.id !== 'follow') return; const v = e.target.value; if (v === 'pin') return;
+  prefs.follow = v; S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; prefs.proj = ''; S.autoPin = null; S.switchAt = 0; S.why = ''; savePrefs(); S.cur = null; followCurrent().then(renderCalls);   // unpinned: follow everything, or one project
+};
 $('#boardv').onkeydown = (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('bcard')) { e.preventDefault(); e.target.click(); } };
 async function openSession(proj, id) {
   prefs.proj = proj; S.pin = id; prefs.pin = id; prefs.pinProj = proj; savePrefs(); setView('call');   // a session opened from the board stays pinned, across reloads, until unpinned
