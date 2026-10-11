@@ -519,8 +519,8 @@ function short(t, max = 230) {
 // make code-ish text pronounceable
 // What a voice reads out: words only. Links, hashes, ids, long flags and emoji are dropped, a path becomes its file name, a short code span is read as words and a long one as "code".
 const speakable = (t) => String(t).replace(/https?:\/\/\S+/g, ' link ').replace(/`([^`\n]{1,50})`/g, '$1').replace(/`[^`]*`/g, ' code ')
-  .replace(/(?:[\w.-]+\/)+([\w.-]+)/g, (m, f) => f.replace(/[._-]/g, ' ')).replace(/\b(?=[0-9a-f]*\d)[0-9a-f]{7,}\b/gi, ' ').replace(/\S{25,}/g, ' ').replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}]/gu, ' ')
-  .replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_`*#<>{}\[\]|\\=~^$]/g, ' ').replace(/\s*[—–]\s*/g, ', ').replace(/\(([^)]{0,40})\)/g, ', $1,').replace(/\s+/g, ' ').trim();
+  .replace(/\/?(?:[A-Za-z_.][\w.-]*\/)+([\w.-]+)/g, (m, f) => f.replace(/[._-]/g, ' ')).replace(/\b(?=[0-9a-f]*\d)[0-9a-f]{7,}\b/gi, ' ').replace(/\S{25,}/g, ' ').replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}✓✔✗✘•→←↔⚙]/gu, ' ')
+  .replace(/(^|\s)--?[\w-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_`*#<>{}\[\]|\\=~^$/]/g, ' ').replace(/\s*[—–]\s*/g, ', ').replace(/\(([^)]{0,40})\)/g, ', $1,').replace(/\s+/g, ' ').trim();   // command flags and leftover symbols are not words either
 
 // ---------- translation (local claude CLI) ----------
 const trMem = new Map(), trPending = new Map();
@@ -547,6 +547,9 @@ function prefetchTr(i) {
 }
 // messages between sessions (agent-peers): the state the sender's own transcript reports — the inbox took it, held it for approval, refused it — or that it arrived here
 const MSG_STATE = (s) => ({ accepted: '📨', received: '📥', held: '✋', failed: '✗' })[s] || '';
+// What the voice reads: the content of a line and nothing else. No names, no "task"/"report"/"message to" framing, no routing or delivery state;
+// a line that is only a label (a message whose body is not readable) is shown in the bubble and the transcript, not read aloud.
+function speechOf(ev) { if (!ev || ev.label || (ev.kind === 'msg' && !ev.text) || !['say', 'report', 'order', 'user', 'msg'].includes(ev.kind)) return ''; let t = baseText(ev); if (FR() && trMem.has(t)) t = trMem.get(t); return speakable(t); }
 function spoken(ev) {
   if (ev.kind === 'msg' && !ev.text) return ev.native ? L('(message sans texte lisible)', '(message without readable text)') : L('(message vide)', '(empty message)');
   let t = baseText(ev); if (FR() && trMem.has(t)) t = trMem.get(t);
@@ -734,7 +737,7 @@ function warmTTS(i) {   // synthesize the next few lines ahead of time (never wh
   if (!TTS.server || !AUD.ctx || !prefs.voice || AUD.off() || prefs.vstyle === 'animal' || prefs.vstyle === 'sims') return;
   let n = 0; for (let k = i; k < S.events.length && n < (TTS.engine === 'elevenlabs' ? 2 : 4); k++) {
     const e = S.events[k]; if (quiet(e)) continue; n++;
-    const p = S.agents[e.agent], v = p && TTS.voiceFor(p, FR() && trMem.has(baseText(e))); if (v) TTS.buf(speakable(spoken(e)), v, TTS.rate()).catch(() => {});
+    const p = S.agents[e.agent], v = p && TTS.voiceFor(p, FR() && trMem.has(baseText(e))), voice = speechOf(e); if (v && voice) TTS.buf(voice, v, TTS.rate()).catch(() => {});
   }
 }
 
@@ -1640,7 +1643,8 @@ async function run(i) {
       if (g.kind === 'order') { S.status[g.to] = 'working'; AUD.join(); setTimeout(() => { paintStatus(); fly(g.agent, g.to, '📨'); popTile(g.to); }, 30); }
       if (g.kind === 'msg') setTimeout(() => { paintStatus(); fly(g.agent, g.to, g.state === 'failed' ? '❌' : '✉️'); popTile(g.to); }, 30);
       if (g.kind === 'report') { AUD.ding(); setTimeout(() => { fly(g.agent, g.to, '✅'); popTile(g.agent); }, 30); }
-      return speakLine(clipSpeech(line, S.pace), S.agents[g.agent], true, token, FR() && trMem.has(baseText(g))).then(() => stopTalk(g.agent));
+      const voice = speechOf(g);   // the bubble keeps the framing, the voice reads the content only
+      return (voice ? speakLine(clipSpeech(voice, S.pace), S.agents[g.agent], true, token, FR() && trMem.has(baseText(g))) : sleep(700 / spd())).then(() => stopTalk(g.agent));
     };
     let plays; if (S.live) { plays = []; let chain = Promise.resolve(); for (const g of group) { chain = chain.then(() => (token === S.token ? playOne(g) : null)); plays.push(chain); } } else plays = group.map(playOne);   // live: one voice at a time so each can be heard; replay keeps the overlapping chatter
     S.idx = j - 1; paintStatus(); await Promise.all(plays); if (token !== S.token) return;

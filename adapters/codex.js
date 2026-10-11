@@ -235,13 +235,13 @@ function readable(tl, states, agents) {
   const near = (list, ts, after, span = 180000) => (list || []).find((x) => (after ? x.ts >= ts && x.ts - ts <= span : x.ts <= ts && ts - x.ts <= span));
   const says = (aid) => (by.get(aid) ? by.get(aid).raw.filter((e) => e.kind === 'say') : []).slice().reverse();   // latest first, for "before" lookups
   for (const e of tl.events) {
-    if (e.kind === 'order' && !e.text) { const st = by.get(e.to), b = st && st.briefs && st.briefs[0]; e.text = b ? line1(b.text, 300) : `task "${e.title || (agents[e.to] || {}).name || e.to}"${e.atype ? ' (' + e.atype + ')' : ''}`; e.note = b ? '' : NOTE; }
+    if (e.kind === 'order' && !e.text) { const st = by.get(e.to), b = st && st.briefs && st.briefs[0]; e.text = b ? line1(b.text, 300) : `task "${e.title || (agents[e.to] || {}).name || e.to}"${e.atype ? ' (' + e.atype + ')' : ''}`; e.note = b ? '' : NOTE; if (!b) e.label = true; }   // label: shown, never read aloud
     else if (e.kind === 'msg' && e.native && !e.text) {
       const k = e.agent + '>' + e.to, n = (counts[k] = (counts[k] || 0) + 1), nm = (id) => (agents[id] || {}).name || id;
       let got = null;
       if (e.to !== 'main' && by.get(e.to)) got = near((by.get(e.to) || {}).briefs, e.sent || e.ts, true);   // to a sub-agent: what it received next, in its own words
       else if (e.agent !== 'main' && by.get(e.agent)) { const st = by.get(e.agent); got = near(says(e.agent), e.sent || e.ts, false) || (st.answer && Math.abs(st.answer.ts - e.ts) < 180000 ? st.answer : null); }   // from a sub-agent: what it had just said, or its report
-      e.text = got ? line1(got.text) : `${e.verb === 'followup_task' ? 'follow-up to' : 'message to'} ${nm(e.to)} (#${n})`; e.note = NOTE;
+      e.text = got ? line1(got.text) : `${e.verb === 'followup_task' ? 'follow-up to' : 'message to'} ${nm(e.to)} (#${n})`; e.note = NOTE; if (!got) e.label = true;
     }
   }
 }
