@@ -895,9 +895,9 @@ async function speakServer(text, p, gain, token, fr = FR(), still) {
   const data = new Uint8Array(an.fftSize);
   S.level[p.id] = () => { an.getByteTimeDomainData(data); let s = 0; for (const v of data) { const x = (v - 128) / 128; s += x * x; } return Math.sqrt(s / data.length); };   // drives the mouth
   AUD.live.add(src);
-  const len = buf.duration / (src.playbackRate.value || 1); S.sayingLine = text; vlog('start');
+  const len = buf.duration / (src.playbackRate.value || 1); S.sayingLine = text; S.lineEndsAt = Date.now() + len * 1000; vlog('start');
   captionRun(p.id, text, len * 1000); const ended = await new Promise((res) => { src.onended = () => res(true); setTimeout(() => res(false), len * 1000 + 1500); src.start(); });
-  vlog(ended ? 'end' : 'end: no ended event, timer'); S.sayingLine = '';
+  vlog(ended ? 'end' : 'end: no ended event, timer'); S.sayingLine = ''; S.lineEndsAt = 0;
   AUD.live.delete(src); delete S.level[p.id]; stops.forEach((o) => { try { o.stop(); } catch {} }); return true;
 }
 function speakBrowser(text, p, token, fr = FR()) {   // fallback where no server voice exists (Windows/Linux)
@@ -1974,9 +1974,9 @@ function clipSpeech(t, cap) {   // the bubble keeps the full text; the voice rea
 const VLOG = (window.__voiceLog = []);
 function vlog(what) { const e = { at: new Date().toISOString().slice(11, 23), what, sounding: AUD.live.size > 0 || !!(synth && synth.speaking), line: String(S.sayingLine || '').slice(0, 60) }; VLOG.push(e); if (VLOG.length > 60) VLOG.shift(); if (Q.get('debug') === 'voice') console.debug('[voice]', e); }
 function stopVoice(reason) { if (voiceBusy()) vlog('cut: ' + reason); synth && synth.cancel(); AUD.stopAll(); }   // only an explicit pause, mute, seek or language change gets here with a line still playing
-async function finishLine(cap = 20000) {   // a switch, a reload or a mode change waits for the line being said (up to 20 s); no new line starts meanwhile
-  if (!voiceBusy()) return; S.token++; vlog('wait for the line to end'); const t0 = Date.now();
-  while (voiceBusy() && Date.now() - t0 < cap) await sleep(150);
+async function finishLine(cap = 20000) {   // a switch, a reload or a mode change waits for the line being said to end, however long it is; no new line starts meanwhile
+  if (!voiceBusy()) return; S.token++; vlog('wait for the line to end'); const t0 = Date.now(), until = () => Math.min(90000, Math.max(cap, (S.lineEndsAt || 0) - t0 + 1500));   // its known end, or 20 s for a voice with none (90 s at most)
+  while (voiceBusy() && Date.now() - t0 < until()) await sleep(150);
   if (voiceBusy()) vlog('still playing after ' + cap / 1000 + ' s');
 }
 function pause(reason = 'pause') { S.playing = false; S.hurry = false; S.boost = 1; S.token++; stopVoice(reason); clearSpeaking(); $('#card').classList.remove('on'); syncUI(); }
@@ -2002,8 +2002,8 @@ function showMoment(i) {
 // =====================================================================
 const voiceBusy = () => S.speakers.size > 0 || AUD.live.size > 0 || !!(synth && synth.speaking);   // a voice is sounding: its audio, not only the speaking flag (a silent beat of the same agent clears that)
 async function loadSession(proj, id) {   // every switch comes here (a click on a call, the board, the switcher, a guest; following; a rewrite): the line being said is finished first
-  const n0 = S.loadN; await finishLine(); if (S.loadN !== n0) return false;   // another switch was asked meanwhile: that one goes ahead
-  pause('switch'); const mine = (S.loadN = (S.loadN || 0) + 1);
+  const mine = (S.loadN = (S.loadN || 0) + 1); await finishLine(); if (mine !== S.loadN) return false;   // numbered before the wait: the last switch asked is the one that goes ahead
+  pause('switch');
   const data = await (await fetch(`/api/session?proj=${encodeURIComponent(proj)}&id=${id}`)).json();
   if (mine !== S.loadN || data.error) return false;
   const again = [S.cur, S.last].some((c) => c && c.proj === proj && c.id === id), keepDetail = again && S.detail, joined = S.joinAt;   // the same session rebuilt (a live rewrite): the room stays as it was
@@ -2369,11 +2369,11 @@ function applyMute() {
 async function audioSync(claim) {   // heartbeat + ownership: avoids two Agent Standup windows talking at the same time
   try {
     const d = await (await fetch(`/api/audio?cid=${CID}${claim ? '&claim=1' : ''}`)).json(), before = S.owner;
-    S.owner = d.owner; if (before !== S.owner) { applyMute(); updateHint(); }
+    S.owner = d.owner; S.ownerKnown = true; if (before !== S.owner) { applyMute(); updateHint(); }
   } catch {}
 }
 const claimAudio = () => { S.owner = CID; applyMute(); audioSync(true); };
-setInterval(() => audioSync(false), 1500);
+setInterval(() => audioSync(false), 1500); audioSync(false);   // known from the start, not 1.5 s later
 function toggleMute() { if (elsewhere()) { AUD.muted = false; claimAudio(); return; } AUD.muted = !AUD.muted; applyMute(); }
 function setView(v) { prefs.view = v; savePrefs(); setTimeout(paintSubtitle, 0); document.body.classList.toggle('tree', v === 'tree'); document.body.classList.toggle('board', v === 'board'); if (v === 'board') renderBoardView(); document.querySelectorAll('#viewSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === v)); renderTree(); }
 
@@ -2444,9 +2444,10 @@ $('#eDemo').onclick = () => setMode('demo');
 // No gate: the call opens straight into the live call. The browser holds the sound back until a gesture on the page, so the first click, key or tap anywhere turns it on
 // and takes the sound for this window. Only while the sound is really held back does a small hint sit by the voice button.
 const GESTURES = ['pointerdown', 'keydown', 'touchstart'];
-function unlockAudio() {
+async function unlockAudio() {
   GESTURES.forEach((t) => removeEventListener(t, unlockAudio, true));
-  if (!elsewhere()) claimAudio(); AUD.init(); AUD.apply(); if (AUD.ctx) AUD.ctx.resume().then(paintVnote, () => {});   // another window playing keeps the sound: 🔈 takes it over
+  AUD.init(); AUD.apply(); if (AUD.ctx) AUD.ctx.resume().then(paintVnote, () => {});
+  if (!S.ownerKnown) await audioSync(false); if (!elsewhere()) claimAudio();   // another window playing keeps the sound: 🔈 takes it over
   if (synth && !EMBED) { try { synth.speak(new SpeechSynthesisUtterance('')); } catch {} }   // unlock browser speech
 }
 GESTURES.forEach((t) => addEventListener(t, unlockAudio, true));

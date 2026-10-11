@@ -238,11 +238,18 @@ test('switches: loading another session (every switch path) lets the line being 
   const cuts = [], live = new Set([{}]), S = { playing: true, speakers: new Set(), loadN: 0, token: 1, cur: { proj: 'a', id: '1' }, agents: {}, events: [] };
   const AUD = { live, stopAll() { if (live.size) cuts.push('stopped while playing'); live.clear(); } };
   const scope = pageScope({ S, AUD, Q: new URLSearchParams(''), window: {}, synth: { speaking: false, cancel() {} }, sleep, fetch: async () => ({ json: async () => ({ agents: [], events: [{ ts: 1, kind: 'say', agent: 'main', text: 'x' }], rev: 1, group: null }) }), nameBook: {} });
-  const page = new Function('scope', 'with (scope) { ' + src + '\nreturn { loadSession, pause, VLOG: window.__voiceLog }; }')(scope);
+  const page = new Function('scope', 'with (scope) { ' + src + '\nreturn { loadSession, pause, finishLine, VLOG: window.__voiceLog }; }')(scope);
   setTimeout(() => live.clear(), 300);   // the line ends 300 ms from now
   const t0 = Date.now(); assert.equal(await page.loadSession('b', '2'), true);
   assert.deepEqual(cuts, [], 'no line was cut'); assert.ok(Date.now() - t0 >= 280, 'the switch waited for the end of the line: ' + (Date.now() - t0) + ' ms');
   assert.deepEqual(S.cur, { proj: 'b', id: '2' }); assert.ok(page.VLOG.some((e) => e.what === 'wait for the line to end'));
+  // two switches asked while one line plays: the last one goes ahead (Astra)
+  live.add({}); S.playing = true; setTimeout(() => live.clear(), 200);
+  const [a, b] = await Promise.all([page.loadSession('c', '3'), page.loadSession('d', '4')]);
+  assert.deepEqual([a, b, S.cur], [false, true, { proj: 'd', id: '4' }]); assert.deepEqual(cuts, []);
+  // a line longer than the 20 s guard is still waited for: its known end counts (scaled: a 100 ms guard, a 350 ms line)
+  live.add({}); S.playing = true; S.lineEndsAt = Date.now() + 350; setTimeout(() => live.clear(), 350); const t1 = Date.now(); await page.finishLine(100);
+  assert.ok(Date.now() - t1 >= 330, 'waited for the end of the long line: ' + (Date.now() - t1) + ' ms'); assert.deepEqual(cuts, []); S.lineEndsAt = 0;
   live.add({}); S.playing = true; page.pause('pause'); assert.deepEqual(cuts, ['stopped while playing'], 'an explicit pause does stop it'); assert.ok(page.VLOG.some((e) => e.what === 'cut: pause'));
   assert.ok(!/AUD\.stopAll\(\)|synth\.cancel\(\)/.test(html.replace(/function stopVoice\(reason\) \{[^\n]*\}/, '').replace(/function speakBrowser[\s\S]*?\n\}/, '').replace(/stopAll\(\) \{[^\n]*\}/, '')), 'nothing else stops a voice');
   assert.ok(/await finishLine\(\); pause\('mode'\)/.test(html) && (html.match(/await finishLine\(\); pause\('mode'\)/g) || []).length === 2, 'a mode change waits too');
