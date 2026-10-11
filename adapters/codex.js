@@ -112,7 +112,7 @@ function titleOf(m) {
   } catch {}
   titleCache.set(m.file, { size: (statOf(m) || {}).size, title }); peers.capped(titleCache, 4000); return title || fallbackTitle(m);
 }
-const fallbackTitle = (m) => (m.agentPath ? human(m.agentPath.split('/').pop()) : threadName(m.id) || 'Codex session from ' + (m.start ? new Date(m.start).toTimeString().slice(0, 5) : m.id.slice(-4)) + ', no prompt yet');
+const fallbackTitle = (m) => (m.agentPath ? human(m.agentPath.split('/').pop()) : threadName(m.id) || (m.cwd ? 'Codex in ' + path.basename(m.cwd) : 'Codex session ' + m.id.slice(-4)));   // no prompt yet: where it runs
 // Functional names: the thread name the person gave (session_index.jsonl), and for a sub-agent the last segment of its agent path, as words.
 const human = (seg) => String(seg || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
 let names = { at: 0, sig: '', map: new Map() };

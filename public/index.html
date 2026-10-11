@@ -56,7 +56,7 @@
   .gchip i { width:10px; height:10px; border-radius:50%; background:var(--pc); flex:none } .gchip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap } .gchip small { color:var(--dim); white-space:nowrap }
   .gchip.hl { box-shadow:0 0 0 2px var(--pc), 0 0 14px var(--pc) } .tile.guest { display:none !important }
   body.tree #stage, body.board #stage, body.board #tree { display:none } body.tree #tree { display:block } body.board #boardv { display:block } body.board #present, body.board #gantt { display:none !important }
-  #side { display:none; width:240px; flex:none; flex-direction:column; min-height:0; border-right:1px solid var(--line); background:var(--panel) }
+  #side { display:none; width:310px; flex:none; flex-direction:column; min-height:0; border-right:1px solid var(--line); background:var(--panel) }
   @media (min-width:900px) { body:not(.tree):not(.board):not(.compact) #side { display:flex } }
   #roster { display:none; flex:1; min-height:0; flex-direction:column; gap:5px; padding:10px 8px; overflow-x:hidden; overflow-y:auto }
   /* Calls: the other ongoing calls, by project, the ones that need Tom first; click one to join it */
@@ -64,20 +64,22 @@
   #calls .ch { display:flex; align-items:center; gap:6px } #calls .ch h3 { margin:0 2px 0 6px } #calls select { flex:1; min-width:0; font:inherit; font-size:11.5px; background:var(--panel2); color:inherit; border:1px solid var(--line); border-radius:6px; padding:2px 4px }
   #calls .cmin { background:none; border:0; color:var(--dim); cursor:pointer; font:inherit; padding:0 4px } #calls.min .crow, #calls.min .cq, #calls.min .cg, #calls.min .cwhy { display:none }
   #calls .cwhy { font-size:11px; color:var(--dim); padding:0 6px } #calls .cg { font-size:10.5px; font-weight:700; color:var(--pc); margin:4px 6px 0 }
-  .crow { display:flex; flex-direction:column; gap:1px; padding:5px 8px; border:0; border-left:3px solid var(--pc); border-radius:8px; background:var(--panel2); cursor:pointer; min-width:0; text-align:left; color:inherit; font:inherit }
-  .crow.cur { box-shadow:inset 0 0 0 1px var(--pc) } .crow .cn { display:flex; align-items:center; gap:6px; font-size:12px; min-width:0 } .crow .cn b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600 } .crow .cn small { color:var(--dim); white-space:nowrap; margin-left:auto }
-  .crow .ca { font-size:11px; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
-  .cdot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--line) } .cdot.blocked { background:#ff4d4d; box-shadow:0 0 6px #ff4d4d } .cdot.working, .cdot.waiting { background:var(--gold) } .cdot.turn { background:var(--ok) }
+  .crow { display:flex; flex-direction:column; gap:2px; padding:6px 9px; border:0; border-radius:8px; background:var(--panel2); cursor:pointer; min-width:0; text-align:left; color:inherit; font:inherit }
+  .crow.cur { background:rgba(124,156,255,.24) } .crow .cn { display:flex; align-items:flex-start; gap:6px; font-size:12.5px; min-width:0 }
+  .crow .cn b, .rr .n { font-weight:600; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; min-width:0 }   /* the title in full, on two lines at most */
+  .crow .cn em { margin-left:auto; flex:none; font-style:normal; font-size:10.5px; font-weight:700; color:#c9d4ff; white-space:nowrap }
+  .crow .ca, .rr .st { display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--dim); min-width:0 } .crow .ca span, .rr .st span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0 }
+  .crow .ca small { margin-left:auto; flex:none; color:var(--dim); font-size:10.5px } .crow .ca .needs, .rr .st .needs { color:#f0a020; font-weight:700 }
+  .sdot { width:8px; height:8px; border-radius:50%; flex:none; background:#6b7089 } .sdot.working { background:var(--ok) } .sdot.needs { background:#f0a020; box-shadow:0 0 6px #f0a020 } .sdot.waiting { background:#6ebeff }   /* working, needs you, waiting on an agent; grey: finished, done, idle */
+  #calls .cg.needs { color:#f0a020 }
+  #side, #side * { scrollbar-width:thin; scrollbar-color:#3a4060 transparent } #side ::-webkit-scrollbar { width:8px } #side ::-webkit-scrollbar-thumb { background:#3a4060; border-radius:4px } #side ::-webkit-scrollbar-track { background:transparent }
   .cq { align-self:flex-start; margin-left:6px; background:none; border:0; color:var(--dim); cursor:pointer; font:inherit; font-size:11.5px; padding:1px 2px }
   @media (min-width:900px) { body.rost:not(.tree):not(.board) #roster { display:flex } }
   #calls h3, #roster h3 { margin:2px 6px 4px; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--dim) }
   .rr { display:flex; flex-direction:column; gap:2px; padding:6px 9px; border-radius:9px; border-left:3px solid transparent; background:var(--panel2); cursor:pointer; min-width:0 }
   .rr:hover { background:#2a2f45 } .rr.sel { outline:1px solid var(--accent) }
-  .rr .n { display:flex; align-items:center; gap:7px; min-width:0 } .rr .dot { width:9px; height:9px; border-radius:50%; flex:none } .rr b { font-size:12.5px; overflow-wrap:anywhere; min-width:0 } .rr .ro { color:var(--dim); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0 }
-  .rr .st { font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
-  .rr.k-working { border-left-color:var(--gold) } .rr.k-working .st { color:var(--gold) } .rr.k-waiting { border-left-color:#8fd3ff } .rr.k-waiting .st { color:#8fd3ff }
-  .rr.k-blocked { border-left-color:#ff5252; background:rgba(192,57,43,.28) } .rr.k-blocked .st { color:#fff; font-weight:700 } .rr.k-stalled { border-left-color:#ffb347 } .rr.k-stalled .st { color:#ffb347; font-weight:700 }
-  .rr.k-done { opacity:.82 } .rr.k-done .st { color:var(--ok) } .rr.k-idle .st { color:var(--dim) } .rr.speaking { box-shadow:0 0 0 2px rgba(124,156,255,.5) }
+  .rr .n { font-size:12.5px } .rr b { font-weight:600 } .rr .ro { color:var(--dim); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0 }
+  .rr .ro { color:var(--dim); font-size:11px; font-weight:400 } .rr.speaking { box-shadow:0 0 0 2px rgba(124,156,255,.5) }
   #boardv { flex:1; overflow:auto; padding:16px 18px; display:none }
   .bsum { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; font-size:12.5px } .bsum span { padding:3px 10px; border-radius:99px; background:var(--panel2); border:1px solid var(--line) }
   .bgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:10px }
@@ -182,7 +184,7 @@
   .bubble { display:none; position:absolute; top:6px; left:6px; right:62px; background:#fff; color:#1b1d27; border-radius:11px; padding:6px 10px; font-size:12.5px; line-height:1.35; box-shadow:0 4px 14px rgba(0,0,0,.35); max-height:58%; overflow:hidden }
   .tile.bye .bubble { display:block; font-size:13.5px; animation:fadein .25s } .tile.speaking .bubble { display:block; font-size:14.5px; max-height:50% } .bubble small { display:block; color:#6a6f85; font-size:10.5px }
   .ticker { display:none; position:absolute; left:6px; right:6px; bottom:30px; font:10.5px/1.3 ui-monospace,Menlo,monospace; color:#fff; background:rgba(15,20,35,.8); border-radius:5px; padding:2px 7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-  .ticker.on { display:block } .ticker i { font-style:normal; color:#ffd24a } .ticker.flash { animation:flash .25s } @keyframes flash { from { background:#3b5bdb } }
+  .ticker.on { display:block } .tile .ticker { display:none !important }   /* no raw tool line on a tile: the shared screen shows it, the status says it in words */ .ticker i { font-style:normal; color:#ffd24a } .ticker.flash { animation:flash .25s } @keyframes flash { from { background:#3b5bdb } }
   /* character animation: all state-driven from the tile's classes */
   .fig { transform-origin:50px 76px; animation:bob 4.4s ease-in-out infinite; animation-delay:var(--d,0s) } @keyframes bob { 50% { transform:translateY(-.9px) } }
   .tile.speaking .fig { animation:talk .46s ease-in-out infinite } @keyframes talk { 50% { transform:scale(1.025,.985) translateY(-.5px) } }
@@ -1029,7 +1031,7 @@ function syncUI() {
 // ---------- what each agent is doing: tool calls with their real outputs ----------
 S.term = {}; S.todos = {}; S.run = {}; S.act = {}; S.usage = {}; S.errs = {}; S.lastAct = {}; S.waitOn = {}; S.orderTs = {}; S.prevState = {}; S.ctx = {}; S.model = {}; S.compacts = {}; S.ctxWarned = {}; S.rep = {}; S.loops = {}; S.present = null; S.camFor = null; let presentTimer = null;
 const later = (k, fn, ms = 160) => { later.p = later.p || {}; if (later.p[k]) return; later.p[k] = setTimeout(() => { later.p[k] = 0; fn(); }, ms); };   // coalesce bursts of repaints
-const fmtTok = (n) => (n < 1000 ? String(n) : n < 1e6 ? (n / 1000).toFixed(n < 1e4 ? 1 : 0) + 'k' : (n / 1e6).toFixed(n < 1e7 ? 2 : 1) + 'M');
+const fmtTok = (n) => (n < 1000 ? String(n) : n < 1e6 ? (n / 1000).toFixed(n < 1e4 ? 1 : 0) + 'k' : (n / 1e6).toFixed(1) + 'M');   // 3.4M, 398k
 const tokTotal = (u) => (u ? u.i + u.o + u.w : 0);   // headline = input + output + cache writes; cache reads are cheap and shown separately
 // A loop is the same call repeated 3 times in a row, or 4 failures in a row. Polling and screenshot tools are legitimate repeaters and are ignored.
 const LOOP_SKIP = /^(Monitor|TodoWrite|ToolSearch|Skill|Read|mcp__Claude_Browser__(computer|wait|screenshot)|mcp__terminal__read_terminal)$/, POLLY = /\b(sleep|watch|tail -f|gh run|status|poll)\b/;
@@ -1053,18 +1055,18 @@ const tokTip = (u) => `${L('Jetons enregistrés par Claude Code (comptés une fo
 const ctxInfo = (id) => { const c = S.ctx[id]; if (!c) return null; const w = ctxWin(S.model[id], c), p = Math.round((c / w) * 100); return { c, w, p, lvl: p >= 88 ? 'hi' : p >= 70 ? 'mid' : 'lo' }; };
 function renderCtx() {   // "context N% full": per agent chip (from 50%), a header chip for the lead, and one warning before auto-compaction
   for (const id in S.agents) { const t = $('#t-' + id); if (!t) continue; const el = t.querySelector('.cx'), x = ctxInfo(id);
-    if (el) { if (x && x.p >= 50) { el.textContent = `ctx ${x.p}%`; el.className = 'cx ' + x.lvl; el.title = `${L('Contexte', 'Context')}: ${fmtTok(x.c)} / ${fmtTok(x.w)}`; } else { el.textContent = ''; el.className = 'cx'; } }
+    if (el) { if (x && x.p >= 50) { el.textContent = `${L('contexte', 'context')} ${x.p}%`; el.className = 'cx ' + x.lvl; el.title = `${L('Contexte', 'Context')}: ${fmtTok(x.c)} / ${fmtTok(x.w)}`; } else { el.textContent = ''; el.className = 'cx'; } }
     if (x && x.p >= 85 && !S.ctxWarned[id] && S.live && S.playing && S.status[id] !== 'done' && !S.gone.has(id)) {   // only for an agent still at work
       S.ctxWarned[id] = 1; toast(`${nameOf(id)}: ${L('contexte plein à ', 'context ')}${x.p}%${L(' — compactage proche', ' full — compaction soon')} 🗜`); }   // a badge, no sound: nothing is asked of the person
     else if (x && x.p < 60) delete S.ctxWarned[id]; }
-  const lead = ctxInfo('main'), cp = $('#ctxp'); if (lead) { cp.style.display = ''; cp.textContent = `ctx ${lead.p}%`; cp.className = 'ctxp ' + lead.lvl; cp.title = `${L('Contexte du chef', 'Lead context')}: ${fmtTok(lead.c)} / ${fmtTok(lead.w)}${S.compacts.main ? ', ' + S.compacts.main + '×🗜' : ''}`; } else cp.style.display = 'none';
+  const lead = ctxInfo('main'), cp = $('#ctxp'); if (lead) { cp.style.display = ''; cp.textContent = `${L('contexte', 'context')} ${lead.p}%`; cp.className = 'ctxp ' + lead.lvl; cp.title = `${L('Contexte du chef', 'Lead context')}: ${fmtTok(lead.c)} / ${fmtTok(lead.w)}${S.compacts.main ? ', ' + S.compacts.main + '×🗜' : ''}`; } else cp.style.display = 'none';
 }
 function renderTokens() {
   renderCtx();
   const all = { i: 0, o: 0, r: 0, w: 0 }; for (const id in S.usage) for (const k in all) all[k] += S.usage[id][k];
   const b = $('#tok'), tot = tokTotal(all); b.style.display = tot ? '' : 'none';
   if (tot) { b.textContent = `⚡ ${fmtTok(tot)} ${L('jetons', 'tokens')}`; b.title = tokTip(all); }
-  for (const id in S.agents) { const t = $('#t-' + id); if (!t) continue; const u = S.usage[id], el = t.querySelector('.tk'); el.textContent = u && tokTotal(u) ? `⚡${fmtTok(tokTotal(u))}` : ''; if (u) t.title = tokTip(u); }
+  for (const id in S.agents) { const t = $('#t-' + id); if (!t) continue; const u = S.usage[id], el = t.querySelector('.tk'); el.textContent = u && tokTotal(u) ? `${fmtTok(tokTotal(u))} ${L('jetons', 'tokens')}` : ''; if (u) t.title = tokTip(u); }
 }
 // One boring signal per tile: working · waiting on another agent · may need you · stalled · done. Stalled hand-offs are what really cost time.
 // file edits are instant, so one that stays pending is almost surely an approval prompt; a Bash command may legitimately run long (⏳ badge instead)
@@ -1072,16 +1074,17 @@ const NEEDS_OK = /^(Edit|Write|MultiEdit|NotebookEdit|AskUserQuestion|ExitPlanMo
 const atTail = () => S.idx >= S.events.length - 3;   // only trust wall-clock ages when playback has caught up with the live end
 function agentState(id, now) {
   let s = S.status[id]; const r = S.run[id], w = S.waitOn[id], la = S.lastAct[id];
-  if (id === 'main' && !s) { if (r || (w && w.size) || (S.live && la && now - la < 25000)) s = 'working'; else if (S.live && la) return { k: 'done', txt: '✓ ' + L('à vous', 'your turn') }; }
+  if (id === 'main' && !s) { if (r || (w && w.size) || (S.live && la && now - la < 25000)) s = 'working'; else if (S.live && la) return { k: 'done', txt: '✓ ' + L('fini', 'finished') }; }   // its turn ended: finished, not "needs you" 
   if (s === 'done') return { k: 'done', txt: '✓ ' + L('terminé', 'done') };
   if (s === 'peer') return { k: 'peer', txt: '↔ ' + L('autre session', 'other session') };
   if (!s) return { k: 'idle', txt: '' };
-  if (S.live && atTail() && r && r.ts && r.name && NEEDS_OK.test(r.name)) { const age = now - r.ts; if (age > (ASKS.test(r.name) ? 4000 : 15000)) return { k: 'blocked', txt: '✋ ' + L('attend vous ? ', 'needs you? ') + fmtShort(age) }; }
+  if (S.live && atTail() && r && r.ts && r.name && NEEDS_OK.test(r.name)) { const age = now - r.ts; if (age > (ASKS.test(r.name) ? 4000 : 15000)) return { k: 'blocked', txt: '✋ ' + L('attend vous ? ', 'needs you? ') + fmtShort(age), age }; }
   if (w && w.size) {   // really waiting only while the lead has a sub-agent call pending, or while those agents are still active (background agents never block the lead)
     const pendingSub = r && /^(Task|Agent)$/.test(r.name), open = [...w].filter((c) => S.status[c] !== 'done' && (pendingSub || !S.live || now - Math.max(S.lastAct[c] || 0, S.orderTs[c] || 0) < 120000));
     if (open.length) {
       const names = open.map(nameOf); let stale = S.live && pendingSub; for (const c of open) if (!(now - Math.max(S.lastAct[c] || 0, S.orderTs[c] || 0) > 120000)) stale = false;
-      return { k: stale ? 'stalled' : 'waiting', txt: (stale ? '⚠ ' + L('bloqué : ', 'stalled: ') : '🔗 ') + L('attend ', 'waiting on ') + names.slice(0, 2).join(', ') + (names.length > 2 ? ' +' + (names.length - 2) : '') };
+      const on = names.slice(0, 2).concat(names.length > 2 ? ['+' + (names.length - 2)] : []);
+      return { k: stale ? 'stalled' : 'waiting', txt: (stale ? '⚠ ' + L('bloqué : ', 'stalled: ') : '🔗 ') + L('attend ', 'waiting on ') + on.join(', '), on };
     }
   }
   return { k: 'working', txt: '⚙ ' + (S.act[id] || L('au travail', 'working')) };
@@ -1110,18 +1113,18 @@ const RORDER = { blocked: 0, stalled: 1, working: 2, waiting: 3, idle: 4, done: 
 function paintRoster(ros) {   // a fixed list beside the call: who is doing what, urgent first, readable even with dozens of agents
   const box = $('#roster'); if (!box || !document.body.classList.contains('rost')) return;
   ros.sort((a, b) => (a.p.id === 'main' ? -1 : b.p.id === 'main' ? 1 : (RORDER[a.st.k] - RORDER[b.st.k]) || (S.lastAct[b.p.id] || 0) - (S.lastAct[a.p.id] || 0)));
-  const rows = ros.slice(0, 60).map(({ p, st }) => `<div class="rr k-${st.k}${S.focus === p.id ? ' sel' : ''}${S.speakers.has(p.id) ? ' speaking' : ''}" data-id="${esc(p.id)}" tabindex="0" role="button" aria-label="${esc(p.name)}, ${esc(st.txt || '')}"><div class="n"><span class="dot" style="background:${p.shirt}"></span><b>${esc(p.name)}</b><span class="ro">${esc(p.role)}</span></div><div class="st">${esc(st.txt || L('en veille', 'standing by'))}${S.loops[p.id] ? ' 🔁' : ''}</div></div>`).join('');
-  const html = `<h3>${L('Agents', 'Agents')} <span class="dim">${ros.length}</span></h3>${rows}${ros.length > 60 ? `<div class="ro" style="padding:4px 8px">+${ros.length - 60}</div>` : ''}`;
+  const done = ros.filter((x) => x.p.id !== 'main' && x.st.k === 'done'); if (!S.rosterDone && done.length) ros = ros.filter((x) => !done.includes(x));   // finished sub-agents: one line, opened on a click
+  const rows = ros.slice(0, 60).map(({ p, st }) => `<div class="rr k-${st.k}${S.focus === p.id ? ' sel' : ''}${S.speakers.has(p.id) ? ' speaking' : ''}" data-id="${esc(p.id)}" tabindex="0" role="button" aria-label="${esc(p.name)}, ${esc(st.txt || '')}"><div class="n"><b>${esc(p.name)}</b> <span class="ro">${esc(p.role)}</span></div><div class="st">${sHtml(st.k, agentStatus(p.id, st))}${S.loops[p.id] ? ' 🔁' : ''}</div></div>`).join('');
+  const html = `<h3>${L('Agents', 'Agents')} <span class="dim">${ros.length}</span></h3>${rows}${ros.length > 60 ? `<div class="ro" style="padding:4px 8px">+${ros.length - 60}</div>` : ''}${done.length ? `<button class="cq rq">${S.rosterDone ? '−' : '＋'} ${done.length} ${L('terminés', 'done')}</button>` : ''}`;
   if (box.dataset.h !== html) { box.dataset.h = html; box.innerHTML = html; }
 }
-$('#roster').onclick = (e) => { const r = e.target.closest('.rr'); if (!r) return; S.focusLock = Date.now() + 25000; setFocus(r.dataset.id); paintStates(); };
+$('#roster').onclick = (e) => { if (e.target.closest('.rq')) { S.rosterDone = !S.rosterDone; paintStates(); return; } const r = e.target.closest('.rr'); if (!r) return; S.focusLock = Date.now() + 25000; setFocus(r.dataset.id); paintStates(); };
 $('#roster').onkeydown = (e) => { const r = e.target.closest('.rr'); if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); S.focusLock = Date.now() + 25000; setFocus(r.dataset.id); paintStates(); } else if (r && e.key === 'i') openDetail(r.dataset.id); };
 $('#roster').ondblclick = (e) => { const r = e.target.closest('.rr'); if (r) openDetail(r.dataset.id); };
 function renderBadges() {   // per tile: failed tool calls, a command that has been running a long time, an agent that went quiet
   const now = Date.now();
   for (const id in S.agents) {
     const t = $('#t-' + id); if (!t) continue; const b = t.querySelector('.tbadge'), parts = []; let slow = false, quiet = false;
-    if (S.errs[id]) parts.push(`<span class="e">✗ ${S.errs[id]}</span>`);
     if (S.loops[id]) parts.push(`<span class="l" title="${esc(S.loops[id].kind === 'errors' ? L('Échecs répétés', 'Repeated failures') : L('Même appel répété', 'Same call repeated'))}">🔁 ×${S.loops[id].n}</span>`);
     if (S.live && S.status[id] === 'working') {
       const r = S.run[id];
@@ -1167,9 +1170,59 @@ const fmtDur = (ms) => (ms < 950 ? `${Math.max(1, Math.round(ms))} ms` : ms < 60
 const quiet = (e) => e.kind === 'tools' || e.kind === 'results' || e.kind === 'usage' || e.kind === 'finish' || e.kind === 'compact';
 // The command a shell tool runs, as a person would say it: without "set -e;" or "cd dir &&", a heredoc as "python3 script", and a JS wrapper (a Codex exec script) as nothing.
 function cmdLabel(text) {
-  let a = String(text || '').split('\n').map((l) => l.trim()).find((l) => l && !/^(?:set -[a-z]+;?|#.*)$/.test(l)) || '';
-  a = a.replace(/^(?:set -[a-z]+;\s*)+/, '').replace(/^cd \S+\s*(?:&&|;)\s*/, '').replace(/\s*['"]?uds:\S+/g, '').replace(/\s+-?\s*<<-?\s*['"]?\w+['"]?\s*$/, ' script');
+  let a = String(text || '').split('\n').map((l) => l.trim()).find((l) => l && !/^(?:set -[a-z]+;?|#.*|(?:export\s+)?[A-Za-z_]\w*=\S*;?)$/.test(l)) || '';   // not a setting nor a variable
+  a = a.replace(/^(?:set -[a-z]+;\s*)+/, '').replace(/^(?:(?:export\s+)?[A-Za-z_]\w*=\S*\s*(?:;|&&)\s*)+/, '').replace(/^cd \S+\s*(?:&&|;)\s*/, '').replace(/\s*['"]?uds:\S+/g, '').replace(/\s+-?\s*<<-?\s*['"]?\w+['"]?\s*$/, ' script');
   return /\bawait\b|=>|\bconst\b|\blet\b|\bvar\b|Promise\.|^\w+\(['"`]|^[{}\/]/.test(a) ? '' : a;
+}
+// What a command does, as a verb and its target: "Running tests", "Reading server.js", "Running git status". Never the command line itself.
+function cmdVerb(cmd) {
+  const c = cmdLabel(cmd), w = c.split(/\s+/), prog = base(w[0] || ''), path1 = base((w.slice(1).reverse().find((x) => /\w\.\w{1,8}['"]?$/.test(x)) || '').replace(/['"]/g, ''));
+  if (!c || !/^[\w.+-]+$/.test(prog) || /^(for|while|if|until|case|do|then)$/.test(prog)) return L('Exécute ', 'Running ') + L('un script', 'a script');
+  if (/\b(test|tests|pytest|jest|vitest|mocha)\b/.test(c) && /^(npm|pnpm|yarn|node|npx|pytest|jest|vitest|cargo|go|dotnet|make|python3?|mocha)$/.test(prog)) return L('Lance les tests', 'Running tests');
+  if (/^(npm|pnpm|yarn|pip3?|cargo|apt|dnf|brew)$/.test(prog) && /^(install|add|i)$/.test(w[1] || '')) return L('Installe', 'Installing');
+  if (/\b(build|tsc|msbuild|webpack)\b/.test(c) && /^(npm|pnpm|yarn|npx|dotnet|cargo|go|make|tsc|msbuild|webpack)$/.test(prog)) return L('Compile', 'Building');
+  if (/^(sed|cat|head|tail|less|nl|wc|jq|bat|diff)$/.test(prog)) return L('Lit ', 'Reading ') + (path1 || L('des fichiers', 'files'));
+  if (/^(grep|rg|ag|find|fd|ls|tree|pgrep|ps)$/.test(prog)) return L('Cherche dans les fichiers', 'Searching files');
+  if (/^(curl|wget)$/.test(prog)) return L('Consulte ', 'Fetching ') + ((/https?:\/\/([^/\s'"]+)/.exec(c) || [])[1] || L('le web', 'the web'));
+  return L('Exécute ', 'Running ') + (prog === 'git' && w[1] ? 'git ' + w[1] : / script$/.test(c) ? prog + ' script' : prog);
+}
+// What a session is doing, from its board row (a tool and its argument), in the same words as the agents' own labels
+function plainAct(tool, arg) {
+  const t = String(tool || ''), a = String(arg || ''), f = base(a.split('\n')[0].trim().split(/\s+/)[0] || '');
+  if (/^(Bash|exec_command|shell|terminal|local_shell|exec)$/.test(t)) return cmdVerb(a);
+  if (t === 'write_stdin') return L('attend une commande', 'waiting on a command');
+  if (/^(Edit|Write|MultiEdit|NotebookEdit|apply_patch|patch|write_file)$/.test(t)) return L('Modifie ', 'Editing ') + (f || L('des fichiers', 'files'));
+  if (/^(Read|view|read_file|view_image)$/.test(t)) return L('Lit ', 'Reading ') + (f || L('des fichiers', 'files'));
+  if (/^(Grep|Glob|search_files)$/.test(t)) return L('Cherche dans les fichiers', 'Searching files');
+  if (/^(Task|Agent|spawn_agent|delegate_task)$/.test(t)) return L('Lance un sous-agent', 'Starting a sub-agent');
+  if (/send_peer|SendMessage|send_message/.test(t)) return L('Envoie un message', 'Sending a message');
+  if (/^(WebFetch|WebSearch|web_search|web_fetch|web_extract)$/.test(t)) return L('Recherche sur le web', 'Web search');
+  if (/browser|playwright|chrome/i.test(t)) return L('Utilise le navigateur', 'Using the browser');
+  if (/^(TodoWrite|update_plan|todo)$/.test(t)) return L('Met à jour sa todo', 'Updating todo list');
+  if (/^(ToolSearch|tool_search)$/.test(t)) return L('Cherche un outil', 'Looking for a tool');
+  if (/^(AskUserQuestion|request_user_input|clarify)$/.test(t)) return L('Pose une question', 'Asking a question');
+  return t.replace(/^mcp__.+?__(?=[^_])/, '').replace(/_/g, ' ');
+}
+const lc1 = (x) => (x ? x.charAt(0).toLowerCase() + x.slice(1) : '');
+// One status vocabulary for calls and agents, a dot and a word: working (green), needs you (amber, the only loud one: a question, an approval, a permission), waiting on an
+// agent (blue); finished, done and idle are grey. A session that ended its turn is finished for 5 minutes, then idle: it is never "needs you".
+const SDOT = { working: 'working', blocked: 'needs', waiting: 'waiting', stalled: 'waiting' };
+const sWord = (k) => ({ working: L('Au travail', 'Working'), blocked: L('Vous attend', 'Needs you'), waiting: L('Attend ', 'Waiting on '), stalled: L('Attend ', 'Waiting on '), turn: L('Fini', 'Finished'), done: L('Terminé', 'Done') }[k] || L('Inactif', 'Idle'));
+const sHtml = (k, text) => `<i class="sdot ${SDOT[k] || ''}"></i><span${k === 'blocked' ? ' class="needs"' : ''}>${esc(text)}</span>`;
+function callStatus(r) {   // a call's second line: "Working: running tests", "Needs you: editing server.js, 48s", "Waiting on materials", "Idle 10 min"
+  const age = agoStr(r.ageMs != null ? r.ageMs : Date.now() - r.mtime), act = r.tool ? lc1(plainAct(r.tool, r.arg)) : '';
+  if (r.state === 'blocked') return sWord('blocked') + (act ? ': ' + act : '') + ', ' + age;
+  if (r.state === 'working') return sWord('working') + (act ? ': ' + act : '');
+  if (r.state === 'waiting') return sWord('waiting') + (r.active && r.active.length ? r.active.join(', ') : L('ses sous-agents', 'its sub-agents'));
+  if (r.state === 'turn' && Date.now() - r.mtime < LIVE_MS) return sWord('turn') + ', ' + age;
+  return r.state === 'done' ? sWord('done') : sWord('idle') + ' ' + age;
+}
+function agentStatus(id, st) {   // an agent's second line, in the same words
+  if (st.k === 'working') return sWord('working') + (S.act[id] ? ': ' + lc1(S.act[id]) : '');
+  if (st.k === 'blocked') return sWord('blocked') + (st.age ? ', ' + fmtShort(st.age) : '');
+  if (st.k === 'waiting' || st.k === 'stalled') return sWord('waiting') + (st.on || []).join(', ') + (st.k === 'stalled' ? L(', sans nouvelles', ', no news') : '');
+  if (st.k === 'done') return id === 'main' ? sWord('turn') : sWord('done');   // the lead's turn ended: finished
+  return sWord('idle');
 }
 function activityLabel(t) {   // the short "what is on their screen" tag
   const d = t.d || {}, f = base(d.file || t.arg);
@@ -1177,13 +1230,13 @@ function activityLabel(t) {   // the short "what is on their screen" tag
     case 'read': return L('Lit ', 'Reading ') + f;
     case 'edit': return L('Modifie ', 'Editing ') + f;
     case 'write': return L('Crée ', 'Writing ') + f;
-    case 'cmd': { const n = (d.note || '').trim(); if (n) return n.slice(0, 36); return L('Exécute ', 'Running ') + (cmdLabel(d.text).split(/\s+/).filter((w) => w !== '-').slice(0, 2).join(' ').slice(0, 26) || L('un script', 'a script')); }
+    case 'cmd': { const n = (d.note || '').trim(); return n ? n.slice(0, 36) : cmdVerb(d.text); }
     case 'grep': return L('Cherche « ', 'Searching “') + String(d.pattern || '').slice(0, 22) + L(' »', '”');
     case 'glob': return L('Liste ', 'Listing ') + String(d.pattern || '').slice(0, 24);
     case 'todo': return L('Met à jour sa todo', 'Updating todo list');
     case 'web': return d.url ? L('Consulte ', 'Fetching ') + d.url.replace(/^https?:\/\//, '').slice(0, 26) : L('Recherche sur le web', 'Web search');
-    case 'text': { const w = d.what; if (w === 'question') return L('Pose une question', 'Asking a question'); if (w === 'skill') return L('Utilise ', 'Using skill ') + (d.v || ''); if (w === 'mcp') return d.v || t.name; if (w === 'toolsearch') return L('Cherche un outil', 'Looking for a tool'); return t.name; }
-    default: return t.name;
+    case 'text': { const w = d.what; if (w === 'question') return L('Pose une question', 'Asking a question'); if (w === 'skill') return L('Utilise ', 'Using skill ') + (d.v || ''); if (w === 'mcp') return plainAct(t.name, ''); if (w === 'toolsearch') return L('Cherche un outil', 'Looking for a tool'); return plainAct(t.name, ''); }
+    default: return plainAct(t.name, t.arg);
   }
 }
 function pushTerm(id, tool) {
@@ -1411,7 +1464,7 @@ function renderDetail() {
   const msgHtml = msgs.length ? `<h3>${L('Messages', 'Messages')} (${msgs.length})</h3>` + foldHtml + msgs.filter((e) => !e.label).slice(-40).reverse().map((e) => `<details><summary>${MSG_STATE(e.state)} ${esc(nameOf(e.agent))} → ${esc(nameOf(e.to))} <span class="dim">${fmtT(e.ts)}${e.msgId ? ', ' + esc(e.msgId.slice(0, 8)) : ''}${e.state === 'failed' && e.detail ? ', ' + esc(e.detail) : ''}</span></summary><pre>${esc(spoken(e))}</pre></details>`).join('') : '';
   const cutHtml = p.truncated ? `<div class="dim">${L('Historique ancien non chargé (transcription très volumineuse)', 'Older history not loaded (very large transcript)')}</div>` : '';
   $('#dbody').innerHTML = cutHtml + peerHtml + tokHtml + (order ? `<h3>${L('Consigne de', 'Prompt from')} ${esc(nameOf(order.agent))}</h3><pre>${esc(order.text)}</pre>` : '') + msgHtml +
-    `<h3>${L('Outils', 'Tools')} (${tools.length})</h3><div>${Object.entries(counts).map(([n, c]) => `${esc(n)} ×${c}`).join(', ') || '—'}</div>` +
+    `<h3>${L('Outils', 'Tools')} (${tools.length})${S.errs[id] ? `, ${L('erreurs d’outils', 'tool errors')} ${S.errs[id]}` : ''}</h3><div>${Object.entries(counts).map(([n, c]) => `${esc(n)} ×${c}`).join(', ') || '—'}</div>` +
     `<h3>${L('Activité récente', 'Recent activity')}</h3>` + (S.term[id] || []).slice(-30).reverse().map((e) => `<details><summary>${e.end == null ? '⠋' : e.err ? '✗' : '✓'} ${esc(e.tool.name)} <span class="dim">${e.end != null ? fmtDur(e.end - e.ts) : L('en cours', 'running')}</span> — ${esc((e.tool.arg || '').slice(-60))}</summary><pre>${esc((e.tool.d && e.tool.d.kind === 'cmd' ? '$ ' + e.tool.d.text + '\n' : '') + (e.out || ''))}</pre>${e.img && S.cur ? `<img class="dimg" src="${esc(mediaUrl(id, e.id, 0))}" alt="" loading="lazy">` : ''}</details>`).join('') +
     evs.filter((e) => e.agent === id && (e.kind === 'say' || e.kind === 'report')).slice(-5).map((e) => `<h3>${e.kind === 'report' ? L('Rapport final', 'Final report') : L('A dit', 'Said')}</h3><pre>${esc(e.text)}</pre>`).join('');   // the last few things it said
   const open = $('#dopen'); if (open) open.onclick = () => openSession(p.link.proj, p.link.id);
@@ -1967,19 +2020,16 @@ $('#reactBar').onclick = (e) => {
 };
 
 // ---------- board: every recent session at a glance ----------
-const BSTATE = { blocked: ['✋', 'needs you?', 'attend vous ?'], working: ['⚙', 'working', 'au travail'], waiting: ['🔗', 'waiting on sub-agents', 'attend ses sous-agents'], turn: ['✓', 'your turn', 'à vous'], done: ['✓', 'done', 'terminé'], idle: ['💤', 'idle', 'inactif'] };
+const BSTATE = { blocked: ['✋', 'needs you?', 'attend vous ?'], working: ['⚙', 'working', 'au travail'], waiting: ['🔗', 'waiting on sub-agents', 'attend ses sous-agents'], turn: ['✓', 'finished', 'fini'], done: ['✓', 'done', 'terminé'], idle: ['💤', 'idle', 'inactif'] };
 const BORDER = ['blocked', 'working', 'waiting', 'turn', 'done', 'idle'];
 // A board row's group: its project; a one-off run joins "Other / single" only when it is not busy (a working codex exec in MarketSimulator stays in MarketSimulator)
 const boardKey = (r) => ((r.oneshot && !/^(working|waiting|blocked)$/.test(r.state)) || !r.group || r.group.other ? '_other' : r.group.key);
 // In a group, what is going on gets a card; the quiet rows (idle, done) fold into one line until opened
-const splitGroup = (rows, open) => (open ? { cards: rows, quiet: [] } : { cards: rows.filter((r) => r.state !== 'idle' && r.state !== 'done'), quiet: rows.filter((r) => r.state === 'idle' || r.state === 'done') });
+const isQuiet = (r, now = Date.now()) => r.state === 'idle' || r.state === 'done' || (r.state === 'turn' && now - r.mtime >= 5 * 60e3);   // finished more than 5 minutes ago: idle
+const splitGroup = (rows, open) => (open ? { cards: rows, quiet: [] } : { cards: rows.filter((r) => !isQuiet(r)), quiet: rows.filter((r) => isQuiet(r)) });
 const boardOpen = new Set();
 // What a card says a session is doing: a shell command by its first line (no "cd …;" prefix), an MCP tool by its name in words, no raw tool-call JSON.
-function boardTool(tool, arg) {
-  const t = String(tool), shell = /^(Bash|exec_command|shell|terminal)$/.test(t), name = t.replace(/^mcp__.+?__(?=[^_])/, '').replace(/_/g, ' ');
-  const a = t === 'write_stdin' ? '' : cmdLabel(arg);   // "python3 - <<'PY'" is a python3 script; a Codex exec script's JS wrapper is not what it does
-  return t === 'write_stdin' ? L('attend une commande', 'waiting on a command') : ((shell ? '' : name + ' ') + a.slice(0, 60)).trim() || name;
-}
+const boardTool = plainAct;
 const GCOL = (key) => (key && key !== '_other' ? PAL[hash(String(key)) % PAL.length] : '#6b7089');   // one colour per project, the same everywhere
 const agoStr = (ms) => (ms < 90e3 ? Math.max(1, Math.round(ms / 1000)) + 's' : ms < 5400e3 ? Math.round(ms / 60e3) + ' min' : Math.round(ms / 3600e3) + ' h');
 let boardBusy = false;
@@ -2006,6 +2056,19 @@ async function renderBoardView() {
 // ---- Calls rail (call view): the other ongoing calls, live, by project, the ones that need Tom on top; a click joins one.
 // Follow: everything (the call goes to a session that needs Tom, else the most recently active one), one project, or the pinned session.
 const FOLLOW_HOLD = 20000, callsOpen = new Set();
+// What the rail shows: whoever really needs Tom, then the live calls (busy now, active in the last 5 minutes, or the one on screen); the rest is one "+N quiet" line.
+// Stopped, done, old (over an hour) and one-off sessions are not shown at all. A session that finished its turn is live for 5 minutes, then quiet.
+const LIVE_MS = 5 * 60e3, OLD_MS = 60 * 60e3;
+function railSplit(rows, curId, now = Date.now()) {
+  const needs = [], live = [], quiet = [];
+  for (const r of rows) {
+    const here = r.id === curId, busy = /^(working|waiting|blocked)$/.test(r.state), age = now - r.mtime;
+    if (!here && !busy && (r.stopped || r.state === 'done' || r.oneshot || age > OLD_MS)) continue;
+    if (r.state === 'blocked') needs.push(r); else if (here || busy || age < LIVE_MS) live.push(r); else quiet.push(r);
+  }
+  return { needs, live, quiet };
+}
+const railGroup = (r) => { const k = boardKey(r); return k === '_other' ? L('Autres', 'Other') : r.group.hermes ? r.group.name.split(', ')[0] : r.group.name; };   // a Hermes thread is its own project: the header says "Hermes gaming", the row says the thread
 // Which session the call should go to on its own: in "everything", one that needs Tom; in a project, its most urgent session (a pin always wins)
 function followTarget(rows, follow) {
   const pool = follow && follow.startsWith('g:') ? rows.filter((r) => boardKey(r) === follow.slice(2)) : rows.filter((r) => r.state === 'blocked');
@@ -2020,23 +2083,23 @@ async function renderCalls() {
     if (t && !there && !hold) { S.autoPin = { proj: t.proj, id: t.id }; S.switchAt = Date.now(); S.why = (t.state === 'blocked' ? L('a basculé : ', 'switched: ') + (t.group ? t.group.name : t.title) + ' ' + L('vous attend', 'needs you') : L('suit ', 'following ') + (t.group ? t.group.name : t.title)); S.cur = null; followCurrent(true); }
     else if (!t && S.autoPin && !hold) { S.autoPin = null; S.why = ''; S.cur = null; followCurrent(true); }   // nothing needs Tom any more: back to the most active session
   }
-  const groups = new Map(); for (const r of rows) { const k = boardKey(r); if (!groups.has(k)) groups.set(k, { key: k, name: k === '_other' ? L('Autres', 'Other') : r.group.name, rows: [] }); groups.get(k).rows.push(r); }
-  const row = (r) => `<button class="crow${cur.id === r.id ? ' cur' : ''}" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" style="--pc:${GCOL(boardKey(r))}" title="${esc(r.title)}"><span class="cn"><i class="cdot ${r.state}"></i><b>${esc(r.title)}</b><small>👥 ${(r.subTotal || 0) + 1}</small></span><span class="ca">${esc(r.tool ? boardTool(r.tool, r.arg) : L(BSTATE[r.state][2], BSTATE[r.state][1]) + ', ' + agoStr(r.ageMs != null ? r.ageMs : Date.now() - r.mtime))}</span></button>`;
-  const urgent = rows.filter((r) => r.state === 'blocked'), opts = [['all', L('Suivre : tout', 'Follow: everything')], ...[...groups.values()].filter((g) => g.key !== '_other' && (g.rows.some((r) => r.state !== 'idle' && r.state !== 'done') || 'g:' + g.key === follow)).map((g) => ['g:' + g.key, L('Suivre : ', 'Follow: ') + g.name])];   // projects with something going on
+  const groups = new Map(); for (const r of rows) { const k = boardKey(r); if (!groups.has(k)) groups.set(k, { key: k, name: railGroup(r), rows: [] }); groups.get(k).rows.push(r); }
+  const row = (r, proj) => { const n = (r.subTotal || 0) + 1, here = cur.id === r.id;   // two lines: the title in full; one status word and what it is doing
+    return `<button class="crow${here ? ' cur' : ''}" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" title="${esc(r.title)}"><span class="cn"><b>${proj ? `<span style="color:${GCOL(boardKey(r))}">${esc(railGroup(r))}</span> ` : ''}${esc(r.title)}</b>${here ? `<em>${L('vous êtes ici', 'you’re here')}</em>` : ''}</span><span class="ca">${sHtml(r.state, callStatus(r))}${n > 1 ? `<small>${n} ${L('agents', 'agents')}</small>` : ''}</span></button>`; };
+  const opts = [['all', L('Suivre : tout', 'Follow: everything')], ...[...groups.values()].filter((g) => g.key !== '_other' && (g.rows.some((r) => r.state !== 'idle' && r.state !== 'done') || 'g:' + g.key === follow)).map((g) => ['g:' + g.key, L('Suivre : ', 'Follow: ') + g.name])];   // projects with something going on
   const sel = S.pin ? 'pin' : follow, options = (S.pin ? [['pin', L('Épinglé', 'Pinned')]] : []).concat(opts).map(([v, l]) => `<option value="${esc(v)}"${v === sel ? ' selected' : ''}>${esc(l)}</option>`).join('');
   let html = `<div class="ch"><h3>${L('Appels', 'Calls')}</h3><select id="follow" aria-label="${esc(L('Quel appel suivre', 'Which call to follow'))}">${options}</select><button class="cmin" title="${esc(L('Replier', 'Fold'))}">${box.classList.contains('min') ? '▸' : '▾'}</button></div>${!S.pin && (S.why || follow === 'all') ? `<div class="cwhy">${esc(S.why || L('l’appel le plus actif, ou celui qui vous attend', 'the most active call, or one that needs you'))}</div>` : ''}`;
-  if (urgent.length) html += urgent.map(row).join('');
-  const mine = cur.id && rows.find((r) => r.id === cur.id), first = mine ? boardKey(mine) : '';
-  for (const g of [...groups.values()].sort((a, b) => (b.key === first) - (a.key === first))) {   // the call on screen's project first
-    const sp = splitGroup(g.rows.filter((r) => r.state !== 'blocked'), callsOpen.has(g.key)); if (!sp.cards.length && !sp.quiet.length) continue;
-    html += `<div class="cg" style="--pc:${GCOL(g.key)}">${esc(g.name)}</div>` + sp.cards.map(row).join('') + (sp.quiet.length ? `<button class="cq" data-g="${esc(g.key)}">＋ ${sp.quiet.length} ${L('inactives', 'quiet')}</button>` : '');
-  }
+  const { needs, live, quiet } = railSplit(rows, cur.id), mine = cur.id && rows.find((r) => r.id === cur.id), first = mine ? boardKey(mine) : '';
+  if (needs.length) html += `<div class="cg needs">${L('Vous attend', 'Needs you')}</div>` + needs.map((r) => row(r, true)).join('');   // across every project, on top
+  const lg = new Map(); for (const r of live) { const k = boardKey(r); if (!lg.has(k)) lg.set(k, []); lg.get(k).push(r); }
+  let last = ''; for (const [k, rs] of [...lg.entries()].sort((a, b) => (b[0] === first) - (a[0] === first))) { const name = railGroup(rs[0]); if (name !== last) html += `<div class="cg" style="--pc:${GCOL(k)}">${esc(name)}</div>`; last = name; html += rs.map((r) => row(r)).join(''); }   // the call on screen's project first; a project with nothing live has no header
+  if (quiet.length) html += `<button class="cq">${callsOpen.has('_quiet') ? '−' : '＋'} ${quiet.length} ${L('inactives', 'quiet')}</button>` + (callsOpen.has('_quiet') ? quiet.map((r) => row(r, true)).join('') : '');
   if (box._h !== html) { box._h = html; box.innerHTML = html; }
 }
-setInterval(renderCalls, 3000);
+setInterval(renderCalls, 3000); if (prefs.callsMin) $('#calls').classList.add('min');
 $('#calls').onclick = (e) => {
-  if (e.target.closest('.cmin')) { $('#calls').classList.toggle('min'); $('#calls')._h = ''; renderCalls(); return; }
-  const q = e.target.closest('.cq'); if (q) { callsOpen.add(q.dataset.g); $('#calls')._h = ''; renderCalls(); return; }
+  if (e.target.closest('.cmin')) { prefs.callsMin = $('#calls').classList.toggle('min'); savePrefs(); $('#calls')._h = ''; renderCalls(); return; }
+  if (e.target.closest('.cq')) { if (!callsOpen.delete('_quiet')) callsOpen.add('_quiet'); $('#calls')._h = ''; renderCalls(); return; }
   const c = e.target.closest('.crow'); if (c) { S.why = ''; openSession(c.dataset.p, c.dataset.i).then(renderCalls); }
 };
 $('#calls').onchange = (e) => {
@@ -2045,7 +2108,7 @@ $('#calls').onchange = (e) => {
 };
 $('#boardv').onkeydown = (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('bcard')) { e.preventDefault(); e.target.click(); } };
 async function openSession(proj, id) {
-  prefs.proj = proj; S.pin = id; prefs.pin = id; prefs.pinProj = proj; savePrefs(); setView('call');   // a session opened from the board stays pinned, across reloads, until unpinned
+  Q.delete('proj'); prefs.proj = proj; S.pin = id; prefs.pin = id; prefs.pinProj = proj; savePrefs(); setView('call');   // a session opened from the board stays pinned, across reloads, until unpinned (a ?proj= in the address no longer overrides it)
   if (S.live || S.demo) { if (S.demo) await setMode('live'); S.cur = null; fillProjects(); await followCurrent(); } else await setMode('live');
 }
 $('#boardv').onclick = (e) => { const q = e.target.closest('.bquiet'); if (q) { boardOpen.add(q.dataset.g); renderBoardView(); return; } const c = e.target.closest('.bcard'); if (c) openSession(c.dataset.p, c.dataset.i); };

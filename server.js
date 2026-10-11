@@ -192,7 +192,7 @@ function boardRows0() {
   }
   rows.sort((a, b) => b.st.mtimeMs - a.st.mtimeMs);
   const others = []; for (const src of SOURCES) { try { others.push(...src.board(now)); peers.problem(SRC_NAME.get(src) + ' board', null); } catch (e) { peers.problem(SRC_NAME.get(src) + ' board', e); } }   // an adapter that fails says so on the board
-  peers.rememberLive();
+  peers.rememberLive(); const live = peers.liveClaude();
   return others.concat(rows.slice(0, 80).map(({ proj, id, st }) => {
     const file = path.join(ROOT, proj, id + '.jsonl'); let p; try { p = parseTail(file, st); } catch { p = { pending: [] }; }
     const age = now - st.mtimeMs, lp = (p.pending || [])[(p.pending || []).length - 1]; let state = 'idle', tool = '', ageMs = age;
@@ -202,10 +202,11 @@ function boardRows0() {
       else if (p.lastType === 'assistant' && !p.lastTool) state = 'turn';
       else { state = age < 10 * 60e3 ? 'working' : 'idle'; if (state === 'working' && p.lastCall) tool = p.lastCall.name; }   // between two calls: the last thing it ran
     }
+    const stopped = !!(live && live.size && !live.has(id)); if (stopped && /^(working|waiting|blocked)$/.test(state)) { state = 'idle'; tool = ''; }   // stopped: no Claude process runs it any more, whatever its last record says
     let subActive = 0, subTotal = 0; const sd = path.join(ROOT, proj, id, 'subagents'), active = [];
     try { for (const x of fs.readdirSync(sd)) if (x.endsWith('.jsonl')) { subTotal++; if (now - fs.statSync(path.join(sd, x)).mtimeMs < 90e3) { subActive++; if (active.length < 4) { const d = readMeta(path.join(sd, x.replace(/\.jsonl$/, '.meta.json'))).description; if (d) active.push(peers.label(d, 32)); } } } } catch {}
     const group = project.groupOf(p.cwd); if (p.msgIds && p.msgIds.length) peers.indexMessages(p.msgIds, { proj, id, cwd: p.cwd, group });   // so a message id in another runtime's log finds this session even after its pid is gone
-    return { proj, id, title: p.title || id, mtime: st.mtimeMs, state, tool, arg: lp ? lp.arg || '' : tool && p.lastCall ? p.lastCall.arg || '' : '', ageMs, subActive, subTotal, active, source: 'claude', ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(p.talks)), group };
+    return { proj, id, title: p.title || id, mtime: st.mtimeMs, state, tool, arg: lp ? lp.arg || '' : tool && p.lastCall ? p.lastCall.arg || '' : '', ageMs, subActive, subTotal, active, stopped, source: 'claude', ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(p.talks)), group };
   })).map((r) => (r.oneshot && r.state === 'turn' ? { ...r, state: 'done' } : r)).sort((a, b) => boardRank(a) - boardRank(b) || b.mtime - a.mtime).slice(0, BOARD_MAX);   // a one-shot that answered is done, not "your turn": nobody is waiting for the human there
 }
 // The board with its placement check: every row derives its project from its own log (a git root from the cwd, a Hermes thread); a session the

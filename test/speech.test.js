@@ -104,7 +104,7 @@ test('live speech: with no cap (a replay) a long line still ends at a sentence u
 });
 
 test('board: a busy one-off run stays in its project; quiet rows fold into one line', () => {
-  const { boardKey, splitGroup } = new Function(grab(/const boardKey = [^\n]*/) + '\n' + grab(/const splitGroup = [^\n]*/) + '\nreturn { boardKey, splitGroup };')();
+  const { boardKey, splitGroup } = new Function(grab(/const boardKey = [^\n]*/) + '\n' + grab(/const isQuiet = [^\n]*/) + '\n' + grab(/const splitGroup = [^\n]*/) + '\nreturn { boardKey, splitGroup };')();
   const ms = { key: '/w/MarketSimulator', name: 'MarketSimulator' };
   assert.equal(boardKey({ oneshot: true, state: 'working', group: ms }), '/w/MarketSimulator');   // a working codex exec in MarketSimulator
   assert.equal(boardKey({ oneshot: true, state: 'idle', group: ms }), '_other');                  // a finished one-off: "Other / single"
@@ -134,4 +134,47 @@ test('plain keeps "(#2)" and drops markdown headers; cmdLabel says what a comman
   assert.equal(cmdLabel('text("TR-89-01 source", await tools.exec_command({ cmd: "ls" }))'), '');
   assert.equal(cmdLabel('git status --short'), 'git status --short');
   assert.equal(cmdLabel('agent-peers send "uds:/run/user/1000/cc-socks/hermes-23420a452cbc448e92f373954024120c.sock" --file brief.md'), 'agent-peers send --file brief.md');   // an inbox address is no label
+});
+
+// the calls rail and the agents list (Tom, round 5): plain words, one vocabulary, only what is live
+const rail = new Function('L', 'esc', 'S', grab(/const base = \(f\) =>[^\n]*/) + '\n' + grab(/function cmdLabel\(text\) \{[\s\S]*?\n\}/) + '\n' + grab(/function cmdVerb\(cmd\) \{[\s\S]*?\nfunction activityLabel/).replace(/\nfunction activityLabel$/, '') + '\n' + grab(/const agoStr = [^\n]*/) + '\n' + grab(/const boardKey = [^\n]*/) + '\n' + grab(/const LIVE_MS = [\s\S]*?\nconst railGroup = [^\n]*/) + '\nreturn { cmdVerb, plainAct, callStatus, agentStatus, railSplit, railGroup };')((fr, en) => en, (t) => t, { act: { a1: 'Reading spec.md' } });
+test('rail: what a session does is said in words, never as the command line', () => {
+  assert.equal(rail.plainAct('Bash', "sed -n '385,430p' /home/user/work/agent-standup/public/index.html"), 'Reading index.html');
+  assert.equal(rail.plainAct('Bash', 'cd /home/user/work && npm test'), 'Running tests');
+  assert.equal(rail.plainAct('exec_command', 'python3 -c "'), 'Running python3');
+  assert.equal(rail.plainAct('exec_command', "D=/home/user/runs/x; cd $D/harness && python3 - <<'EOF'"), 'Running python3 script');
+  assert.equal(rail.plainAct('Bash', 'L=/home/user/work/g\nfor f in a b; do echo $f; done'), 'Running a script');
+  assert.equal(rail.plainAct('Bash', 'ps -eo pid,ppid,etime,args | grep -E dotnet'), 'Searching files');
+  assert.equal(rail.plainAct('mcp__plugin_playwright_playwright__browser_run_code_unsafe', ''), 'Using the browser');
+  assert.equal(rail.plainAct('Edit', '/home/user/work/server.js'), 'Editing server.js');
+  assert.equal(rail.plainAct('Bash', 'git status --short'), 'Running git status');
+  assert.equal(rail.plainAct('Bash', '"$D/run.sh" --fast'), 'Running a script'); assert.equal(rail.plainAct('Bash', '(cd x; make)'), 'Running a script');
+});
+test('rail: one vocabulary for calls and agents, "N agents" only past one', () => {
+  const now = Date.now();
+  assert.equal(rail.callStatus({ state: 'working', tool: 'Bash', arg: 'npm test', mtime: now, ageMs: 4000 }), 'Working: running tests');
+  assert.equal(rail.callStatus({ state: 'blocked', tool: 'Edit', arg: 'src/a.ts', mtime: now, ageMs: 48000 }), 'Needs you: editing a.ts, 48s');
+  assert.equal(rail.callStatus({ state: 'waiting', active: ['materials', 'stair artist'], mtime: now }), 'Waiting on materials, stair artist');
+  assert.equal(rail.callStatus({ state: 'idle', mtime: now - 600e3 }), 'Idle 10 min');
+  assert.equal(rail.callStatus({ state: 'turn', mtime: now - 120e3 }), 'Finished, 2 min');
+  assert.equal(rail.agentStatus('a1', { k: 'working' }), 'Working: reading spec.md');
+  assert.equal(rail.agentStatus('a2', { k: 'stalled', on: ['b1'] }), 'Waiting on b1, no news');
+  assert.equal(rail.agentStatus('main', { k: 'done' }), 'Finished'); assert.equal(rail.agentStatus('a3', { k: 'done' }), 'Done');
+});
+test('a session that ended its turn is finished, then idle after 5 minutes, never "needs you"; "needs you" is a real ask', () => {
+  const now = Date.now(), { isQuiet, BSTATE } = new Function('L', grab(/const isQuiet = [^\n]*/) + '\n' + grab(/const BSTATE = [^\n]*/) + '\nreturn { isQuiet, BSTATE };')((fr, en) => en);
+  assert.equal(rail.callStatus({ state: 'turn', mtime: now - 600e3 }), 'Idle 10 min');
+  assert.deepEqual([isQuiet({ state: 'turn', mtime: now - 60e3 }, now), isQuiet({ state: 'turn', mtime: now - 600e3 }, now)], [false, true]);
+  assert.ok(!/your turn/i.test(JSON.stringify(BSTATE)) && !/your turn/i.test(html.replace(/\/\/[^\n]*/g, '')), 'the words "your turn" are gone');
+  const sp = rail.railSplit([{ id: 'x', state: 'turn', mtime: now - 60e3, group: { key: 'k', name: 'p' } }], '', now); assert.deepEqual([sp.needs.length, sp.live.length], [0, 1]);   // finished is not needs you
+  assert.equal(rail.callStatus({ state: 'blocked', tool: 'AskUserQuestion', mtime: now, ageMs: 5000 }), 'Needs you: asking a question, 5s');
+  assert.equal(rail.plainAct('mcp__codex_tui__read_thread', '01a12b06-a451-7000-8000-000000000000'), 'read thread', 'a tool in words, no id');
+});
+test('rail: only what is live (busy, active in the last 5 min, needs Tom, on screen); stopped, done, old and one-offs are not shown; the rest is quiet', () => {
+  const now = Date.now(), g = { key: 'repo:/w/game', name: 'gladiator-game' }, r = (id, state, ago, x = {}) => ({ id, state, mtime: now - ago, group: g, ...x });
+  const rows = [r('ask', 'blocked', 30e3), r('busy', 'working', 20e3), r('fresh', 'turn', 120e3), r('sat', 'turn', 600e3), r('idle', 'idle', 1800e3), r('here', 'idle', 7200e3),
+    r('stopped', 'idle', 60e3, { stopped: true }), r('done', 'done', 30e3), r('cron', 'turn', 60e3, { oneshot: true }), r('old', 'idle', 3 * 3600e3)];
+  const sp = rail.railSplit(rows, 'here', now), ids = (l) => l.map((x) => x.id);
+  assert.deepEqual([ids(sp.needs), ids(sp.live), ids(sp.quiet)], [['ask'], ['busy', 'fresh', 'here'], ['sat', 'idle']]);
+  assert.equal(rail.railGroup({ group: { key: 'hermes:gaming:t1', name: 'Hermes gaming, Plan the roguelike', hermes: true } }), 'Hermes gaming');   // the thread is said once, on its row
 });

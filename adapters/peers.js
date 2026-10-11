@@ -83,6 +83,17 @@ function rememberLive() {
   let names; try { names = fs.readdirSync(path.join(claudeDir(), 'sessions')); } catch { return; }
   for (const n of names) { const m = /^(\d+)\.json$/.exec(n); if (m && !pidSeen.has(m[1])) { const v = resolveClaude(m[1]); if (v) { pidSeen.set(m[1], v); capped(pidSeen, 500); } } }
 }
+// The Claude sessions running now: a registry file whose process is alive (a crash can leave its file behind). null where there is no registry.
+function liveClaude() {
+  let names; try { names = fs.readdirSync(path.join(claudeDir(), 'sessions')); } catch { return null; }
+  const ids = new Set();
+  for (const n of names) {
+    const m = /^(\d+)\.json$/.exec(n); if (!m) continue;
+    try { process.kill(+m[1], 0); } catch (e) { if (e.code !== 'EPERM') continue; }
+    try { const j = JSON.parse(fs.readFileSync(path.join(claudeDir(), 'sessions', n), 'utf8')); if (j && typeof j.sessionId === 'string') ids.add(j.sessionId); } catch {}
+  }
+  return ids;
+}
 // The agent entry for a peer in a session's timeline: its tile, its name, and a link to its own session when the address resolves.
 const ROLE = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes' };
 // A send can name its target ("claude:gladiator-game-c3") instead of addressing it: the arrivals in the same session say which address that name writes from.
@@ -132,4 +143,4 @@ function tailPeers(text) {   // every message in the tail, with its time when th
 // asked hours ago is not "talking to"; the transcript and the detail panel keep the history.
 const TALK_MS = 10 * 60e3;
 function talksNow(t, now = Date.now()) { const h = ((t && t.hits) || []).filter((x) => !x.ts || now - x.ts <= TALK_MS); return { n: h.length, names: [...new Set(h.map((x) => x.name))].slice(0, 4) }; }
-module.exports = { capped, parseAddress, peerId, incoming, sendState, resolve, register, indexMessages, rememberLive, ghost, cleanName, problem, problems, peerAgent, nameBook, tailPeers, talksNow, TALK_MS, clip, label, maxFileBytes, readBudget };
+module.exports = { capped, parseAddress, peerId, incoming, sendState, resolve, register, indexMessages, rememberLive, liveClaude, ghost, cleanName, problem, problems, peerAgent, nameBook, tailPeers, talksNow, TALK_MS, clip, label, maxFileBytes, readBudget };

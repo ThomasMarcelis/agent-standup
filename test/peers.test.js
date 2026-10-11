@@ -84,3 +84,10 @@ test('round 5: a send to a name or agent id nobody answers to is an edge to a pl
     assert.deepEqual(link, { proj: '-home-user-proj2', id: 's2' });
   } finally { srv.close(); require('../server.js').shutdown(); }
 });
+
+test('round 5: a Claude session is running only while a live process owns its registry file (a crash can leave the file behind)', () => {
+  const peers = require('../adapters/peers.js'), dir = path.join(process.env.CLAUDE_CONFIG_DIR, 'sessions'); fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, process.pid + '.json'), JSON.stringify({ pid: process.pid, sessionId: 'live-1', cwd: '/w' }));
+  fs.writeFileSync(path.join(dir, '2147480000.json'), JSON.stringify({ pid: 2147480000, sessionId: 'gone-1', cwd: '/w' }));   // no such process
+  try { assert.deepEqual([...peers.liveClaude()], ['live-1']); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
