@@ -83,8 +83,8 @@ test('voice director: stale lines are never sent, needs-you is never dropped, a 
   const ok = tri.applyTriage(items, { drop: [2, 3], say: [{ ids: [1], line: 'All 412 tests pass after the **auth race** fix.' }, { ids: [99], line: 'invented' }, { ids: [3], line: 'third line' }] });
   assert.deepEqual(ok.map((o) => [o.line, o.items.map((it) => it.id)]), [['All 412 tests pass after the auth race fix.', [1]], ['third line', [3]], ['Waiting for approval to push to production.', [2]]]);   // unknown ids ignored, max 2 from the model, the dropped needs-you put back
   assert.equal(tri.applyTriage(items, 'not json'), null); assert.equal(tri.applyTriage(items, { say: 'x' }), null); assert.equal(tri.applyTriage(items, null), null);
-  assert.deepEqual(tri.localPick(items).map((o) => o.items[0].id), [2]);   // fallback: what needs Tom first
-  assert.deepEqual(tri.localPick(items.filter((it) => it.kind !== 'needs_you')).map((o) => o.items[0].id), [1]);   // else the report before the message
+  assert.deepEqual(tri.localPick(items).map((o) => o.items[0].id), [2, 1]);   // fallback: what needs Tom first, then the most important of the rest: two lines
+  assert.deepEqual(tri.localPick(items.filter((it) => it.kind !== 'needs_you')).map((o) => o.items[0].id), [1, 3]);   // the report before the message
 });
 
 test('guests: an agent of another session is on the line only while the exchange is current (10 min)', () => {
@@ -152,12 +152,12 @@ test('rail: what a session does is said in words, never as the command line', ()
 });
 test('rail: one vocabulary for calls and agents, "N agents" only past one', () => {
   const now = Date.now();
-  assert.equal(rail.callStatus({ state: 'working', tool: 'Bash', arg: 'npm test', mtime: now, ageMs: 4000 }), 'Working: running tests');
+  assert.equal(rail.callStatus({ state: 'working', tool: 'Bash', arg: 'npm test', mtime: now, ageMs: 4000 }), 'Running tests');   // the green dot says working
   assert.equal(rail.callStatus({ state: 'blocked', tool: 'Edit', arg: 'src/a.ts', mtime: now, ageMs: 48000 }), 'Needs you: editing a.ts, 48s');
   assert.equal(rail.callStatus({ state: 'waiting', active: ['materials', 'stair artist'], mtime: now }), 'Waiting on materials, stair artist');
   assert.equal(rail.callStatus({ state: 'idle', mtime: now - 600e3 }), 'Idle 10 min');
   assert.equal(rail.callStatus({ state: 'turn', mtime: now - 120e3 }), 'Finished, 2 min');
-  assert.equal(rail.agentStatus('a1', { k: 'working' }), 'Working: reading spec.md');
+  assert.equal(rail.agentStatus('a1', { k: 'working' }), 'Reading spec.md');
   assert.equal(rail.agentStatus('a2', { k: 'stalled', on: ['b1'] }), 'Waiting on b1, no news');
   assert.equal(rail.agentStatus('main', { k: 'done' }), 'Finished'); assert.equal(rail.agentStatus('a3', { k: 'done' }), 'Done');
 });
@@ -177,4 +177,41 @@ test('rail: only what is live (busy, active in the last 5 min, needs Tom, on scr
   const sp = rail.railSplit(rows, 'here', now), ids = (l) => l.map((x) => x.id);
   assert.deepEqual([ids(sp.needs), ids(sp.live), ids(sp.quiet)], [['ask'], ['busy', 'fresh', 'here'], ['sat', 'idle']]);
   assert.equal(rail.railGroup({ group: { key: 'hermes:gaming:t1', name: 'Hermes gaming, Plan the roguelike', hermes: true } }), 'Hermes gaming');   // the thread is said once, on its row
+});
+
+// a message between agents is heard with a very short route (Tom, round 5): project and role, at most 4 words; other lines stay content only
+test('route: who to whom in project and role, never more than 4 words, the project left out inside the project on screen', () => {
+  const S = { group: { key: 'repo:/w/gladiator-game', name: 'gladiator-game' }, agents: {
+    main: { id: 'main', role: 'Lead' }, sub: { id: 'sub', role: 'general-purpose', name: 'Build parrying decision page' },
+    herm: { id: 'herm', type: 'peer', name: 'hermes:gaming:218dccb6', role: 'Hermes gaming, Plan gladiator roguelike autobattler', group: { key: 'hermes:gaming:t', name: 'Hermes gaming, Plan gladiator roguelike autobattler', hermes: true } },
+    cdx: { id: 'cdx', type: 'peer', name: 'codex:respond-to-greeting-8d76', role: 'Codex, gladiator-game', group: { key: 'repo:/w/gladiator-game', name: 'gladiator-game' } },
+    ms: { id: 'ms', type: 'peer', name: 'codex:marketsimulator-44d9', role: 'Codex, MarketSimulator', group: { key: 'repo:/w/MarketSimulator', name: 'MarketSimulator' } },
+    astra: { id: 'astra', type: 'peer', name: 'Astra', role: 'Codex, agent-standup', group: { key: 'repo:/w/agent-standup', name: 'agent-standup' } } } };
+  const { routeOf, ROUTE_MAX } = new Function('S', 'L', grab(/const projWord = [^\n]*/) + '\n' + grab(/function party\(p\) \{[\s\S]*?\n\}/) + '\n' + grab(/function routeOf\(ev\) \{[\s\S]*?\n\}/) + '\nconst ROUTE_MAX = 4;\nreturn { routeOf, ROUTE_MAX };')(S, (fr, en) => en);
+  const cases = [[{ agent: 'main', to: 'herm' }, 'To Hermes'], [{ agent: 'main', to: 'cdx' }, 'To Codex'], [{ agent: 'ms', to: 'main' }, 'Gladiator lead, from Codex'], [{ agent: 'sub', to: 'main' }, 'To the lead'],
+    [{ agent: 'main', to: 'astra' }, 'To Astra'], [{ agent: 'herm', to: 'sub' }, 'Gladiator sub-agent, from Hermes'], [{ agent: 'main', to: 'ms' }, 'To MarketSimulator Codex']];
+  for (const [ev, want] of cases) { const r = routeOf(ev); assert.equal(r, want); assert.ok(r.split(/\s+/).length <= ROUTE_MAX, r); assert.ok(!/218dccb6|respond-to-greeting|Build parrying|roguelike|#\d/.test(r), 'no title, session name or id: ' + r); }
+});
+test('route: the director starts a message line with its route, whatever the model wrote; a mixed line or a report has none', () => {
+  const ev = { ts: Date.now(), kind: 'msg', agent: 'a', text: 'The armour numbers are in.' }, its = [{ id: 1, kind: 'message', ev, text: ev.text, route: 'To gladiator Hermes' }, { id: 2, kind: 'report', ev: { ts: Date.now() }, text: 'Done.' }];
+  const say = (line, ids) => tri.applyTriage(its, { say: [{ line, ids }], drop: [] })[0].line;
+  assert.equal(say('The armour numbers are in.', [1]), 'To gladiator Hermes: The armour numbers are in.');
+  assert.equal(say('From the game director of the gladiator project to Hermes: the armour numbers are in.', [1]), 'To gladiator Hermes: the armour numbers are in.');
+  assert.equal(say('Results: the armour numbers are in, and the report is done.', [1, 2]), 'Results: the armour numbers are in, and the report is done.');
+  assert.equal(tri.localPick([its[0]])[0].line, 'To gladiator Hermes: The armour numbers are in.');
+});
+
+test('no chatter level (Tom, round 5): the setting is gone, a saved Quiet is migrated once, the director narrates everything it can carry', () => {
+  assert.ok(!/chatSel|Chatter between agents/.test(html), 'no chatter setting in the page');
+  const prefs = { chat: 'quiet' }; new Function('prefs', grab(/if \(!prefs\.chatOnce\) [^\n]*/))(prefs); assert.deepEqual(prefs, { chatOnce: true });
+  const now = Date.now(), it = (id, kind, ago) => ({ id, kind, ev: { ts: now - ago }, text: 'Line ' + id + '.' });
+  assert.equal(tri.localPick([it(1, 'message', 3000), it(2, 'report', 2000), it(3, 'order', 1000)]).length, 2, 'without the model, two lines, not one');
+});
+
+test('denoise: a peer is named by what it is, never by an inbox id (a Hermes thread by its title, a Codex thread by its words)', () => {
+  const peerWords = new Function(grab(/const peerWords = [\s\S]*?\n  return [^\n]*/) + '\nreturn peerWords;')();
+  assert.equal(peerWords('hermes:gaming:218dccb6', { key: 'hermes:gaming:t', name: 'Hermes gaming, Plan gladiator roguelike autobattler', hermes: true }), 'Plan gladiator roguelike autobattler');
+  assert.equal(peerWords('hermes:gaming:8f1d7b26'), 'Hermes gaming');
+  assert.equal(peerWords('codex:respond-to-greeting-8d76'), 'respond to greeting');
+  assert.equal(peerWords('standup-round5-opus'), 'standup-round5-opus');
 });

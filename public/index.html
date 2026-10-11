@@ -32,6 +32,7 @@
   .tile.quiet { opacity:.72 }
   .tag .tk { color:#aab2c5; font-size:10px } .tag .tk:empty { display:none }
   .keys { padding:6px 10px 4px; color:var(--dim); font-size:10.5px; line-height:1.5 }
+  #pill.live, #pill.wait { display:none }   /* live is the normal state: the pill speaks only when paused, offline or in a replay */
   #pill { font-size:11px; font-weight:600; letter-spacing:.04em; padding:3px 9px; border-radius:99px; background:var(--panel2); color:var(--dim); white-space:nowrap }
   #pill.live { color:#fff; background:#c0392b } #pill.live::before { content:'● '; animation:pulse 1.4s infinite }
   #pill.wait { color:var(--ok) } #pill.wait::before { content:'● '; opacity:.7 }
@@ -60,7 +61,7 @@
   @media (min-width:900px) { body:not(.tree):not(.board):not(.compact) #side { display:flex } }
   #roster { display:none; flex:1; min-height:0; flex-direction:column; gap:5px; padding:10px 8px; overflow-x:hidden; overflow-y:auto }
   /* Calls: the other ongoing calls, by project, the ones that need Tom first; click one to join it */
-  #calls { flex:none; max-height:48%; overflow:auto; display:flex; flex-direction:column; gap:4px; padding:10px 8px 8px; border-bottom:1px solid var(--line) }
+  #calls { flex:0 1 auto; max-height:58%; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:4px; padding:10px 8px 8px; border-bottom:1px solid var(--line) }
   #calls .ch { display:flex; align-items:center; gap:6px } #calls .ch h3 { margin:0 2px 0 6px } #calls select { flex:1; min-width:0; font:inherit; font-size:11.5px; background:var(--panel2); color:inherit; border:1px solid var(--line); border-radius:6px; padding:2px 4px }
   #calls .cmin { background:none; border:0; color:var(--dim); cursor:pointer; font:inherit; padding:0 4px } #calls.min .crow, #calls.min .cq, #calls.min .cg, #calls.min .cwhy { display:none }
   #calls .cwhy { font-size:11px; color:var(--dim); padding:0 6px } #calls .cg { font-size:10.5px; font-weight:700; color:var(--pc); margin:4px 6px 0 }
@@ -73,6 +74,7 @@
   .sdot { width:8px; height:8px; border-radius:50%; flex:none; background:#6b7089 } .sdot.working { background:var(--ok) } .sdot.needs { background:#f0a020; box-shadow:0 0 6px #f0a020 } .sdot.waiting { background:#6ebeff }   /* working, needs you, waiting on an agent; grey: finished, done, idle */
   #calls .cg.needs { color:#f0a020 }
   #side, #side * { scrollbar-width:thin; scrollbar-color:#3a4060 transparent } #side ::-webkit-scrollbar { width:8px } #side ::-webkit-scrollbar-thumb { background:#3a4060; border-radius:4px } #side ::-webkit-scrollbar-track { background:transparent }
+  #calls > .cq { position:sticky; bottom:-8px; align-self:stretch; text-align:left; background:var(--panel); padding:5px 8px }   /* always in reach at the foot of the list */
   .cq { align-self:flex-start; margin-left:6px; background:none; border:0; color:var(--dim); cursor:pointer; font:inherit; font-size:11.5px; padding:1px 2px }
   @media (min-width:900px) { body.rost:not(.tree):not(.board) #roster { display:flex } }
   #calls h3, #roster h3 { margin:2px 6px 4px; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--dim) }
@@ -145,6 +147,7 @@
   body.replay #gantt { display:block }
   aside { display:none; width:320px; flex:none; border-left:1px solid var(--line); background:var(--panel); flex-direction:column; min-height:0 }
   body.log aside { display:flex } body.board aside { display:none }   /* the board is about all sessions: no transcript of the one followed behind it */
+  #log .row.tools { display:none } body.logtools #log .row.tools { display:block } aside { position:relative } aside .lt { position:absolute; top:7px; right:10px; margin:0 }   /* tool calls folded: the words between agents stay */
   aside h2 { margin:0; padding:11px 14px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); border-bottom:1px solid var(--line) }
   #log { flex:1; overflow:auto }
   .row { padding:7px 14px; border-bottom:1px solid var(--line); font-size:12.5px }
@@ -171,7 +174,8 @@
   .tag { position:absolute; left:6px; bottom:6px; right:6px; display:flex; gap:5px; pointer-events:none }
   .tag b, .tag span { background:rgba(14,15,24,.78); backdrop-filter:blur(6px); padding:2px 9px; border-radius:99px; font-size:11.5px; white-space:nowrap }
   .tag span { color:#e3e6f0; font-size:10.5px; overflow:hidden; text-overflow:ellipsis; min-width:0 }
-  .tile:not(.focus) .tag span:not(.tk):not(.cx) { display:none } .tile:not(.focus) .tag b { max-width:42%; overflow:hidden; text-overflow:ellipsis }   /* a small tile: the role is on the shirt, and the name leaves the shirt in view */
+  .tile .tag span:not(.tk):not(.cx) { display:none } .tile:not(.focus) .tag b { display:none }   /* the role is on the shirt; a small tile is named by its shirt and the agents list, never by a cut-off pill */
+  @media (min-width:900px) { body.rost:not(.tree):not(.board):not(.compact) .tile .status:not(.blocked):not(.stalled) { display:none } body.rost:not(.compact) .tile:not(.focus) .tag { top:6px; bottom:auto } }   /* the agents list says what each one does: a tile only raises a hand */
   .status { position:absolute; top:6px; right:6px; font-size:11.5px; font-weight:600; padding:2px 9px; border-radius:99px; background:rgba(14,15,24,.8); backdrop-filter:blur(6px) }
   .status.working { color:var(--gold) } .status.done { color:var(--ok) }
   .status.waiting { color:#8fd3ff } .status.blocked { color:#fff; background:#c0392b; font-weight:700 } .status.stalled { color:#1b1d27; background:#ffb347; font-weight:700 }
@@ -271,7 +275,7 @@
 <body>
 <header>
   <div class="brand"><div class="logo">🎥</div><div><b>Agent Standup</b><small id="subtitle"></small></div></div>
-  <span id="pill">REPLAY</span><button id="tok" class="tok" style="display:none"></button><button id="ctxp" class="ctxp" style="display:none"></button><span id="board" aria-live="polite"></span><span id="meet" class="meet"></span>
+  <span id="pill">REPLAY</span><button id="tok" class="tok" style="display:none"></button><button id="ctxp" class="ctxp" style="display:none"></button><span id="board" aria-live="polite"></span>
   <div class="sp"></div>
   <div class="seg" id="viewSeg"><button data-v="call" class="on" data-fr="Appel" data-en="Call">Appel</button><button data-v="tree" data-fr="Arbre" data-en="Tree">Arbre</button><button data-v="board" data-fr="Sessions" data-en="Sessions">Sessions</button></div>
   <button class="ic" id="bPlay" title="Pause / Lecture (espace)">⏸</button>
@@ -298,7 +302,6 @@
   <button class="mi" data-t="roster"><span data-fr="Liste des agents (à gauche)" data-en="Agents list (left)">Liste des agents (à gauche)</span><i class="sw"></i></button>
   <button class="mi" data-t="reactions"><span data-fr="Barre de réactions (👍 👏 ☕)" data-en="Reactions bar (👍 👏 ☕)">Barre de réactions (👍 👏 ☕)</span><i class="sw"></i></button>
   <button class="mi" data-t="banter"><span data-fr="Petites répliques et animations" data-en="Little lines & animations">Petites répliques et animations</span><i class="sw"></i></button>
-  <div class="box"><div class="lbl"><span data-fr="Bavardage entre agents" data-en="Chatter between agents">Bavardage entre agents</span></div><select id="chatSel"><option value="quiet" data-fr="Discret" data-en="Quiet">Discret</option><option value="normal" data-fr="Normal" data-en="Normal">Normal</option><option value="lively" data-fr="Animé" data-en="Lively">Animé</option></select></div>
   <button class="mi" data-t="vanish"><span data-fr="Retirer les agents terminés (2 min)" data-en="Remove finished agents (2 min)">Retirer les agents terminés (2 min)</span><i class="sw"></i></button>
   <button class="mi" data-t="epi"><span data-fr="Réactions et blagues" data-en="Reactions & jokes">Réactions et blagues</span><i class="sw"></i></button>
   <h4 data-fr="Source" data-en="Source">Source</h4>
@@ -330,7 +333,7 @@
     <div id="empty"><h2 id="eT"></h2><p id="eP"></p><button class="cta" id="eDemo"></button></div>
     <div id="detail"><div class="hd"><b id="dname"></b><button class="ic" id="dclose">✕</button></div><div id="dbody"></div></div>
   </section>
-  <aside><h2 id="logH">Transcript</h2><input id="logQ" type="search" placeholder="Search…" aria-label="Search the transcript" style="margin:0 10px 8px;width:calc(100% - 20px)"><div id="log"></div></aside>
+  <aside><h2 id="logH">Transcript</h2><button id="logTools" class="cq lt"></button><input id="logQ" type="search" placeholder="Search…" aria-label="Search the transcript" style="margin:0 10px 8px;width:calc(100% - 20px)"><div id="log"></div></aside>
 </main>
 <footer>
   <input id="seek" type="range" min="0" max="0" value="0"><span class="dim" id="pos">0 / 0</span>
@@ -359,6 +362,7 @@ if (prefs.vstyle === 'babble') prefs.vstyle = 'animal', prefs.vstyleChosen = tru
 if (!prefs.quietOnce) { prefs.banter = false; prefs.quietOnce = true; }   // no invented lines by default ("Sorry, I was on mute"): what is heard is what the agents wrote; ⚙ turns them back on
 if (!prefs.boardOnce) { prefs.view = 'board'; prefs.boardOnce = true; }   // the overview of every session became the first screen (once: a view picked after that sticks)
 if (!prefs.elevenOnce) { prefs.vstyle = 'elevenlabs'; prefs.elevenOnce = true; }   // ElevenLabs became the default (once: a style picked after that sticks); without a key nothing is said and the voice button says why: the system voices speak only when chosen
+if (!prefs.chatOnce) { delete prefs.chat; prefs.chatOnce = true; }   // the chatter level is gone: whoever was on Quiet hears everything now
 if (!prefs.notifyChosen) prefs.notify = true;   // “tell me when the agents are done” is on unless the person chose otherwise
 let prefsTimer = null;
 const savePrefs = () => { prefs._t = Date.now(); try { localStorage.setItem('cc.prefs', JSON.stringify(prefs)); } catch {} clearTimeout(prefsTimer); prefsTimer = setTimeout(() => { fetch('/api/prefs', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(prefs) }).catch(() => {}); }, 400); };
@@ -516,11 +520,11 @@ function avatarSVG(p, o, uid = '') {   // uid keeps SVG ids unique per instance:
   const sparks = star(22, 28, 3) + star(78, 22, 2.6, '#ff9bb8') + star(70, 40, 1.9, '#9be7ff') + star(30, 46, 1.6, '#ffe58a');
   const custFig = (c, talking) => { const base = 'x="20" y="6" width="60" height="58" preserveAspectRatio="xMidYMax meet"', px = 'image-rendering:pixelated;';
     return `<image class="cimg" href="${c.idle}" ${base} style="${px}${talking && c.talk ? 'display:none' : ''}"/>` + (c.talk ? `<image class="cimg cimg-talk" href="${c.talk}" ${base} style="${px}${talking ? '' : 'display:none'}"/>` : ''); };
-  const mono = p.owner ? '' : monogram(p.tee), ny = fy + 12.3, nw = sh.hw * 0.42, bx = 50 - sh.hw * 0.62, wy = p.roleTag ? 57.6 : 60.6, by = p.roleTag ? 56 : 58.7;   // the tee: a neckline (gold for the owner), a round badge with the project's initials (a star for the owner), the word across the chest
+  const mono = p.owner ? '' : monogram(p.tee), ny = fy + 12.3, nw = sh.hw * 0.42, bx = 50 - sh.hw * 0.62, wy = p.roleTag ? 52.6 : 55.6, by = p.roleTag ? 51 : 53.7;   // high on the chest: the name row at the bottom of a wide tile never covers them   // the tee: a neckline (gold for the owner), a round badge with the project's initials (a star for the owner), the word across the chest
   const shirtArt = !p.tee || bot ? '' : `<path d="M${50 - nw} ${ny}q${nw} 2.8 ${nw * 2} 0" fill="none" stroke="${p.owner ? '#f5c04a' : c2}" stroke-width="${p.owner ? 2.4 : 1.6}" stroke-linecap="round"/>`
     + `<circle cx="${bx}" cy="${by}" r="2.9" fill="${p.owner ? '#f5c04a' : c2}" stroke="${p.owner ? '#fff6d6' : c1}" stroke-width=".7"/>`
     + (p.owner ? star(bx, by, 1.9, '#fff6d6') : `<text x="${bx}" y="${by + 1.1}" text-anchor="middle" font-size="3" font-weight="900" font-family="system-ui,sans-serif" fill="${inkOn(c2)}">${esc(mono)}</text>`);
-  const fig = p.custom ? custFig(p.custom, st && o.m === 2) : `${arm('l')}${bodyShape(p.shape, `url(#${gid})`, c2)}${arm('r')}${face}${acc}${shirtArt}${tee(wy, inkOn(c), sh.hw * 1.05, 50 + sh.hw * 0.12)}${role(61.6, inkOn(c), sh.hw * 1.5)}`;   // the word beside the badge
+  const fig = p.custom ? custFig(p.custom, st && o.m === 2) : `${arm('l')}${bodyShape(p.shape, `url(#${gid})`, c2)}${arm('r')}${face}${acc}${shirtArt}${tee(wy, inkOn(c), sh.hw * 1.05, 50 + sh.hw * 0.12)}${role(56.6, inkOn(c), sh.hw * 1.5)}`;   // the word beside the badge
   return `<svg viewBox="0 0 100 75" preserveAspectRatio="xMidYMid slice"${st ? ' xmlns="http://www.w3.org/2000/svg" width="400" height="300"' : ''}>
     <defs><linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="0" y1="12" x2="0" y2="72"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c}"/></linearGradient>
       <linearGradient id="${uid}dk${p.scene}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${sc.desk[0]}"/><stop offset="1" stop-color="${sc.desk[1]}"/></linearGradient>
@@ -550,8 +554,10 @@ const lagMs = (i = S.idx) => {   // how much newer the newest event of the sessi
 const lagFactor = () => { const l = lagMs() / 1000; return l < 6 ? 1 : l < 15 ? 1.15 : l < 30 ? 1.3 : 1.5; };   // steps, so the cached audio of a line is reused
 const caughtUp = () => !S.live || lagMs() < 6000;
 const spd = () => (S.live ? 1.12 * lagFactor() : +$('#speed').value) * (S.boost || 1);
-const nameOf = (id) => (S.agents[id] || {}).name || id;
-const pjTag = (id) => { const p = S.agents[id]; return p && p.type === 'peer' && p.group ? ` <span class="pj">${esc(p.group.name)}</span>` : ''; };   // a peer's project next to its name: an edge reads project to project
+const peerWords = (n, g) => { n = String(n || ''); const h = /^hermes:([\w.-]+):[0-9a-f]{6,}$/.exec(n), c = /^codex:(.+)-[0-9a-f]{4}$/.exec(n), th = g && g.hermes ? String(g.name).split(', ').slice(1).join(', ') : '';
+  return h ? th || 'Hermes ' + h[1] : c ? c[1].replace(/[-_]+/g, ' ') : n; };   // "hermes:gaming:218dccb6" is its thread, "codex:respond-to-greeting-8d76" is "respond to greeting"
+const nameOf = (id) => { const p = S.agents[id]; return !p ? id : p.type === 'peer' ? peerWords(p.name, p.group) : p.name || id; };
+const pjTag = (id) => { const p = S.agents[id]; return p && p.type === 'peer' && p.group ? ` <span class="pj">${esc(p.group.hermes ? p.group.name.split(', ')[0] : p.group.name)}</span>` : ''; };   // a peer's project next to its name: an edge reads project to project
 
 // ---------- text prep ----------
 const plain = (t) => String(t).replace(/```[\s\S]*?```/g, ' ').replace(/`([^`]*)`/g, '$1').replace(/https?:\/\/\S+/g, 'link').replace(/(^|\s)#{1,6}\s+/g, '$1').replace(/[*_>|~\[\]]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -951,7 +957,7 @@ function guestsAt(evs, idx, ref, agents) {
 }
 function renderGuests() {
   const box = $('#guests'); if (!box) return; const e = S.events[Math.min(S.idx, S.events.length - 1)], ref = S.live ? Date.now() : (e && e.ts) || 0;
-  const html = S.cur ? guestsAt(S.events, S.idx, ref, S.agents).map((x) => { const p = S.agents[x.id], t = teamOf(p.group); return `<button class="gchip" data-g="${esc(x.id)}" style="--pc:${GCOL(t.key)}" title="${esc(p.name + ' — ' + p.role)}"><i></i>${t.short && t.short !== teamOf(S.group).short ? `<small>${esc(t.short)}</small>` : !t.short ? `<small>${L('autre session', 'other session')}</small>` : ''}<span>${esc(p.name)}</span><small>✉&nbsp;${x.n}</small></button>`; }).join('') : '';
+  const html = S.cur ? guestsAt(S.events, S.idx, ref, S.agents).map((x) => { const p = S.agents[x.id], t = teamOf(p.group); return `<button class="gchip" data-g="${esc(x.id)}" style="--pc:${GCOL(t.key)}" title="${esc(p.name + ' — ' + p.role)}"><i></i>${t.short && t.short !== teamOf(S.group).short ? `<small>${esc(t.short)}</small>` : !t.short ? `<small>${L('autre session', 'other session')}</small>` : ''}<span>${esc(nameOf(x.id))}</span><small>✉&nbsp;${x.n}</small></button>`; }).join('') : '';
   const full = html ? `<em>${L('En ligne', 'On the line')}</em>` + html : ''; if (box._h !== full) { box.innerHTML = full; box._h = full; }
 }
 function flashGuest(id) { renderGuests(); const c = $(`#guests [data-g="${id}"]`); if (!c) return; c.classList.remove('hl'); void c.offsetWidth; c.classList.add('hl'); clearTimeout(c._t); c._t = setTimeout(() => c.classList.remove('hl'), 1600); }
@@ -988,6 +994,8 @@ function markUnsaid(evs, why) {   // the line was skipped (ElevenLabs could not 
 }
 function filterLog() { const q = $('#logQ').value.trim().toLowerCase(); for (const r of $('#log').children) r.style.display = !q || r.textContent.toLowerCase().includes(q) ? '' : 'none'; }
 $('#logQ').oninput = filterLog;
+const paintLogTools = () => { $('#logTools').textContent = document.body.classList.contains('logtools') ? '− ' + L('masquer les appels d’outils', 'hide tool calls') : '＋ ' + L('appels d’outils', 'tool calls'); };
+$('#logTools').onclick = () => { document.body.classList.toggle('logtools'); paintLogTools(); }; paintLogTools();
 $('#log').onclick = (ev) => { const r = ev.target.closest('.row'); if (r && !S.live) seekTo(+r.dataset.i); };
 function paintStatus() {
   for (const p of Object.values(S.agents)) {
@@ -1055,7 +1063,7 @@ const tokTip = (u) => `${L('Jetons enregistrés par Claude Code (comptés une fo
 const ctxInfo = (id) => { const c = S.ctx[id]; if (!c) return null; const w = ctxWin(S.model[id], c), p = Math.round((c / w) * 100); return { c, w, p, lvl: p >= 88 ? 'hi' : p >= 70 ? 'mid' : 'lo' }; };
 function renderCtx() {   // "context N% full": per agent chip (from 50%), a header chip for the lead, and one warning before auto-compaction
   for (const id in S.agents) { const t = $('#t-' + id); if (!t) continue; const el = t.querySelector('.cx'), x = ctxInfo(id);
-    if (el) { if (x && x.p >= 50) { el.textContent = `${L('contexte', 'context')} ${x.p}%`; el.className = 'cx ' + x.lvl; el.title = `${L('Contexte', 'Context')}: ${fmtTok(x.c)} / ${fmtTok(x.w)}`; } else { el.textContent = ''; el.className = 'cx'; } }
+    if (el) { if (x) { el.textContent = `${L('contexte', 'context')} ${x.p}%`; el.className = 'cx ' + x.lvl; el.title = `${L('Contexte', 'Context')}: ${fmtTok(x.c)} / ${fmtTok(x.w)}`; } else { el.textContent = ''; el.className = 'cx'; } }
     if (x && x.p >= 85 && !S.ctxWarned[id] && S.live && S.playing && S.status[id] !== 'done' && !S.gone.has(id)) {   // only for an agent still at work
       S.ctxWarned[id] = 1; toast(`${nameOf(id)}: ${L('contexte plein à ', 'context ')}${x.p}%${L(' — compactage proche', ' full — compaction soon')} 🗜`); }   // a badge, no sound: nothing is asked of the person
     else if (x && x.p < 60) delete S.ctxWarned[id]; }
@@ -1105,7 +1113,7 @@ function paintStates() {
     if (p.id === 'main') { if (st.k === 'working' || st.k === 'waiting') S.mainBusyAt = S.mainBusyAt || Date.now(); else if (st.k === 'done') S.mainBusyAt = 0; }
     S.prevState[p.id] = st.k; const tip = `${p.name} — ${p.role}${st.txt ? '\n' + st.txt : ''}${S.lastTool[p.id] ? '\n' + S.lastTool[p.id] : ''}`; if (t.title !== tip) t.title = tip;
   }
-  const b = $('#board'), parts = [['working', '⚙', L('au travail', 'working')], ['waiting', '🔗', L('en attente', 'waiting')], ['blocked', '✋', L('vous attendent', 'need you')], ['stalled', '⚠', L('bloqués', 'stalled')], ['done', '✓', L('terminés', 'done')]]
+  const b = $('#board'), parts = [['blocked', '✋', L('vous attendent', 'need you')]]   // the header counts one thing: who needs Tom (the agents list has the rest)
     .filter(([k]) => n[k]).map(([k, i, l]) => `<span class="${k}" title="${n[k]} ${l}">${i} ${n[k]}<em> ${l}</em></span>`).join('');
   if (b.innerHTML !== parts) b.innerHTML = parts; S.nBlocked = n.blocked + n.stalled; S.attn = attn; S.needs = needs; paintRoster(ros); renderGuests(); return n;
 }
@@ -1114,7 +1122,7 @@ function paintRoster(ros) {   // a fixed list beside the call: who is doing what
   const box = $('#roster'); if (!box || !document.body.classList.contains('rost')) return;
   ros.sort((a, b) => (a.p.id === 'main' ? -1 : b.p.id === 'main' ? 1 : (RORDER[a.st.k] - RORDER[b.st.k]) || (S.lastAct[b.p.id] || 0) - (S.lastAct[a.p.id] || 0)));
   const done = ros.filter((x) => x.p.id !== 'main' && x.st.k === 'done'); if (!S.rosterDone && done.length) ros = ros.filter((x) => !done.includes(x));   // finished sub-agents: one line, opened on a click
-  const rows = ros.slice(0, 60).map(({ p, st }) => `<div class="rr k-${st.k}${S.focus === p.id ? ' sel' : ''}${S.speakers.has(p.id) ? ' speaking' : ''}" data-id="${esc(p.id)}" tabindex="0" role="button" aria-label="${esc(p.name)}, ${esc(st.txt || '')}"><div class="n"><b>${esc(p.name)}</b> <span class="ro">${esc(p.role)}</span></div><div class="st">${sHtml(st.k, agentStatus(p.id, st))}${S.loops[p.id] ? ' 🔁' : ''}</div></div>`).join('');
+  const rows = ros.slice(0, 60).map(({ p, st }) => `<div class="rr k-${st.k}${S.focus === p.id ? ' sel' : ''}${S.speakers.has(p.id) ? ' speaking' : ''}" data-id="${esc(p.id)}" tabindex="0" role="button" aria-label="${esc(p.name)}, ${esc(st.txt || '')}"><div class="n"><b>${esc(p.name)}</b>${p.id === 'main' ? ` <span class="ro">${esc(p.role)}</span>` : ''}</div><div class="st">${sHtml(st.k, agentStatus(p.id, st))}${S.loops[p.id] ? ' 🔁' : ''}</div></div>`).join('');
   const html = `<h3>${L('Agents', 'Agents')} <span class="dim">${ros.length}</span></h3>${rows}${ros.length > 60 ? `<div class="ro" style="padding:4px 8px">+${ros.length - 60}</div>` : ''}${done.length ? `<button class="cq rq">${S.rosterDone ? '−' : '＋'} ${done.length} ${L('terminés', 'done')}</button>` : ''}`;
   if (box.dataset.h !== html) { box.dataset.h = html; box.innerHTML = html; }
 }
@@ -1212,13 +1220,13 @@ const sHtml = (k, text) => `<i class="sdot ${SDOT[k] || ''}"></i><span${k === 'b
 function callStatus(r) {   // a call's second line: "Working: running tests", "Needs you: editing server.js, 48s", "Waiting on materials", "Idle 10 min"
   const age = agoStr(r.ageMs != null ? r.ageMs : Date.now() - r.mtime), act = r.tool ? lc1(plainAct(r.tool, r.arg)) : '';
   if (r.state === 'blocked') return sWord('blocked') + (act ? ': ' + act : '') + ', ' + age;
-  if (r.state === 'working') return sWord('working') + (act ? ': ' + act : '');
+  if (r.state === 'working') return act ? act.charAt(0).toUpperCase() + act.slice(1) : sWord('working');   // the green dot says working
   if (r.state === 'waiting') return sWord('waiting') + (r.active && r.active.length ? r.active.join(', ') : L('ses sous-agents', 'its sub-agents'));
   if (r.state === 'turn' && Date.now() - r.mtime < LIVE_MS) return sWord('turn') + ', ' + age;
   return r.state === 'done' ? sWord('done') : sWord('idle') + ' ' + age;
 }
 function agentStatus(id, st) {   // an agent's second line, in the same words
-  if (st.k === 'working') return sWord('working') + (S.act[id] ? ': ' + lc1(S.act[id]) : '');
+  if (st.k === 'working') return S.act[id] || sWord('working');
   if (st.k === 'blocked') return sWord('blocked') + (st.age ? ', ' + fmtShort(st.age) : '');
   if (st.k === 'waiting' || st.k === 'stalled') return sWord('waiting') + (st.on || []).join(', ') + (st.k === 'stalled' ? L(', sans nouvelles', ', no news') : '');
   if (st.k === 'done') return id === 'main' ? sWord('turn') : sWord('done');   // the lead's turn ended: finished
@@ -1594,7 +1602,7 @@ function ackLine(ev) {
 // =====================================================================
 //  conversation: short exchanges between agents at the right moments, built from what really happened in the session
 // =====================================================================
-const CHAT = { quiet: 0.45, normal: 1, lively: 1.8 }, chatMul = () => CHAT[prefs.chat] || CHAT.quiet;   // quiet unless chosen otherwise, so the call does not tire anyone
+const chatMul = () => 1;   // no chatter level any more (Tom wants everything narrated): the invented lines, when turned on, keep one pace
 const EXW = { en: { edit: ['edit', 'edits'], call: ['tool call', 'tool calls'], error: ['error', 'errors'] }, fr: { edit: ['modification', 'modifications'], call: ['appel d’outil', 'appels d’outils'], error: ['erreur', 'erreurs'] } };
 const P = (k, n) => { const w = EXW[FR() ? 'fr' : 'en'][k]; return `${n} ${n === 1 ? w[0] : w[1]}`; };
 const EXCH = {
@@ -1847,13 +1855,21 @@ function triageItems(evs, done, now, needs = new Set(), agents = {}) {   // the 
 function applyTriage(items, res) {   // the model's answer, held to the rules; null when it is not usable
   if (!res || typeof res !== 'object' || !Array.isArray(res.say) || !Array.isArray(res.drop)) return null;
   const byId = new Map(items.map((it) => [it.id, it])), out = [];
-  for (const x of res.say) { if (out.length >= 2) break; if (!x || typeof x.line !== 'string' || !Array.isArray(x.ids)) continue; const its = x.ids.map((id) => byId.get(id)).filter(Boolean), line = speakable(x.line); if (its.length && line) out.push({ line, items: its }); }
+  for (const x of res.say) { if (out.length >= 2) break; if (!x || typeof x.line !== 'string' || !Array.isArray(x.ids)) continue; const its = x.ids.map((id) => byId.get(id)).filter(Boolean), line = withRoute(speakable(x.line), its); if (its.length && line) out.push({ line, items: its }); }
   for (const it of items) if (it.kind === 'needs_you' && !out.some((o) => o.items.includes(it))) out.push({ line: clipSpeech(it.text, 200), items: [it] });   // never dropped, whatever the model said
   return out;
 }
-function localPick(items) {   // without the model: everything that needs Tom, else the most important of the rest (the newest among equals), each cut at a sentence
+function localPick(items) {   // without the model: everything that needs Tom, then the most important of the rest (the newest among equals), two lines in all, each cut at a sentence
   const need = items.filter((it) => it.kind === 'needs_you'), rest = items.filter((it) => it.kind !== 'needs_you').sort((a, b) => TPRIO[b.kind] - TPRIO[a.kind] || b.ev.ts - a.ev.ts);
-  return [...need, ...rest.slice(0, need.length ? 0 : 1)].map((it) => ({ line: clipSpeech(it.text, 200), items: [it] }));
+  return [...need, ...rest.slice(0, Math.max(0, 2 - need.length))].map((it) => ({ line: withRoute(clipSpeech(it.text, 200), [it]), items: [it] }));
+}
+// A line about messages between agents starts with the route of its first message, exactly as the page made it (2 to 4 words): what the model put before a colon is
+// replaced when it is a lead-in, so the route is never a title, a session name or a sentence. Other lines stay content only.
+const ROUTE_MAX = 4;
+function withRoute(line, its) {
+  const r = (its.find((it) => it.route) || {}).route; if (!r || !line || !its.every((it) => it.route)) return line;
+  const m = /^([^:.!?]{1,80}):\s*/.exec(line), lead = m && (m[1].trim().split(/\s+/).length <= 5 || /^(?:to|from|for)\b|\b(?:to|from)\b/i.test(m[1])), body = lead ? line.slice(m[0].length) : line;   // a short lead-in, or one that says who to whom
+  return r + ': ' + body;
 }
 // ---- end triage policy
 const D = { done: new WeakSet(), said: [], pending: null, speaking: false };
@@ -1888,7 +1904,26 @@ async function decide(items) {
   } catch {}
   return warmLines(localPick(items));
 }
-function collect() { const items = triageItems(S.events, D.done, Date.now(), new Set(S.needs || []), S.agents); items.forEach((it) => D.done.add(it.ev)); return items; }
+function collect() { const items = triageItems(S.events, D.done, Date.now(), new Set(S.needs || []), S.agents); items.forEach((it) => { D.done.add(it.ev); if (it.ev.kind === 'msg' && it.kind !== 'needs_you') it.route = routeOf(it.ev); }); return items; }
+// The route of a message between agents, in project and role (at most ROUTE_MAX words): "To gladiator Hermes", "MarketSimulator lead, from Codex", "To the lead".
+// The project is left out when both ends are in the project on screen; the sender is named only when it is not the lead of the call on screen.
+const projWord = (g) => { if (!g || g.other || g.hermes) return ''; const n = String(g.name || ''), w = n.split(/[-_\s]+/)[0]; return w.length >= 4 && !/^(agent|agents|the|app|web|api|test|demo)$/i.test(w) ? w : n.replace(/[-_]+/g, ' '); };
+function party(p) {
+  if (!p) return null; const peer = p.type === 'peer', run = /^Hermes/.test(p.role || '') ? 'Hermes' : /^Codex/.test(p.role || '') ? 'Codex' : /^Claude/.test(p.role || '') ? 'Claude' : '';
+  const named = peer && /^[A-Z][a-z]{2,15}$/.test(p.name);   // a peer with a name of its own ("Astra") needs no project
+  return { proj: named ? '' : projWord(peer ? p.group : S.group), role: p.id === 'main' ? L('chef', 'lead') : p.id === 'user' ? 'Tom' : peer ? (named ? p.name : run || L('un pair', 'a peer')) : L('sous-agent', 'sub-agent'), own: !peer && p.id !== 'user', the: p.id === 'main' ? L('le chef', 'the lead') : L('le sous-agent', 'the sub-agent') };
+}
+function routeOf(ev) {
+  const a = party(S.agents[ev.agent]), b = party(S.agents[ev.to]); if (!b) return '';
+  const here = projWord(S.group), same = !!a && a.proj === b.proj && (!a.proj || a.proj === here), from = !!a && !a.own && a.role !== 'Tom';   // a peer's message says who sent it; inside the session the target is enough
+  const who = (x, keep) => (x.role === 'Tom' ? 'Tom' : x.own ? (keep && !same && x.proj ? x.proj + ' ' + x.role : x.the) : [keep && !same ? x.proj : '', x.role].filter(Boolean).join(' '));
+  const cap = (r) => r.charAt(0).toUpperCase() + r.slice(1);
+  for (const [ka, kb] of [[true, true], [false, true], [false, false]]) {   // drop the sender's project, then the target's, until it fits
+    const r = from ? `${who(b, kb)}, ${L('de', 'from')} ${who(a, ka)}` : `${L('À', 'To')} ${who(b, kb)}`;
+    if (r.split(/\s+/).length <= ROUTE_MAX) return cap(r);
+  }
+  return cap(`${L('À', 'To')} ${b.role}`);
+}
 function decideNext() { if (!D.pending) { const items = collect(); if (items.length) D.pending = { cur: S.cur, p: decide(items) }; } }
 async function directorStep() {   // called every 300 ms and not awaited: deciding goes on while a batch is said, one batch is said at a time
   if (!S.live || !S.playing || !S.cur || !prefs.voice || AUD.off()) { D.pending = null; return; }
@@ -2047,7 +2082,7 @@ async function renderBoardView() {
     const card = (r) => {
       const [ic, en, fr] = BSTATE[r.state], what = r.tool ? `<span class="sx">${esc(boardTool(r.tool, r.arg))}</span>` : '';   // what it is doing right now, and for how long
       const extra = r.state === 'blocked' || r.state === 'working' || r.state === 'waiting' ? `${what}<span class="sx">${agoStr(r.ageMs)}</span>` : `<span class="sx">${agoStr(now - r.mtime)}</span>`;
-      return `<div class="bcard ${r.state}" tabindex="0" role="button" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" style="--pc:${GCOL(gkey(r))}"><div><span class="stc ${r.state}">${ic} ${L(fr, en)}${extra}</span></div><div class="bt">${esc(/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(r.title) ? L('Session sans titre', 'Untitled session') : r.title)}</div><div class="bp">${r.source === 'hermes' ? esc(niceProj(r.proj)) : (r.source && r.source !== 'claude' ? `<span class="src">${esc(niceProj(r.proj))}</span>` : '') + esc(r.group ? r.group.name : projLabel(r))}</div>${r.subActive ? `<div class="bm">👥 ${r.subActive}/${r.subTotal} ${L('sous-agents actifs', 'sub-agents active')}${r.active && r.active.length ? ': ' + esc(r.active.join(', ')) + (r.subActive > r.active.length ? '…' : '') : ''}</div>` : ''}${r.peers && r.peers.length ? `<div class="bm">↔ ${esc(r.peers.join(', '))}${r.msgs ? `<span class="sx">✉ ${r.msgs}</span>` : ''}</div>` : ''}</div>`; };
+      return `<div class="bcard ${r.state}" tabindex="0" role="button" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" style="--pc:${GCOL(gkey(r))}"><div><span class="stc ${r.state}">${ic} ${L(fr, en)}${extra}</span></div><div class="bt">${esc(/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(r.title) ? L('Session sans titre', 'Untitled session') : r.title)}</div><div class="bp">${r.source === 'hermes' ? esc(niceProj(r.proj)) : (r.source && r.source !== 'claude' ? `<span class="src">${esc(niceProj(r.proj))}</span>` : '') + esc(r.group ? r.group.name : projLabel(r))}</div>${r.subActive ? `<div class="bm">👥 ${r.subActive}/${r.subTotal} ${L('sous-agents actifs', 'sub-agents active')}${r.active && r.active.length ? ': ' + esc(r.active.join(', ')) + (r.subActive > r.active.length ? '…' : '') : ''}</div>` : ''}${r.peers && r.peers.length ? `<div class="bm">↔ ${esc([...new Set(r.peers.map((n) => peerWords(n)))].join(', '))}${r.msgs ? `<span class="sx">✉ ${r.msgs}</span>` : ''}</div>` : ''}</div>`; };
     $('#boardv').innerHTML = `<div class="bsum">${sum || `<span>${L('Aucune session récente', 'No recent session')}</span>`}</div>` + list.map((g) => { const c = {}; g.rows.forEach((r) => (c[r.state] = (c[r.state] || 0) + 1));
       const sp = splitGroup(g.rows, boardOpen.has(g.key)), fold = sp.quiet.length ? `<button class="bquiet" data-g="${esc(g.key)}">＋ ${BORDER.filter((k) => sp.quiet.some((r) => r.state === k)).map((k) => `${sp.quiet.filter((r) => r.state === k).length} ${L(BSTATE[k][2], BSTATE[k][1])}`).join(', ')}</button>` : '';
       return `<div class="bgroup${sp.cards.length ? '' : ' quiet'}" style="--pc:${GCOL(g.key)}"><h3 class="bgh"><span class="gdot"></span>${esc(g.name)} <span class="dim">${g.rows.length}${BORDER.filter((k) => c[k] && k !== 'idle' && k !== 'done').map((k) => `<span class="sx">${BSTATE[k][0]} ${c[k]}</span>`).join('')}</span>${sp.cards.length ? '' : fold}</h3>${sp.cards.length ? `<div class="bgrid">${sp.cards.map(card).join('')}${fold}</div>` : ''}</div>`; }).join('');   // a group with nothing going on is one line
@@ -2085,7 +2120,7 @@ async function renderCalls() {
   }
   const groups = new Map(); for (const r of rows) { const k = boardKey(r); if (!groups.has(k)) groups.set(k, { key: k, name: railGroup(r), rows: [] }); groups.get(k).rows.push(r); }
   const row = (r, proj) => { const n = (r.subTotal || 0) + 1, here = cur.id === r.id;   // two lines: the title in full; one status word and what it is doing
-    return `<button class="crow${here ? ' cur' : ''}" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" title="${esc(r.title)}"><span class="cn"><b>${proj ? `<span style="color:${GCOL(boardKey(r))}">${esc(railGroup(r))}</span> ` : ''}${esc(r.title)}</b>${here ? `<em>${L('vous êtes ici', 'you’re here')}</em>` : ''}</span><span class="ca">${sHtml(r.state, callStatus(r))}${n > 1 ? `<small>${n} ${L('agents', 'agents')}</small>` : ''}</span></button>`; };
+    return `<button class="crow${here ? ' cur' : ''}" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" title="${esc(r.title)}"${here ? ` aria-current="true"` : ''}><span class="cn"><b>${proj ? `<span style="color:${GCOL(boardKey(r))}">${esc(railGroup(r))}</span> ` : ''}${esc(r.title)}</b></span><span class="ca">${sHtml(r.state, callStatus(r))}${n > 1 ? `<small>${n} ${L('agents', 'agents')}</small>` : ''}</span></button>`; };
   const opts = [['all', L('Suivre : tout', 'Follow: everything')], ...[...groups.values()].filter((g) => g.key !== '_other' && (g.rows.some((r) => r.state !== 'idle' && r.state !== 'done') || 'g:' + g.key === follow)).map((g) => ['g:' + g.key, L('Suivre : ', 'Follow: ') + g.name])];   // projects with something going on
   const sel = S.pin ? 'pin' : follow, options = (S.pin ? [['pin', L('Épinglé', 'Pinned')]] : []).concat(opts).map(([v, l]) => `<option value="${esc(v)}"${v === sel ? ' selected' : ''}>${esc(l)}</option>`).join('');
   let html = `<div class="ch"><h3>${L('Appels', 'Calls')}</h3><select id="follow" aria-label="${esc(L('Quel appel suivre', 'Which call to follow'))}">${options}</select><button class="cmin" title="${esc(L('Replier', 'Fold'))}">${box.classList.contains('min') ? '▸' : '▾'}</button></div>${!S.pin && (S.why || follow === 'all') ? `<div class="cwhy">${esc(S.why || L('l’appel le plus actif, ou celui qui vous attend', 'the most active call, or one that needs you'))}</div>` : ''}`;
@@ -2247,7 +2282,7 @@ function applyLang() {
   [['#bPlay', L('Pause / Lecture (espace)', 'Pause / Play (space)')], ['#bLog', 'Transcript'], ['#bMute', L('Son (touche M)', 'Sound (M key)')], ['#bMenu', L('Réglages', 'Settings')], ['#dclose', L('Fermer', 'Close')], ['#officeVol', L('Volume de l’ambiance', 'Ambience volume')], ['#musicVol', L('Volume de la musique', 'Music volume')], ['#liveProj', L('Projet à suivre', 'Project to follow')], ['#reactBar', L('Réactions', 'Reactions')], ['#logQ', L('Rechercher dans la transcription', 'Search the transcript')], ['#roster', L('Agents', 'Agents')]].forEach(([q, t]) => { const el = $(q); if (!el) return; el.title = t; el.setAttribute('aria-label', t); }); $('#logQ').placeholder = L('Rechercher…', 'Search…'); $('#menuQ').placeholder = L('Chercher un réglage…', 'Search settings…'); document.querySelectorAll('#reactBar button').forEach((b) => b.setAttribute('aria-label', b.dataset.e));
   $('#eDemo').textContent = L('▶ Voir la démo', '▶ Watch the demo'); $('#eT').textContent = L('En attente d’une session', 'Waiting for a session'); $('#eP').textContent = L('Lancez Claude Code dans ce dossier : l’appel démarrera tout seul.', 'Start Claude Code in this folder — the call will start by itself.');
   for (const id in S.agents) { const p = persona(S.agents[id]); Object.assign(S.agents[id], { name: p.name, role: p.role }); const t = $('#t-' + id); if (t) { t.querySelector('.tag span').textContent = p.role; t.querySelector('.tag b').textContent = p.name; if (id === 'main' || id === 'user') t.querySelector('.tag span').textContent = p.role; } }
-  document.querySelectorAll('#menu .mi[data-t]').forEach((b) => b.querySelector('.sw').classList.toggle('on', !!prefs[b.dataset.t])); renderTokens(); updateHint(); renderLog(true); syncUI();
+  document.querySelectorAll('#menu .mi[data-t]').forEach((b) => b.querySelector('.sw').classList.toggle('on', !!prefs[b.dataset.t])); renderTokens(); updateHint(); renderLog(true); syncUI(); if ($('#logTools')) paintLogTools();
 }
 const elsewhere = () => !!(S.owner && S.owner !== CID);
 function applyMute() {
@@ -2290,7 +2325,7 @@ $('#menu').onclick = (e) => { const b = e.target.closest('.mi[data-t]'); if (!b)
 $('#station').innerHTML = STATIONS.map((s) => `<option value="${s.id}">📻 ${s.name}</option>`).join('');
 $('#station').value = prefs.station; $('#musicVol').value = prefs.musicVol; $('#musicBox').style.display = prefs.music ? '' : 'none';
 $('#station').onchange = (e) => { prefs.station = e.target.value; savePrefs(); AUD.init(); RADIO.sync(); };
-$('#chatSel').value = ['quiet', 'normal', 'lively'].includes(prefs.chat) ? prefs.chat : 'quiet'; $('#chatSel').onchange = () => { prefs.chat = $('#chatSel').value; savePrefs(); };
+
 $('#vstyle').innerHTML = [['animal', 'Animal Crossing (babillage)', 'Animal Crossing (babble)'], ['sims', 'Simlish (babillage)', 'Simlish (babble)'], ['cartoon', 'Voix cartoon (voix réelle)', 'Cartoon voices (real voice)'], ['natural', 'Voix naturelles', 'Natural voices'], ['kokoro', 'Voix très naturelles (à installer)', 'Very natural voices (installs on demand)'], ['elevenlabs', 'Voix ElevenLabs (clé API sur le serveur)', 'ElevenLabs voices (API key on the server)']].map(([v, fr, en]) => `<option value="${v}" data-fr="${fr}" data-en="${en}">${L(fr, en)}</option>`).join(''); $('#vstyle').value = prefs.vstyle; $('#vstyle').onchange = () => { prefs.vstyle = $('#vstyle').value; prefs.vstyleChosen = true; savePrefs(); TTS.init().then(kokoroUI); kokoroUI(); };
 // ---- ⚙ → very natural voices (Kokoro): install box and status, polled while installing; ElevenLabs: whether the server has a key
 let kokoroTimer = null;

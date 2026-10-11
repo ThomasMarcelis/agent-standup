@@ -146,6 +146,11 @@ const ok = () => new Response(Buffer.from([0xff, 0xfb, 0x90, 0x00, 1, 2, 3, 4]),
 const ttsDir = path.join(tmp, 'agent-standup-tts-' + process.getuid()); fs.mkdirSync(ttsDir, { recursive: true });
 fs.writeFileSync(path.join(ttsDir, 'old-stand-in.mp3'), Buffer.from('RIFF\0\0\0\0WAVEfmt ')); fs.writeFileSync(path.join(ttsDir, 'real.mp3'), Buffer.from([0xff, 0xfb, 0x90, 0]));   // what an older version left behind
 const srv = require('../server.js');
+test('triage: a message item reaches Luna with its route, and the rule says to start the line with it', () => {
+  assert.match(srv.triageInput({ items: [{ id: 1, age: 3, kind: 'message', project: 'gladiator-game', lead: true, role: 'Claude, Lead', route: 'To Hermes', text: 'The armour numbers are in.' }], said: [], viewing: 'gladiator-game' }), /route "To Hermes"\): The armour numbers are in\./);
+  assert.match(srv.TRIAGE_SYS, /starts with that route exactly as given/);
+  assert.match(srv.TRIAGE_SYS, /Tom wants everything narrated/); assert.match(srv.TRIAGE_SYS, /drop an item only when it repeats what was already said, or when the queue is longer than two lines can carry/);
+});
 test('server: at start, a system voice an older version kept under an ElevenLabs name is dropped, real ElevenLabs audio is kept', () => {
   assert.ok(!fs.existsSync(path.join(ttsDir, 'old-stand-in.mp3'))); assert.ok(fs.existsSync(path.join(ttsDir, 'real.mp3')));
 });
