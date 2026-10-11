@@ -210,6 +210,7 @@
  "WAITING": "ESPERANDO",
  "Waiting for a session": "Esperando una sesión",
  "waiting on ": "esperando a ",
+ "waiting on a command": "esperando un comando",
  "waiting on another agent": "esperando a otro agente",
  "waiting on sub-agents": "esperando a los subagentes",
  "Web search": "Búsqueda web",

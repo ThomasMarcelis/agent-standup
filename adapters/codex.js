@@ -82,6 +82,20 @@ const isSummary = (p) => (((p.internal_chat_message_metadata_passthrough || {}).
 // A thread started by another Codex thread (codex_tui's send_message_to_thread) gets its task as a function_call_output with no call: the text inside <input>.
 const delegated = (p) => (p.type === 'function_call_output' && !p.call_id && p.name === 'send_message_to_thread' && typeof p.output === 'string' ? ((/<input>([\s\S]*?)<\/input>/.exec(p.output) || [])[1] || '').trim() : '');
 const readHead = (file, bytes) => { const fd = fs.openSync(file, 'r'); try { const n = Math.min(bytes, fs.fstatSync(fd).size), buf = Buffer.alloc(n); fs.readSync(fd, buf, 0, n, 0); return buf.toString('utf8'); } finally { fs.closeSync(fd); } };
+// A first prompt as a title: its first meaningful sentence, without the model/effort boilerplate ("GPT-6-Astra at ultra/max", "inheriting Astra ultra"), cut at a word.
+const EFFORT = /\b(?:use\s+)?(?:at\s+)?(?:inherit(?:ed|ing)\s+|retain(?:ed|ing)\s+)?(?:(?:gpt-[\w.-]+|astra)\s*(?:at\s+)?)?(?:ultra|max|xhigh)(?:\s*\/\s*(?:ultra|max|xhigh))*(?:\s+reasoning)?(?:\s+(?:inherited|retained))?\b|\b(?:gpt-[\w.-]+|astra)\b(?=\s*,)/gi;
+const NOISE = /^(?:maximum reasoning|inherit|retain|you are\s*$|in this own-[\w-]+ fork$|(?:gpt-[\w.-]+|astra)$)|inherit\w*\s*(?:astra|ultra)|astra\s*ultra|reasoning\s+ultra/i;
+function tidyTitle(text, max = 90) {
+  const s = String(text || '').replace(/\s+/g, ' ').trim();
+  for (const sentence of s.split(/(?<=[.!?])\s+/)) {
+    const kept = sentence.replace(/:?\s*\bexecute\b.*$/i, '').replace(/[.!?]+$/, '').split(/\s*[,;(]\s*|\)\s*/).map((c) => c.replace(EFFORT, ' ').replace(/\s+/g, ' ').trim()).filter((c) => c && !NOISE.test(c) && /[a-z]{2}/i.test(c));
+    let t = kept.join(', ').replace(/^(?:you are|you're)\s+(?:the |a |an )?(?:only |fresh |new |explicit |dedicated )*/i, '').replace(/[\s,:–—-]+$/, '').replace(/^[\s,:–—-]+/, '');
+    if (t.replace(/\W/g, '').length < 6) continue;
+    t = t[0].toUpperCase() + t.slice(1);
+    return peers.label(t, max);
+  }
+  return peers.label(s, max);
+}
 const titleCache = new Map();   // file → { size, title }
 function titleOf(m) {
   const named = m.agentPath ? '' : threadName(m.id); if (named) return named;   // the name the person gave the thread beats its first prompt
@@ -92,12 +106,12 @@ function titleOf(m) {
       if (!line.includes('"role":"user"') && !line.includes('send_message_to_thread')) continue;
       let r; try { r = JSON.parse(line); } catch { continue; } const p = r.payload || {}; if (r.type !== 'response_item' || (m.histStart && r.ordinal < m.histStart)) continue;
       const t = p.type === 'message' && p.role === 'user' && !isSummary(p) ? texts(p).find((x) => x.trim() && !WRAP.test(x)) : delegated(p);
-      if (t) { title = t.replace(/\s+/g, ' ').trim().replace(/^You are (?:the |a |an |only |ONLY )?(?:fresh |dedicated |only |ONLY |new |the )*/, '').slice(0, 90); break; }   // "You are the dedicated …" prompts: keep the part that tells sessions apart
+      if (t) { title = tidyTitle(t); break; }
     }
   } catch {}
   titleCache.set(m.file, { size: (statOf(m) || {}).size, title }); return title || fallbackTitle(m);
 }
-const fallbackTitle = (m) => (m.agentPath ? human(m.agentPath.split('/').pop()) : threadName(m.id) || m.id);
+const fallbackTitle = (m) => (m.agentPath ? human(m.agentPath.split('/').pop()) : threadName(m.id) || 'Codex session, no prompt yet · ' + (m.start ? new Date(m.start).toTimeString().slice(0, 5) : m.id.slice(-4)));
 // Functional names: the thread name the person gave (session_index.jsonl), and for a sub-agent the last segment of its agent path, as words.
 const human = (seg) => String(seg || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
 let names = { at: 0, sig: '', map: new Map() };
@@ -233,12 +247,16 @@ function timeline(proj, id) {
     const aid = m === root ? 'main' : m.id;
     if (aid !== 'main') {   // the functional name: the last segment of its path as words; the parent path as the role; the nickname Codex invented only as a dim extra
       const segs = (m.agentPath || '').split('/').filter(Boolean), leaf = segs.pop() || '';
-      agents[aid] = { id: aid, name: clip(human(leaf) || m.nickname || 'sub-agent', 34), role: segs.length ? '/' + segs.join('/') : 'sub-agent', nick: m.nickname || '', type: m.role || 'agent', mtime: (statOf(m) || {}).mtime };
+      agents[aid] = { id: aid, name: peers.label(human(leaf).replace(/ (?:ultra|max|xhigh)$/i, '') || m.nickname || 'sub-agent', 40), role: segs.length ? '/' + segs.join('/') : 'sub-agent', nick: m.nickname || '', type: m.role || 'agent', mtime: (statOf(m) || {}).mtime };
       if (m.agentPath) { childByPath[m.agentPath] = aid; pathOf[aid] = m.agentPath; }
     }
     const st = readNew(m.file, aid, m); if (!st) continue; states.push(st); Object.assign(childByTool, st.childByCall);
   }
-  const tl = assemble({ id, proj, agents, states, childByTool, childByPath, pathOf });
+  // this session's own agent-peers addresses and names: codex-<last 16 hex>, codex:<slug>-<last 4 hex>, codex:<nickname>
+  const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, ''), byKey = {}, byName = {}, byTail = {};
+  for (const m of all) { const aid = m === root ? 'main' : m.id, hex = m.id.replace(/-/g, ''); byKey['codex-' + hex.slice(-16)] = aid; byTail[hex.slice(-4)] = aid; if (m.nickname) byName[norm('codex:' + m.nickname)] = aid; }
+  const own = (x) => { const a = peers.parseAddress(x); if (a) return byKey[a.key] || ''; const s = String(x || ''); if (!s.startsWith('codex:')) return ''; const t = /-([0-9a-f]{4})$/.exec(s); return byName[norm(s)] || (t && byTail[t[1]]) || ''; };
+  const tl = assemble({ id, proj, agents, states, childByTool, childByPath, pathOf, own });
   readable(tl, states, agents); return { ...tl, group: project.groupOf(root.cwd), title: titleOf(root) };
 }
 // Codex encrypts what agents send each other, but the plain text around a message says what it was: a sub-agent's own brief and report are in its rollout.
@@ -307,4 +325,4 @@ peers.register('codex', (key) => {
   if (!m) return null; const root = m.child ? metaById(m.root) || m : m;
   return { source: 'codex', proj: '_codex', id: root.id, name: registryName(m.id) || 'codex:' + path.basename(m.cwd || '') + '-' + hex.slice(-4), cwd: m.cwd, group: project.groupOf(m.cwd) };
 });
-module.exports = { list, board, exists, mtime, stamp, timeline, forget };
+module.exports = { list, board, exists, mtime, stamp, timeline, forget, tidyTitle };

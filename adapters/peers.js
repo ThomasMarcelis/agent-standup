@@ -6,6 +6,8 @@ const path = require('path');
 const os = require('os');
 
 const clip = (x, n) => String(x == null ? '' : x).slice(0, n);
+// A name or title cut at a word with an ellipsis, never mid-word ("Research what real wounds…", not "Research what real wounds, blunt t").
+const label = (x, n) => { const s = String(x == null ? '' : x).replace(/\s+/g, ' ').trim(); if (s.length <= n) return s; const cut = s.lastIndexOf(' ', n - 1); return s.slice(0, cut > n * 0.5 ? cut : n - 1).replace(/[\s,;:/–—-]+$/, '') + '…'; };
 const ADDR = /uds:(?:[^\s"'<>]*\/)?([\w.-]+)\.sock/;
 const KIND = (key) => (/^\d+$/.test(key) ? 'claude' : /^codex-[0-9a-f]{16}$/.test(key) ? 'codex' : /^hermes-[0-9a-f]{32}$/.test(key) ? 'hermes' : 'other');
 function parseAddress(a) { const m = ADDR.exec(String(a || '')); return m ? { addr: m[0], key: m[1], kind: KIND(m[1]) } : null; }
@@ -80,7 +82,12 @@ function tailPeers(text) {
     const name = NAME.test(nm) ? nm : a ? peerAgent(a.addr).name : ''; if (!name) continue; names.add(name); if (a) byAddr.set(a.key, name);
   }
   // sends: Claude's SendMessage input and Codex's send_peer arguments are plain JSON, Hermes's arguments are a JSON string inside JSON (a list_peers listing is neither)
-  for (const m of String(text).matchAll(/"to":"(uds:[^"]+)"|\\"arguments\\":\{\\"to\\":\\"(uds:[^"\\]+)/g)) { const a = parseAddress(m[1] || m[2]); if (!a) continue; n++; names.add(byAddr.get(a.key) || peerAgent(a.addr).name); }
+  // one record is one send at most (a Codex send_peer echoes its target in the result), and a list_peers listing names targets nobody was sent anything
+  for (const line of String(text).split('\n')) {
+    if (line.includes('list_peers') || line.includes('bridge: send_peer')) continue;
+    const m = /"to":"(uds:[^"]+)"|\\"arguments\\":\{\\"to\\":\\"(uds:[^"\\]+)/.exec(line), a = m && parseAddress(m[1] || m[2]); if (!a) continue;
+    n++; names.add(byAddr.get(a.key) || peerAgent(a.addr).name);
+  }
   return { n, names: [...names].slice(0, 4) };
 }
-module.exports = { parseAddress, peerId, incoming, sendState, resolve, register, peerAgent, nameBook, tailPeers, clip };
+module.exports = { parseAddress, peerId, incoming, sendState, resolve, register, peerAgent, nameBook, tailPeers, clip, label };

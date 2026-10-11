@@ -210,6 +210,7 @@
  "WAITING": "等待中",
  "Waiting for a session": "等待工作階段",
  "waiting on ": "等待 ",
+ "waiting on a command": "正在等待指令",
  "waiting on another agent": "正在等待另一個代理",
  "waiting on sub-agents": "等待子代理",
  "Web search": "網頁搜尋",

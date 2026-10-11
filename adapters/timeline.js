@@ -4,9 +4,11 @@
 //              msg {dir:'out', to|target, name, text, state, msgId} / {dir:'in', from, name, text, msgId}
 const peers = require('./peers.js');
 
-function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}, pathOf = {}, finishedIds = [], now = Date.now() }) {
+function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}, pathOf = {}, finishedIds = [], own = () => '', now = Date.now() }) {   // own(address or name): the agent of this session it belongs to, if any
   const finished = new Set(finishedIds);
-  for (const st of states) for (const e of st.raw) if (e.kind === 'agentdone') { const to = e.child || childByTool[e.toolId]; if (to && agents[to]) finished.add(to); }
+  const doneTs = {};
+  for (const st of states) for (const e of st.raw) if (e.kind === 'agentdone') { const to = e.child || childByTool[e.toolId]; if (to && agents[to]) { finished.add(to); doneTs[to] = Math.max(doneTs[to] || 0, e.ts || 0); } }
+  for (const st of states) if (doneTs[st.agent] && agents[st.agent].mtime && now - agents[st.agent].mtime <= 240000 && st.raw.some((e) => (e.ts || 0) > doneTs[st.agent])) finished.delete(st.agent);   // done once, then given more work and busy again: not finished
   let recentUntil = 0;
   for (const a of Object.values(agents)) if (a.id !== 'main' && a.type !== 'peer') { if (a.mtime && now - a.mtime <= 240000) recentUntil = Math.max(recentUntil, a.mtime + 241000); else if (a.mtime && now - a.mtime > 240000) finished.add(a.id); }   // silent for 4 min counts as finished
   const events = [], parent = {}, doneSeen = new Set(), book = peers.nameBook(states);
@@ -27,6 +29,8 @@ function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}
       else if (e.kind === 'agentcall') { const to = childByTool[e.toolId]; if (to && agents[to]) { parent[to] = e.agent; events.push({ ts: e.ts, agent: e.agent, to, kind: 'order', toolId: e.toolId, bg: !!e.bg, text: e.text || '', title: e.title || '', ...(e.atype ? { atype: e.atype } : {}) }); } }
       else if (e.kind === 'msg') {
         if (e.native) { events.push({ ts: e.ts, agent: e.agent, kind: 'msg', to: target(st, e), text: e.text || '', state: e.state || 'accepted', native: true }); return; }
+        const mine = own(e.dir === 'out' ? e.to : e.from) || own(e.name);   // a send_peer between two agents of this very session is not another session
+        if (mine) { if (e.dir === 'out' && mine !== e.agent) events.push({ ts: e.ts, agent: e.agent, kind: 'msg', to: mine, text: e.text || '', state: e.state || 'accepted', msgId: e.msgId || '' }); return; }   // its arrival is the same message, seen from the other end
         const pa = peers.peerAgent(e.dir === 'out' ? e.to : e.from, e.name, book); if (!agents[pa.id]) agents[pa.id] = pa; else if (e.name && !agents[pa.id].named) { agents[pa.id].name = e.name; agents[pa.id].named = true; }
         if (e.dir === 'out') events.push({ ts: e.ts, agent: e.agent, kind: 'msg', to: pa.id, text: e.text || '', state: e.state || 'accepted', msgId: e.msgId || '', detail: e.detail || '' });
         else events.push({ ts: e.ts, agent: pa.id, kind: 'msg', to: e.agent, text: e.text || '', state: 'received', msgId: e.msgId || '' });

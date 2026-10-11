@@ -210,6 +210,7 @@
  "WAITING": "待機中",
  "Waiting for a session": "セッションを待っています",
  "waiting on ": "待機先: ",
+ "waiting on a command": "コマンドを待機中",
  "waiting on another agent": "別のエージェントを待っています",
  "waiting on sub-agents": "サブエージェントを待機中",
  "Web search": "Web検索",

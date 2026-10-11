@@ -37,3 +37,27 @@ test('speechOf: who a message is from or for is not read (real openers from this
   assert.equal(say('From the logs, the OOM kill happened at 08:25 and the service restarted.'), 'From the logs, the OOM kill happened at 08:25 and the service restarted.');   // a sentence that starts with "From" is content
   assert.equal(say('Recorded your relayed league decisions in the gladiator-game repo.'), 'Recorded your relayed league decisions in the gladiator-game repo.');
 });
+
+// Live speech under load: the page's own freshness rule and sentence clipping
+const live = new Function(grab(/const SPK = new Set[^\n]*/) + '\n' + grab(/const STALE_MS = [\s\S]*?\n\}/) + '\n' + grab(/function clipSpeech\(t, cap\) \{[\s\S]*?\n\}/) + '\nreturn { freshPlan, clipSpeech, STALE_MS };')();
+
+test('live speech: nothing stale is read; when behind, the freshest line comes next, the most important first', () => {
+  const { freshPlan } = live, s = 1000, T = 1.79e12;
+  const evs = [{ kind: 'say', ts: T + 0 * s }, { kind: 'tools', ts: T + 2 * s }, { kind: 'say', ts: T + 5 * s }, { kind: 'msg', ts: T + 25 * s }, { kind: 'report', ts: T + 26 * s }, { kind: 'say', ts: T + 27 * s }, { kind: 'tools', ts: T + 30 * s }];
+  assert.deepEqual(freshPlan(evs, 0), { at: 4, silent: false });   // 30 s behind: skip to the fresh lines, and the report (a result) beats the message and the chatter
+  assert.deepEqual(freshPlan(evs, 5), { at: 5, silent: false });   // 3 s old: read it
+  assert.deepEqual(freshPlan(evs, 1), { at: 1, silent: false });   // not a line: nothing to decide
+  const old = [{ kind: 'say', ts: T }, { kind: 'tools', ts: T + 40 * s }];
+  assert.deepEqual(freshPlan(old, 0), { at: 0, silent: true });    // nothing fresher exists: shown, not read
+  const tie = [{ kind: 'say', ts: T }, { kind: 'say', ts: T + 20 * s }, { kind: 'say', ts: T + 21 * s }, { kind: 'tools', ts: T + 22 * s }];
+  assert.equal(freshPlan(tie, 0).at, 1);                            // same importance: the earliest fresh line
+});
+
+test('live speech: a line is never cut mid-sentence', () => {
+  const { clipSpeech } = live;
+  assert.equal(clipSpeech('Tests pass. Pushed to main. Next I review the board layout and fix the chips.', 30), 'Tests pass. Pushed to main.');
+  assert.equal(clipSpeech('The fryer family recipe and inputs are frozen now and verified against the source.', 50), 'The fryer family recipe and inputs are frozen now and verified against the source.');   // one sentence longer than the cap (up to twice it): read whole
+  const long = 'Ball revision four prepared, exact source verified, native jobs queued, ' + 'and more words follow here '.repeat(10);
+  assert.equal(clipSpeech(long, 60), 'Ball revision four prepared, exact source verified, native jobs queued.');   // a runaway sentence ends at a clause break, not mid-word
+  assert.equal(clipSpeech('Short.', 0), 'Short.');
+});

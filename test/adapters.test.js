@@ -112,3 +112,33 @@ test('hermes: the SQLite store becomes sessions, a board and a timeline with del
   assert.ok(peers.resolve('uds:/run/user/1000/cc-socks/hermes-cabd730df330409780738c20f30f3a72.sock'), 'a Hermes inbox is found through its own send_peer result rows');
   assert.equal(peers.resolve('uds:/run/user/1000/cc-socks/hermes-cabd730df330409780738c20f30f3a72.sock').id, MAIN);
 });
+
+test('names: a first prompt becomes a readable title, names are cut at a word (real prompts from this machine)', () => {
+  const t = codex.tidyTitle;
+  assert.equal(t('GPT-6-Astra ultra correction artist for a bounded already-authored Lakeshore source. You are asked'), 'Correction artist for a bounded already-authored Lakeshore source');
+  assert.equal(t('Use GPT-6-Astra at ultra/max reasoning. You are a dedicated artist for the complete Lakeshore interior'), 'Artist for the complete Lakeshore interior');
+  assert.equal(t('Dedicated MAKEUP AIR SOURCE CONTINUATION only,inheritingAstraultra. Execute /home/x/y.md'), 'Dedicated MAKEUP AIR SOURCE CONTINUATION only');
+  assert.equal(t('Tyler desk artist at inherited ultra, not director. Execute exact prepared commission /home/x'), 'Tyler desk artist, not director');
+  assert.equal(t('Continue SAME original Senior14 artist from your own history, Astra ultra inherited. Read'), 'Continue SAME original Senior14 artist from your own history');
+  assert.equal(t('Fix the login bug in auth.js'), 'Fix the login bug in auth.js');
+  assert.equal(peers.label('Research what real wounds, blunt trauma and fatigue do to a fighter', 40), 'Research what real wounds, blunt trauma…');
+  assert.equal(peers.label('short', 40), 'short');
+});
+
+test('talks to: a list_peers listing is not a message, a send_peer that echoes its target is one (real rollout lines)', () => {
+  const listing = '{"type":"event_msg","payload":{"type":"item_completed","item":{"type":"McpToolCall","server":"agent-peers","tool":"list_peers","arguments":{},"result":{"content":[{"type":"text","text":"claude:x  busy\\n  bridge: send_peer {\\"to\\":\\"uds:/run/user/1000/cc-socks/20178.sock\\"}"}],"structuredContent":{"peers":[{"to":"uds:/run/user/1000/cc-socks/20178.sock"}]}}}}}';
+  const send = '{"type":"event_msg","payload":{"type":"item_completed","item":{"type":"McpToolCall","server":"agent-peers","tool":"send_peer","arguments":{"to":"uds:/run/user/1000/cc-socks/1095048.sock","message":"hi"},"result":{"structuredContent":{"message_id":"bf","to":"uds:/run/user/1000/cc-socks/1095048.sock","name":"claude:standup-finish"}}}}}';
+  const hermesListing = 'You are hermes:gaming:cb050161.\nclaude:x  busy\n  bridge: send_peer {"to":"uds:/run/user/1000/cc-socks/20178.sock"}';
+  assert.equal(peers.tailPeers(listing + '\n' + hermesListing).n, 0);
+  assert.equal(peers.tailPeers(listing + '\n' + send).n, 1);
+});
+
+test('a send_peer between two agents of the same session stays inside it (not "another session")', () => {
+  const { assemble } = require('../adapters/timeline.js');
+  const agents = { main: { id: 'main', name: 'Codex' }, kid: { id: 'kid', name: 'fryer' } };
+  const states = [{ agent: 'kid', raw: [{ ts: 1, agent: 'kid', kind: 'msg', dir: 'out', to: 'codex:build-act-2-environments-3be2', text: 'released' }] }, { agent: 'main', raw: [{ ts: 2, agent: 'main', kind: 'msg', dir: 'in', from: 'uds:/x/codex-a6d06580b5d53be2.sock', name: 'codex:fryer', text: 'released' }] }];
+  const own = (x) => (/3be2$|codex-a6d06580b5d53be2/.test(String(x)) ? 'main' : '');
+  const tl = assemble({ id: 's', proj: '_codex', agents, states, own });
+  assert.deepEqual(tl.events.filter((e) => e.kind === 'msg').map((e) => [e.agent, e.to]), [['kid', 'main']]);
+  assert.equal(tl.agents.filter((a) => a.type === 'peer').length, 0);
+});
