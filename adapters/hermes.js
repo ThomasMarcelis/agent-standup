@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const peers = require('./peers.js');
+const project = require('./project.js');
 const { assemble } = require('./timeline.js');
 
 const clip = peers.clip, SAFE = /^[\w.-]+$/;
@@ -42,8 +43,10 @@ const profileOf = (proj) => profiles().find((p) => p.proj === proj) || null;
 const dbOf = (proj) => { const p = profileOf(proj); return p ? open(p.db) : null; };
 
 // ---- sessions
-const COLS = 'id, source, title, started_at, ended_at, end_reason, last_activity_at, model, parent_session_id, display_name, cwd, message_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens';
-const COLS0 = COLS.replace('last_activity_at', 'null as last_activity_at').replace('display_name', 'null as display_name');
+const COLS = 'id, source, title, started_at, ended_at, end_reason, last_activity_at, model, parent_session_id, display_name, cwd, message_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, chat_id, thread_id';
+const COLS0 = COLS.replace('last_activity_at', 'null as last_activity_at').replace('display_name', 'null as display_name').replace('chat_id, thread_id', 'null as chat_id, null as thread_id');
+// The project a Hermes session belongs to: the Discord thread it runs in (profile + thread), the repo of its folder for command-line runs, or the profile.
+const groupOf = (p, s) => (s.thread_id || s.chat_id ? project.hermesGroup(p.name, s.thread_id || s.chat_id, s.title || (s.display_name ? String(s.display_name).split(' / ').pop() : '')) : s.cwd ? project.groupOf(s.cwd) : project.hermesGroup(p.name));   // the thread, named by the conversation's title
 const NOT_KIDS = "source not in ('subagent', 'healthcheck')";
 const recent = (db, since, limit) => tryq(db, [
   `select ${COLS} from sessions where hidden=0 and ${NOT_KIDS} and coalesce(last_activity_at, started_at) > ? order by coalesce(last_activity_at, started_at) desc limit ?`,
@@ -70,8 +73,8 @@ function list(limit = 60) {
   const out = [];
   for (const p of profiles()) {
     const db = open(p.db); if (!db) continue;
-    let rows = []; try { rows = recent(db, Date.now() / 1000 - 30 * 86400, limit); } catch { continue; }
-    for (const s of rows) { let kids = 0; try { kids = children(db, s.id).length; } catch {} out.push({ proj: p.proj, id: s.id, mtime: mtimeOf(s), size: s.message_count || 0, agents: kids, title: titleOf(db, s), project: projectOf(s), source: 'hermes' }); }
+    let rows = []; try { rows = recent(db, Date.now() / 1000 - 30 * 86400, limit); } catch (e) { if (process.env.AGENT_STANDUP_DEBUG) console.error('hermes list', p.name, e.message); continue; }
+    for (const s of rows) { let kids = 0; try { kids = children(db, s.id).length; } catch {} out.push({ proj: p.proj, id: s.id, mtime: mtimeOf(s), size: s.message_count || 0, agents: kids, title: titleOf(db, s), project: projectOf(s), group: groupOf(p, s), source: 'hermes' }); }
   }
   return out;
 }
@@ -154,14 +157,14 @@ function usageOf(db, s, agent) {   // Hermes keeps totals per session and model 
 }
 function timeline(proj, id) {
   const db = dbOf(proj), s = db && SAFE.test(id) ? one(db, id) : null; if (!s) throw new Error('session not found');
-  const agents = { main: { id: 'main', role: 'Lead', type: 'main', name: 'Hermes' } }, states = [], kids = children(db, id);
+  const p = profileOf(proj), agents = { main: { id: 'main', role: 'Lead', type: 'main', name: 'Hermes' } }, states = [], kids = children(db, id);
   const st = parseSession(db, s, 'main', kids); states.push(st);
   for (const k of kids) {
     agents[k.id] = { id: k.id, role: clip(titleOf(db, k), 60), type: 'subagent', mtime: mtimeOf(k) };
     const ks = parseSession(db, k, k.id, []); states.push(ks);
     if (k.ended_at) st.raw.push({ ts: mtimeOf(k), agent: 'main', kind: 'agentdone', child: k.id });
   }
-  return assemble({ id, proj, agents, states, childByTool: st.childByTool });
+  return { ...assemble({ id, proj, agents, states, childByTool: st.childByTool }), group: groupOf(p, s), title: titleOf(db, s) };
 }
 
 // ---- board, liveness, cache keys
@@ -170,7 +173,7 @@ function board(now = Date.now()) {
   for (const p of profiles()) {
     const db = open(p.db); if (!db) continue;
     let rows = []; try { rows = recent(db, now / 1000 - 12 * 3600, 40); } catch { continue; }
-    for (const s of rows) { try { out.push(boardRow(db, p, s, now)); } catch {} }
+    for (const s of rows) { try { out.push(boardRow(db, p, s, now)); } catch (e) { if (process.env.AGENT_STANDUP_DEBUG) console.error('hermes board', s.id, e.message); } }
   }
   return out;
 }
@@ -178,16 +181,16 @@ function boardRow(db, p, s, now) {
   let kids = []; try { kids = children(db, s.id); } catch {}
   let tail = []; try { tail = q(db, `select ${ROWS} from messages where session_id=? order by id desc limit 24`, s.id).reverse(); } catch {}
   const last = tail[tail.length - 1], mtime = Math.max(mtimeOf(s), last ? Math.round(last.timestamp * 1000) : 0), age = now - mtime;
-  let state = 'idle', tool = '', ageMs = age; const seen = peers.tailPeers(tail.map((r) => (r.content || '') + ' ' + (r.tool_calls || '')).join('\n'));
+  let state = 'idle', tool = '', arg = '', ageMs = age; const seen = peers.tailPeers(tail.map((r) => (r.content || '') + ' ' + (r.tool_calls || '')).join('\n'));
   if (age < 30 * 60e3 && !s.ended_at) {
-    const pend = new Map();
-    for (const r of tail) { if (r.role === 'assistant') for (const c of calls(r)) pend.set(c.key, { name: c.name, ts: r.timestamp * 1000 }); else if (r.role === 'tool') { pend.delete(r.tool_call_id + '|' + (r.tool_name || '')); for (const k of [...pend.keys()]) if (k.startsWith(r.tool_call_id + '|') && !r.tool_name) pend.delete(k); } }
+    const pend = new Map(); let lastCall = null;
+    for (const r of tail) { if (r.role === 'assistant') for (const c of calls(r)) pend.set(c.key, (lastCall = { name: c.name, ts: r.timestamp * 1000, arg: label(c.name, c.args, 0, '').arg })); else if (r.role === 'tool') { pend.delete(r.tool_call_id + '|' + (r.tool_name || '')); for (const k of [...pend.keys()]) if (k.startsWith(r.tool_call_id + '|') && !r.tool_name) pend.delete(k); } }
     const lp = [...pend.values()].pop();
-    if (lp) { tool = lp.name; ageMs = now - lp.ts; state = lp.name === 'delegate_task' ? 'waiting' : lp.name === 'clarify' && ageMs > 4000 ? 'blocked' : 'working'; }
+    if (lp) { tool = lp.name; arg = lp.arg || ''; ageMs = now - lp.ts; state = lp.name === 'delegate_task' ? 'waiting' : lp.name === 'clarify' && ageMs > 4000 ? 'blocked' : 'working'; }
     else if (last && last.role === 'assistant' && last.finish_reason === 'stop') state = 'turn';
-    else state = age < 10 * 60e3 ? 'working' : 'idle';
+    else { state = age < 10 * 60e3 ? 'working' : 'idle'; if (state === 'working' && lastCall) { tool = lastCall.name; arg = lastCall.arg || ''; } }   // between two calls: the last thing it ran
   }
-  return { proj: p.proj, id: s.id, title: titleOf(db, s), mtime, state, tool, ageMs, subActive: kids.filter((k) => !k.ended_at).length, subTotal: kids.length, source: 'hermes', project: projectOf(s), peers: seen.names, msgs: seen.n, oneshot: /^(cron|webhook|healthcheck|tool)$/.test(s.source || '') };
+  return { proj: p.proj, id: s.id, title: titleOf(db, s), mtime, state, tool, arg, ageMs, subActive: kids.filter((k) => !k.ended_at).length, subTotal: kids.length, source: 'hermes', project: projectOf(s), group: groupOf(p, s), peers: seen.names, msgs: seen.n, oneshot: /^(cron|webhook|healthcheck|tool)$/.test(s.source || '') };
 }
 const exists = (proj, id) => { const db = dbOf(proj); if (!db || !SAFE.test(id)) return false; try { return !!one(db, id); } catch { return false; } };
 function mtime(proj, id) {
@@ -209,7 +212,7 @@ function addressMap() {
   const map = new Map();
   for (const p of profiles()) {
     const db = open(p.db); if (!db) continue; let rows = []; try { rows = recent(db, Date.now() / 1000 - 30 * 86400, 80); } catch { continue; }
-    for (const s of rows) { let rs = []; try { rs = q(db, "select content from messages where session_id=? and role='tool' and tool_name='send_peer'", s.id); } catch {} for (const r of rs) { const m = /hermes-([0-9a-f]{32})\.sock/.exec(r.content || ''); if (m) map.set('hermes-' + m[1], { source: 'hermes', proj: p.proj, id: s.id, name: 'hermes:' + p.name + ':' + s.id.slice(-8), cwd: projectOf(s) }); } }
+    for (const s of rows) { let rs = []; try { rs = q(db, "select content from messages where session_id=? and role='tool' and tool_name='send_peer'", s.id); } catch {} for (const r of rs) { const m = /hermes-([0-9a-f]{32})\.sock/.exec(r.content || ''); if (m) map.set('hermes-' + m[1], { source: 'hermes', proj: p.proj, id: s.id, name: 'hermes:' + p.name + ':' + s.id.slice(-8), cwd: projectOf(s), group: groupOf(p, s) }); } }
   }
   addrMemo = { at: Date.now(), map }; return map;
 }

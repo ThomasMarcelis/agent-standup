@@ -16,7 +16,7 @@ const ROOT = process.env.AGENT_STANDUP_PROJECTS || path.join(process.env.CLAUDE_
 const PUBLIC = path.join(__dirname, 'public');
 // Other agent tools: one small adapter each, turning its own store into the same sessions, board rows and timeline (see adapters/). The
 // proj value the page already passes around picks the source: "_codex" and "_hermes[-profile]" are reserved like "_demo"; anything else is Claude Code.
-const codex = require('./adapters/codex.js'), hermes = require('./adapters/hermes.js'), peers = require('./adapters/peers.js');
+const codex = require('./adapters/codex.js'), hermes = require('./adapters/hermes.js'), peers = require('./adapters/peers.js'), project = require('./adapters/project.js');
 const SOURCES = [codex, hermes], sourceOf = (proj) => (proj === '_codex' ? codex : /^_hermes(-|$)/.test(proj) ? hermes : null);
 
 const blocks = (rec) => {
@@ -109,8 +109,8 @@ function listSessions0() {
   const top = rows.slice(0, 60);
   for (const r of top) {   // titles come from the cached tail read (custom title, then AI title, then first prompt): no whole-file reads
     if (r.source) continue;
-    let t = null; try { const f = path.join(ROOT, r.proj, r.id + '.jsonl'); t = parseTail(f, fs.statSync(f)).title; } catch {}
-    r.title = t || r.id; r.project = r.proj.replace(/^-Users-[^-]+-/, '').replace(/-/g, '/'); r.source = 'claude';
+    let t = null, cwd = ''; try { const f = path.join(ROOT, r.proj, r.id + '.jsonl'), p = parseTail(f, fs.statSync(f)); t = p.title; cwd = p.cwd; } catch {}
+    r.title = t || r.id; r.project = r.proj.replace(/^-Users-[^-]+-/, '').replace(/-/g, '/'); r.source = 'claude'; r.group = project.groupOf(cwd);
   }
   return top;
 }
@@ -157,12 +157,12 @@ let boardMemo = { at: 0, rows: [] };
 function parseTail(file, st) {
   const sig = st.mtimeMs + ':' + st.size, hit = boardCache.get(file); if (hit && hit.sig === sig) return hit;
   const { text, cut } = readTail(file, 192 * 1024), lines = text.split('\n'); if (cut) lines.shift();
-  const pend = new Map(); let lastType = null, lastTool = false, lastTs = 0;
+  const pend = new Map(); let lastType = null, lastTool = false, lastTs = 0, lastCall = null;
   for (const l of lines) {
     if (!l) continue; let r; try { r = JSON.parse(l); } catch { continue; }
     const t = Date.parse(r.timestamp) || 0, bl = blocks(r);
     if (r.type === 'assistant' || r.type === 'user') { lastType = r.type; lastTool = bl.some((b) => b.type === 'tool_use'); if (t) lastTs = t; }
-    for (const b of bl) { if (b.type === 'tool_use') pend.set(b.id, { name: b.name, ts: t }); else if (b.type === 'tool_result') pend.delete(b.tool_use_id); }
+    for (const b of bl) { if (b.type === 'tool_use') pend.set(b.id, (lastCall = { name: b.name, ts: t, arg: toolLabel(b, t).arg })); else if (b.type === 'tool_result') pend.delete(b.tool_use_id); }
   }
   let title = hit && hit.title, tried = hit && hit.tried;
   if (!title && !tried) {
@@ -171,7 +171,8 @@ function parseTail(file, st) {
     if (!title) { const hd = readHead(file, 64 * 1024), u2 = hd.match(/"type":"user"[\s\S]{0,3000}?"type":"text","text":"(?!<)((?:[^"\\]|\\.)*)"/); if (u2) { try { title = JSON.parse('"' + u2[1] + '"').replace(/\s+/g, ' ').slice(0, 90); } catch {} } }
     if (!title) { const u = readHead(file, 64 * 1024).match(/"role":"user","content":"((?:[^"\\]|\\.)*)"/); if (u) { try { title = JSON.parse('"' + u[1] + '"').replace(/\s+/g, ' ').slice(0, 90); } catch {} } }
   }
-  const out = { sig, title: title || null, tried: true, lastType, lastTool, lastTs, pending: [...pend.values()], talks: peers.tailPeers(text) };   // talks: the peers messaged in this tail
+  const cwd = (hit && hit.cwd) || ((/"cwd":"((?:[^"\\]|\\.)*)"/.exec(text) || [])[1] || '');   // the folder the session runs in: its project
+  const out = { sig, title: title || null, tried: true, lastType, lastTool, lastTs, pending: [...pend.values()], lastCall, talks: peers.tailPeers(text), cwd };   // talks: the peers messaged in this tail
   boardCache.set(file, out); if (boardCache.size > 200) boardCache.delete(boardCache.keys().next().value); return out;
 }
 function boardRows() {
@@ -193,16 +194,22 @@ function boardRows0() {
       if (lp) { ageMs = now - (lp.ts || st.mtimeMs); tool = lp.name;
         state = SUBTOOL.test(lp.name) ? 'waiting' : (ASKS.test(lp.name) && ageMs > 4000) || (APPROVAL.test(lp.name) && ageMs > 15000) ? 'blocked' : 'working'; }
       else if (p.lastType === 'assistant' && !p.lastTool) state = 'turn';
-      else state = age < 10 * 60e3 ? 'working' : 'idle';
+      else { state = age < 10 * 60e3 ? 'working' : 'idle'; if (state === 'working' && p.lastCall) tool = p.lastCall.name; }   // between two calls: the last thing it ran
     }
     let subActive = 0, subTotal = 0; const sd = path.join(ROOT, proj, id, 'subagents');
     try { for (const x of fs.readdirSync(sd)) if (x.endsWith('.jsonl')) { subTotal++; if (now - fs.statSync(path.join(sd, x)).mtimeMs < 90e3) subActive++; } } catch {}
-    return { proj, id, title: p.title || id, mtime: st.mtimeMs, state, tool, ageMs, subActive, subTotal, source: 'claude', peers: (p.talks || {}).names || [], msgs: (p.talks || {}).n || 0 };
-  })).sort((a, b) => boardRank(a) - boardRank(b) || b.mtime - a.mtime).slice(0, BOARD_MAX);
+    return { proj, id, title: p.title || id, mtime: st.mtimeMs, state, tool, arg: lp ? lp.arg || '' : tool && p.lastCall ? p.lastCall.arg || '' : '', ageMs, subActive, subTotal, source: 'claude', peers: (p.talks || {}).names || [], msgs: (p.talks || {}).n || 0, group: project.groupOf(p.cwd) };
+  })).map((r) => (r.oneshot && r.state === 'turn' ? { ...r, state: 'done' } : r)).sort((a, b) => boardRank(a) - boardRank(b) || b.mtime - a.mtime).slice(0, BOARD_MAX);   // a one-shot that answered is done, not "your turn": nobody is waiting for the human there
+}
+// The board with its placement check: every row derives its project from its own log (a git root from the cwd, a Hermes thread); a session the
+// server could not place has no group. `npm run check:placement` fails when a busy one is unplaced.
+function placement() {
+  const rows = boardRows(), unplacedRows = rows.filter((r) => !r.group), busy = unplacedRows.filter((r) => /^(working|waiting|blocked)$/.test(r.state));
+  return { rows, unplaced: unplacedRows.length, busyUnplaced: busy.map((r) => ({ source: r.source, proj: r.proj, id: r.id, state: r.state, title: r.title })), groups: new Set(rows.filter((r) => r.group && !r.group.other).map((r) => r.group.key)).size };
 }
 // What the board keeps when there are more sessions than rows: whoever needs the human, then whoever is busy, then finished turns, then idle;
 // a scheduled job (Hermes cron) or a finished one-shot run ranks behind a conversation in the same state, so they never crowd out the live ones.
-const BOARD_MAX = 60, RANK = { blocked: 0, stalled: 0, working: 1, waiting: 1, turn: 2, idle: 3 };
+const BOARD_MAX = 60, RANK = { blocked: 0, stalled: 0, working: 1, waiting: 1, turn: 2, done: 3, idle: 3 };
 const boardRank = (r) => (RANK[r.state] == null ? 3 : RANK[r.state]) * 2 + (r.oneshot && r.state !== 'working' && r.state !== 'waiting' ? 1 : 0);
 // Settings live in a file, not only in the page's localStorage: the port changes between VS Code windows and reloads, and localStorage is per origin (port included).
 const PREFS = process.env.AGENT_STANDUP_PREFS || (process.platform === 'win32' ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'agent-standup', 'prefs.json') : path.join(os.homedir(), '.config', 'agent-standup', 'prefs.json'));
@@ -361,7 +368,8 @@ function buildTimeline(proj, id) {
     else { merged.push(e.kind === 'tool' ? { ts: e.ts, agent: e.agent, kind: 'tools', tools: [e.tool] } : e); lastReal = merged.length - 1; }
   }
   const real = merged.find((e) => e.kind !== 'usage' && e.kind !== 'finish' && e.kind !== 'compact'), first = real ? real.ts : 0, last = merged.length ? merged[merged.length - 1].ts : 0;   // time zero = the first thing said or done
-  return { id, proj, agents: Object.values(agents), events: merged.map((e) => ({ ...e, t: Math.max(0, e.ts - first) })), durationMs: last - first, recentUntil };
+  let tail = {}; try { tail = parseTail(mainFile, fs.statSync(mainFile)); } catch {}
+  return { id, proj, agents: Object.values(agents), events: merged.map((e) => ({ ...e, t: Math.max(0, e.ts - first) })), durationMs: last - first, recentUntil, group: project.groupOf(tail.cwd), title: tail.title || '' };
 }
 
 // Ask the local `claude` CLI (uses the user's existing login) to map a JSON array of strings to another array. Cached.
@@ -630,7 +638,7 @@ function start(port = PORT) {
     if (url.pathname === '/api/prefs' && req.method === 'PUT') return readBody((body) => { try { const v = JSON.parse(body); if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('prefs must be an object'); writePrefs(v); json({ ok: true }); } catch (e) { json({ error: String(e.message || e) }, 400); } });
     if (url.pathname === '/api/prefs') return json(readPrefs() || {});
     if (url.pathname === '/api/current') return json(currentSession(url.searchParams.get('proj') || '', url.searchParams.get('id') || '', { proj: url.searchParams.get('sproj') || '', id: url.searchParams.get('sid') || '' }));
-    if (url.pathname === '/api/board') return json(boardRows());
+    if (url.pathname === '/api/board') return json(url.searchParams.get('meta') ? placement() : boardRows());
     if (url.pathname === '/api/characters') return json(listCharacters());
     if (url.pathname === '/api/media') {
       const q = (k) => url.searchParams.get(k) || '', SAFE = /^[\w.\-]+$/, n = +q('n') || 0, bad = [q('proj'), q('id'), q('agent'), q('tool')].some((v) => !SAFE.test(v) || v === '..' || v.length > 200);
@@ -652,7 +660,7 @@ function start(port = PORT) {
         res.writeHead(200, { 'content-type': 'application/json', ...(gz ? { 'content-encoding': 'gzip' } : {}), vary: 'accept-encoding' });
         return res.end(gz ? entry.gz : entry.json);
       }
-      return json({ id: tl.id, agents: tl.agents, total: tl.events.length, rev: entry.rev, events: tl.events.slice(+after), last: +after > 0 ? tl.events[+after - 1] : null });   // last: the event before `after` as it is now, in case the beat grew
+      return json({ id: tl.id, agents: tl.agents, group: tl.group, title: tl.title, total: tl.events.length, rev: entry.rev, events: tl.events.slice(+after), last: +after > 0 ? tl.events[+after - 1] : null });   // last: the event before `after` as it is now, in case the beat grew
     }
     if (url.pathname.startsWith('/characters/')) {   // only plain image files of the characters folder, by exact name
       let f = ''; try { f = decodeURIComponent(url.pathname.slice('/characters/'.length)); } catch {}
@@ -668,7 +676,7 @@ function start(port = PORT) {
   } catch (e) { if (res.headersSent) return res.destroy(); json({ error: String(e.message || e) }, 500); }
   }).listen(port, '127.0.0.1', function () { console.log(`Agent Standup → http://localhost:${this.address().port}`); });
 }
-module.exports = { start, currentSession, shutdown, findClaude, bundledClaude, boardRows, charactersDir, listCharacters };
+module.exports = { start, currentSession, shutdown, findClaude, bundledClaude, boardRows, placement, charactersDir, listCharacters };
 if (require.main === module) {
   start().on('error', (e) => {
     console.error(e.code === 'EADDRINUSE' ? `Port ${PORT} is already in use (maybe Agent Standup is already running, e.g. inside VS Code). Try: PORT=4790 node server.js` : String(e));

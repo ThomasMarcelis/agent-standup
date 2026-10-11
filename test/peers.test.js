@@ -36,7 +36,7 @@ test('peer messages of a Claude Code session: edges in and out, states, peers as
     const msgs = tl.events.filter((e) => e.kind === 'msg'); assert.equal(msgs.length, 4);
     const [inn, out, nat, bad] = msgs;
     assert.deepEqual([inn.to, inn.state, inn.msgId, inn.text], ['main', 'received', 'f4fc7b29-bc08-46c4-8245-3614c17977af', 'Scope update from Tom.']);
-    const hermes = tl.agents.find((a) => a.id === inn.agent); assert.deepEqual([hermes.type, hermes.name, hermes.role, hermes.link], ['peer', 'hermes:gaming:cb050161', 'Hermes', null]);
+    const hermes = tl.agents.find((a) => a.id === inn.agent); assert.deepEqual([hermes.type, hermes.name, hermes.role, hermes.link, hermes.group], ['peer', 'hermes:gaming:cb050161', 'Hermes · gaming', null, { key: 'hermes:gaming', name: 'Hermes · gaming', hermes: true }]);   // the profile is in the name even when the conversation is not on this machine
     assert.deepEqual([out.agent, out.state, out.msgId, out.text, out.ts], ['main', 'accepted', '77498bf7-df71-4867-b2fb-100349758a96', 'Fable here. Plan + findings; please challenge.', Date.parse(t('02:01.000'))]);   // dated by the result, so the event never changes once sent
     const codex = tl.agents.find((a) => a.id === out.to); assert.deepEqual([codex.type, codex.name, codex.role], ['peer', 'codex-9f73ec26c5009ae5', 'Codex']);
     assert.deepEqual([nat.agent, nat.to, nat.native, nat.state], ['main', 'a1685c1dd9cf8f419', true, 'accepted']);   // to this session's own background agent: no peer tile
@@ -46,7 +46,7 @@ test('peer messages of a Claude Code session: edges in and out, states, peers as
     assert.equal(tl.agents.filter((a) => a.type === 'peer').length, 3);
     const after = await get(port, '/api/session?proj=-home-user-proj&id=s1&after=' + (tl.events.length - 1)); assert.equal(after.rev, 1); assert.equal(after.events.length, 1);
     const rows = await get(port, '/api/sessions'); assert.deepEqual(rows.map((r) => [r.source, r.id]), [['claude', 's1']]);
-    const board = await get(port, '/api/board'); assert.equal(board.length, 1); assert.equal(board[0].source, 'claude'); assert.equal(board[0].msgs, 3); assert.deepEqual(board[0].peers, ['hermes:gaming:cb050161', 'codex-9f73ec26c5009ae5', 'claude pid 999999']);   // messages with other sessions, from the tail of the transcript
+    const board = await get(port, '/api/board'); assert.equal(board.length, 1); assert.equal(board[0].source, 'claude'); assert.equal(board[0].msgs, 3); assert.deepEqual(board[0].peers, ['hermes:gaming:cb050161', 'codex-9f73ec26c5009ae5', 'Claude Code 999999']);   // messages with other sessions, from the tail of the transcript; a dead pid is named by its runtime
     assert.equal((await get(port, '/api/session?proj=_codex&id=01a129a4-0000-7000-8000-000000000000')).error, 'session not found');
     assert.equal((await get(port, '/api/session?proj=_hermes-gaming&id=x')).error, 'session not found');
   } finally { srv.close(); require('../server.js').shutdown(); }

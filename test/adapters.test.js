@@ -36,7 +36,8 @@ test('codex: rollouts become sessions, a board and a timeline with sub-agents, c
   assert.ok(codex.stamp('_codex', PARENT) > 0 && codex.mtime('_codex', PARENT) > 0);
   const tl = codex.timeline('_codex', PARENT), kinds = {}; for (const e of tl.events) kinds[e.kind] = (kinds[e.kind] || 0) + 1;
   assert.equal(tl.agents.find((a) => a.id === 'main').name, 'Codex');
-  const child = tl.agents.find((a) => a.id === CHILD); assert.ok(child); assert.equal(child.role, 'Socrates · /root/oom_timeline');
+  const child = tl.agents.find((a) => a.id === CHILD); assert.ok(child); assert.deepEqual([child.name, child.role], ['Socrates', '/root/oom_timeline']);   // the real agent name, its path as the role
+  assert.deepEqual(tl.group, { key: '_other', name: 'user', other: true });   // the fixture's cwd (/home/user) is no repository on this machine
   const order = tl.events.find((e) => e.kind === 'order'); assert.deepEqual([order.agent, order.to, order.title], ['main', CHILD, 'oom_timeline']);
   assert.ok(tl.events.some((e) => e.kind === 'finish' && e.agent === CHILD), 'SubAgentActivity completed → finish');
   assert.ok(tl.events.some((e) => e.kind === 'report' && e.agent === CHILD && /OOM kill/.test(e.text)), 'the child\'s last message is its report');
@@ -44,8 +45,13 @@ test('codex: rollouts become sessions, a board and a timeline with sub-agents, c
   const cmd = tools.find((t) => t.d.kind === 'cmd'); assert.match(cmd.d.text, /^pwd; date/); assert.equal(cmd.name, 'exec_command');   // the shell command inside the exec script, not the JavaScript
   const res = tl.events.filter((e) => e.kind === 'results').flatMap((e) => e.items).find((it) => it.id === cmd.id); assert.match(res.out, /^\$ pwd; date[\s\S]*\n\/home\/user/);
   assert.ok(tools.some((t) => t.name === 'send_message' || t.name === 'wait_agent') === false, 'collaboration calls are edges or waits, not shown as tools when they are messages');
-  const native = tl.events.filter((e) => e.kind === 'msg' && e.native); assert.ok(native.length >= 2); assert.ok(native.every((e) => e.text === '' && (e.to === CHILD || e.agent === CHILD || e.to === 'x_oom_controls')));   // bodies stay encrypted; the second agent's rollout is not in the fixture, so it is a placeholder
+  const native = tl.events.filter((e) => e.kind === 'msg' && e.native); assert.ok(native.length >= 2); assert.ok(native.every((e) => e.to === CHILD || e.agent === CHILD || e.to === 'x_oom_controls'));   // the second agent's rollout is not in the fixture, so it is a placeholder
   assert.ok(native.some((e) => e.to === CHILD) && native.some((e) => e.agent === CHILD && e.to === 'main')); assert.equal(tl.agents.find((a) => a.id === 'x_oom_controls').type, 'peer');
+  // the bodies are encrypted: every edge still gets a readable summary (the verb, target and count, or the child's own words) and a note, never the ciphertext
+  assert.ok(native.every((e) => e.text && e.note === 'body not readable (Codex encrypts it)' && !/gAAAAA/.test(e.text)));
+  assert.match(native.find((e) => e.to === CHILD).text, /^message to Socrates \(#1\)$/); assert.match(native.find((e) => e.to === 'x_oom_controls').text, /^message to oom_controls \(#1\)$/);
+  const fromChild = native.find((e) => e.agent === CHILD && e.to === 'main'); assert.ok(/^(Journal evidence|message to Codex)/.test(fromChild.text), fromChild.text);   // its report, when the message is its last word
+  assert.deepEqual([order.text, order.note], ['task "oom_timeline" (default)', 'body not readable (Codex encrypts it)']);
   const { assemble } = require('../adapters/timeline.js');   // a nested agent's relative target resolves against its own path; an agent outside the files still gets an edge
   const deep = assemble({ id: 'x', proj: '_codex', agents: { main: { id: 'main', role: 'Lead', type: 'main' }, k: { id: 'k', role: '/root/kitchen', type: 'worker' }, p: { id: 'p', role: '/root/kitchen/pizza', type: 'worker' } }, childByPath: { '/root': 'main', '/root/kitchen': 'k', '/root/kitchen/pizza': 'p' }, pathOf: { main: '/root', k: '/root/kitchen', p: '/root/kitchen/pizza' },
     states: [{ agent: 'k', raw: [{ ts: 1, agent: 'k', kind: 'msg', native: true, target: 'pizza', text: '' }, { ts: 2, agent: 'k', kind: 'msg', native: true, target: '/root', text: '' }, { ts: 3, agent: 'k', kind: 'msg', native: true, target: 'ghost', text: '' }] }, { agent: 'p', raw: [{ ts: 4, agent: 'p', kind: 'msg', native: true, target: 'kitchen', text: '' }] }] });
@@ -62,13 +68,13 @@ test('codex: rollouts become sessions, a board and a timeline with sub-agents, c
 test('hermes: the SQLite store becomes sessions, a board and a timeline with delegations, tools and peer messages', () => {
   const f = JSON.parse(fs.readFileSync(fix('hermes-rows.json'), 'utf8')), dir = path.join(tmp, 'hermes', 'profiles', 'gaming'); fs.mkdirSync(dir, { recursive: true });
   const { DatabaseSync } = require('node:sqlite'), db = new DatabaseSync(path.join(dir, 'state.db'));
-  db.exec(`create table sessions (id text primary key, source text, title text, started_at real, ended_at real, end_reason text, last_activity_at real, model text, parent_session_id text, display_name text, cwd text, message_count integer default 0, input_tokens integer default 0, output_tokens integer default 0, cache_read_tokens integer default 0, cache_write_tokens integer default 0, hidden integer default 0);
+  db.exec(`create table sessions (id text primary key, source text, title text, started_at real, ended_at real, end_reason text, last_activity_at real, model text, parent_session_id text, display_name text, cwd text, message_count integer default 0, input_tokens integer default 0, output_tokens integer default 0, cache_read_tokens integer default 0, cache_write_tokens integer default 0, hidden integer default 0, chat_id text, thread_id text);
     create table messages (id integer primary key, session_id text, role text, content text, tool_call_id text, tool_calls text, tool_name text, timestamp real, display_kind text, finish_reason text, platform_message_id text, active integer default 1, compacted integer default 0);
     create table session_model_usage (session_id text, model text, task text default '', input_tokens integer, output_tokens integer, cache_read_tokens integer, cache_write_tokens integer);`);
   const main = f.sessions.find((s) => s.source !== 'subagent'), kids = f.sessions.filter((s) => s.source === 'subagent'), MAIN = main.id, K = kids[0].id;
   const shift = Date.now() / 1000 - Math.max(...f.messages.map((m) => m.timestamp));   // the real rows are days old: slide them to now so the board sees them
-  const ins = db.prepare('insert into sessions (id, source, title, started_at, ended_at, end_reason, last_activity_at, model, parent_session_id, display_name, cwd, message_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
-  for (const s of f.sessions) ins.run(s.id, s.source, s.title, s.started_at + shift, s.ended_at == null ? null : s.ended_at + shift, s.end_reason, s.last_activity_at == null ? null : s.last_activity_at + shift, s.model, s.parent_session_id, s.display_name, s.cwd, s.message_count, s.input_tokens, s.output_tokens, s.cache_read_tokens, s.cache_write_tokens);
+  const ins = db.prepare('insert into sessions (id, source, title, started_at, ended_at, end_reason, last_activity_at, model, parent_session_id, display_name, cwd, message_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, chat_id, thread_id) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+  for (const s of f.sessions) ins.run(s.id, s.source, s.title, s.started_at + shift, s.ended_at == null ? null : s.ended_at + shift, s.end_reason, s.last_activity_at == null ? null : s.last_activity_at + shift, s.model, s.parent_session_id, s.display_name, s.cwd, s.message_count, s.input_tokens, s.output_tokens, s.cache_read_tokens, s.cache_write_tokens, s.source === 'discord' ? '155598' : null, s.source === 'discord' ? '155598' : null);   // a Discord thread id on the conversation
   const im = db.prepare('insert into messages (id, session_id, role, content, tool_call_id, tool_calls, tool_name, timestamp, display_kind, finish_reason, platform_message_id, active, compacted) values (?,?,?,?,?,?,?,?,?,?,?,?,?)');
   for (const m of f.messages) im.run(m.id, m.session_id, m.role, m.content, m.tool_call_id, m.tool_calls, m.tool_name, m.timestamp + shift, m.display_kind, m.finish_reason, m.platform_message_id, m.active, m.compacted);
   const firstPrompt = f.messages.find((m) => m.session_id === K && m.role === 'user').content.replace(/^\[[^\]]+\]\s*/, '');   // a child's first user row is its task's goal
@@ -87,7 +93,9 @@ test('hermes: the SQLite store becomes sessions, a board and a timeline with del
   const b = hermes.board(); assert.equal(b.length, 1); assert.equal(b[0].state, 'blocked'); assert.equal(b[0].tool, 'clarify'); assert.ok(b[0].peers.includes('gladiator-game-c3'));
   assert.ok(hermes.exists('_hermes-gaming', MAIN) && !hermes.exists('_hermes-gaming', 'nope') && !hermes.exists('_hermes', MAIN));
   const tl = hermes.timeline('_hermes-gaming', MAIN);
-  assert.ok(tl.agents.some((a) => a.id === K && a.type === 'subagent' && /^Research what real wounds/.test(a.role)));   // a child's task is its first user row
+  assert.deepEqual(tl.group, { key: 'hermes:gaming:155598', name: 'Hermes · gaming · ' + main.title.slice(0, 48), hermes: true });   // the project of a Hermes conversation: its profile and Discord thread, named by its title
+  assert.deepEqual(rows[0].group, tl.group); assert.equal(b[0].group.key, tl.group.key);
+  assert.ok(tl.agents.some((a) => a.id === K && a.type === 'subagent' && /^Research what real wounds/.test(a.role)));   // a child's task is its first user row, under its parent's thread
   const orders = tl.events.filter((e) => e.kind === 'order'); assert.equal(orders.length, 1); assert.equal(orders[0].to, K); assert.equal(orders[0].toolId, 'toolu_deleg|delegate_task#1'); assert.match(orders[0].text, /^Research what real wounds/);   // matched by goal, not by start order
   assert.ok(tl.events.some((e) => e.kind === 'finish' && e.agent === K) && tl.events.some((e) => e.kind === 'results' && e.items.some((it) => /#1 completed: done A/.test(it.out))));
   const tools = tl.events.filter((e) => e.kind === 'tools').flatMap((e) => e.tools), term = tools.find((t) => t.id.startsWith('toolu_t|')), patch = tools.find((t) => t.id.startsWith('toolu_p|'));

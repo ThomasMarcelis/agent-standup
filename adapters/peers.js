@@ -49,7 +49,7 @@ function resolveClaude(pid) {
   let j; try { j = JSON.parse(fs.readFileSync(path.join(claudeDir(), 'sessions', pid + '.json'), 'utf8')); } catch { return null; }
   if (!j || typeof j.sessionId !== 'string' || !/^[\w.-]+$/.test(j.sessionId)) return null;
   let proj = null; try { for (const d of fs.readdirSync(projectsDir())) if (fs.existsSync(path.join(projectsDir(), d, j.sessionId + '.jsonl'))) { proj = d; break; } } catch {}
-  return { source: 'claude', proj, id: j.sessionId, name: j.name ? String(j.name).replace(/^claude:/, '') : '', cwd: j.cwd || '' };   // a Claude session's peer name is bare in every frame
+  return { source: 'claude', proj, id: j.sessionId, name: j.name ? String(j.name).replace(/^claude:/, '') : '', cwd: j.cwd || '', group: require('./project.js').groupOf(j.cwd || '') };   // a Claude session's peer name is bare in every frame
 }
 // The agent entry for a peer in a session's timeline: its tile, its name, and a link to its own session when the address resolves.
 const ROLE = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes' };
@@ -66,8 +66,10 @@ function peerAgent(addrOrName, nameHint, book) {
     if (a) { nameHint = nameHint || n; addrOrName = a; }
   }
   const p = parseAddress(addrOrName), r = p ? resolve(p.addr) : null, key = p ? p.key : String(addrOrName || 'peer');
-  const name = String(nameHint || (r && r.name) || (p ? (p.kind === 'claude' ? 'claude pid ' + key : key) : key)).replace(/^claude:/, '');
-  return { id: peerId(key), name, role: ROLE[p ? p.kind : ''] || 'peer', type: 'peer', addr: p ? p.addr : '', link: r && r.proj ? { proj: r.proj, id: r.id } : null, cwd: r ? r.cwd : '' };
+  let name = String(nameHint || (r && r.name) || (p ? (p.kind === 'claude' ? 'claude pid ' + key : key) : key)).replace(/^claude:/, ''); if (!NAME.test(name)) name = p ? (ROLE[p.kind] || 'peer') + ' ' + key.slice(-6) : 'unknown peer';   // a name is a name, not an ellipsis or a sentence
+  const hermesName = /^hermes:([\w.-]+)/.exec(name), group = (r && r.group) || (hermesName ? { key: 'hermes:' + hermesName[1], name: 'Hermes · ' + hermesName[1], hermes: true } : null);   // the peer's project, so an edge reads project to project
+  const runtime = ROLE[p ? p.kind : ''] || 'peer', role = group ? (group.hermes ? group.name : runtime + ' · ' + group.name) : runtime;   // "Claude Code · gladiator-game", "Hermes · gaming · <thread>"
+  return { id: peerId(r && r.id ? r.source + ':' + r.id : key), name, role, type: 'peer', addr: p ? p.addr : '', link: r && r.proj ? { proj: r.proj, id: r.id } : null, cwd: r ? r.cwd : '', group };   // one tile per session, however many addresses it wrote from
 }
 // Who a session talked to, from the tail of its transcript (any runtime's wording): a short list for the board.
 const NAME = /^[\w:.-]{1,80}$/;

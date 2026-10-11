@@ -15,8 +15,8 @@ function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}
     if (agents[t]) return t;
     const mine = pathOf[st.agent] || '/root', up = mine.replace(/\/[^/]+$/, '') || '/root';
     for (const p of [t, mine + '/' + t, up + '/' + t, '/root/' + t]) if (childByPath[p]) return childByPath[p];
-    const stray = 'x_' + t.replace(/[^\w-]/g, '_');   // an agent this session's files do not show (not listed, or beyond the cap): still an edge, to a placeholder
-    if (!agents[stray]) agents[stray] = { id: stray, name: t.replace(/^.*\//, ''), role: t, type: 'peer' };
+    const stray = 'x_' + t.replace(/[^\w-]/g, '_'), short = t.replace(/^.*\//, '');   // an agent this session's files do not show (not listed, or beyond the cap): still an edge, to a placeholder
+    if (!agents[stray]) agents[stray] = { id: stray, name: /^[0-9a-f-]{32,}$/i.test(short) || /^APP[0-9a-f-]{20,}$/.test(short) ? 'agent ' + short.slice(-4) : short, role: 'not in view', type: 'peer' };
     return stray;
   };
   for (const st of states) {
@@ -24,7 +24,7 @@ function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}
     if (st.agent !== 'main' && finished.has(st.agent)) for (let i = st.raw.length - 1; i >= 0; i--) if (st.raw[i].kind === 'say') { lastSay = i; break; }
     st.raw.forEach((e, i) => {
       if (e.kind === 'agentdone') { const to = e.child || childByTool[e.toolId]; if (to && agents[to] && !doneSeen.has(to)) { doneSeen.add(to); events.push({ ts: e.ts, agent: to, kind: 'finish', to: e.agent }); } }
-      else if (e.kind === 'agentcall') { const to = childByTool[e.toolId]; if (to && agents[to]) { parent[to] = e.agent; events.push({ ts: e.ts, agent: e.agent, to, kind: 'order', toolId: e.toolId, bg: !!e.bg, text: e.text || '', title: e.title || '' }); } }
+      else if (e.kind === 'agentcall') { const to = childByTool[e.toolId]; if (to && agents[to]) { parent[to] = e.agent; events.push({ ts: e.ts, agent: e.agent, to, kind: 'order', toolId: e.toolId, bg: !!e.bg, text: e.text || '', title: e.title || '', ...(e.atype ? { atype: e.atype } : {}) }); } }
       else if (e.kind === 'msg') {
         if (e.native) { events.push({ ts: e.ts, agent: e.agent, kind: 'msg', to: target(st, e), text: e.text || '', state: e.state || 'accepted', native: true }); return; }
         const pa = peers.peerAgent(e.dir === 'out' ? e.to : e.from, e.name, book); if (!agents[pa.id]) agents[pa.id] = pa; else if (e.name && !agents[pa.id].named) { agents[pa.id].name = e.name; agents[pa.id].named = true; }
