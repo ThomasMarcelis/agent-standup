@@ -1189,7 +1189,7 @@ function updateTitle() {
   watchDone(n); setFav(S.live && S.nBlocked ? '#ff4d4d' : null);
   document.title = S.live && S.nBlocked ? `✋ ${S.nBlocked} ${L('à voir', 'need you')}` : S.doneUntil > Date.now() && !n ? '✓ ' + L('Terminé', 'Done') : S.live && S.playing && n ? `● ${n} ${L('au travail', 'working')}` : 'Agent Standup';   // the tab's icon says which app
 }
-setInterval(() => { if (!S.agents || !S.live) return; renderBadges(); updateTitle(); if (document.body.classList.contains('tree')) renderTree(); }, 2000);
+setInterval(() => { if (!S.agents || !S.live) return; if (S.cur && S.boost <= 1 && !S.present && !$('#present').classList.contains('on') && !document.body.classList.contains('narrow')) showLastScreen(); renderBadges(); updateTitle(); if (document.body.classList.contains('tree')) renderTree(); }, 2000);
 const base = (f) => String(f || '').split('/').pop();
 const fmtDur = (ms) => (ms < 950 ? `${Math.max(1, Math.round(ms))} ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.floor(ms / 60000)} min ${Math.round((ms % 60000) / 1000)} s`);
 const quiet = (e) => e.kind === 'tools' || e.kind === 'results' || e.kind === 'usage' || e.kind === 'finish' || e.kind === 'compact';
@@ -1355,17 +1355,23 @@ function armPresent() {   // stays up while a command is still running, then ~4 
   presentTimer = setTimeout(() => { if (S.present && S.run[S.present] && S.playing) armPresent(); else hidePresent(); }, ($('#present').classList.contains('pic') ? 9000 : 4200) / Math.max(1, spd() / 1.2));
 }
 function showPresent(id) {
-  if (S.boost > 1 || (S.speakers.size && !S.speakers.has(id))) return;   // catching up, or someone else has the floor
+  if (S.boost > 1) return;   // catching up: the latest screen goes up once caught up (showLastScreen)
+  if (S.present && S.present !== id && S.speakers.size && !S.speakers.has(id)) return;   // someone else has the floor and the screen; an empty screen is filled whoever speaks
   const first = S.present !== id; S.present = id; $('#present').classList.remove('idle'); $('#present').classList.add('on'); document.body.classList.add('presenting'); renderPresent(); if (first) { layout(); AUD.tone(880, .12, 'sine', .05); }
   armPresent();
 }
-function hidePresent(full) {   // wide: the last shared screen stays up, dimmed and labelled, so the room under the tiles is the work and not a void
+function hidePresent(full, at) {   // wide: the last shared screen stays up, dimmed and labelled, so the room under the tiles is the work and not a void
   clearTimeout(presentTimer); if (!S.present && !full) return;
   const id = S.present, keep = !full && id && !document.body.classList.contains('narrow') && !!$('#pbody').firstChild;
   S.present = null; document.body.classList.remove('presenting'); $('#pcap').textContent = '';
-  if (keep) { $('#present').classList.add('idle'); $('#pbadge').textContent = `🖥 ${nameOf(id)}, ${L('dernier écran partagé', 'last shared screen')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`; }
+  if (keep) { $('#present').classList.add('idle'); $('#pbadge').textContent = `🖥 ${nameOf(id)}, ${L('dernier écran partagé', 'last shared screen')} ${new Date(at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`; }
   else $('#present').classList.remove('on', 'idle');
   layout();
+}
+// A call opened in a quiet moment shows its latest shared screen, dimmed and labelled with when it was shared, instead of an empty room (the catch-up shows none).
+function showLastScreen() {
+  let id = null, ts = 0; for (const k in S.term) { const e = S.term[k][S.term[k].length - 1]; if (e && S.agents[k] && e.ts > ts) { ts = e.ts; id = k; } }
+  if (!id) return false; $('#present').classList.add('on'); S.present = id; renderPresent(); hidePresent(false, ts); return true;
 }
 // the speaker always gets the spotlight (and keeps it until someone else talks)
 function setFocus(id) {

@@ -254,3 +254,16 @@ test('switches: loading another session (every switch path) lets the line being 
   assert.ok(!/AUD\.stopAll\(\)|synth\.cancel\(\)/.test(html.replace(/function stopVoice\(reason\) \{[^\n]*\}/, '').replace(/function speakBrowser[\s\S]*?\n\}/, '').replace(/stopAll\(\) \{[^\n]*\}/, '')), 'nothing else stops a voice');
   assert.ok(/await finishLine\(\); pause\('mode'\)/.test(html) && (html.match(/await finishLine\(\); pause\('mode'\)/g) || []).length === 2, 'a mode change waits too');
 });
+
+// ---- the shared screen (Tom: "the share screen was amazing, don't remove that")
+test('shared screen: a call with terminal history shows it, even when opened in a quiet moment (the latest screen, dimmed and labelled)', () => {
+  const src = [grab(/function termModel\(id\) \{[\s\S]*?\n\}/), grab(/const lineHtml = [\s\S]*?\n(?=function renderPresent)/), grab(/function renderPresent\(\) \{[\s\S]*?\n\}/), grab(/function hidePresent\(full, at\) \{[\s\S]*?\n\}/), grab(/function showLastScreen\(\) \{[\s\S]*?\n\}/)].join('\n');
+  const els = {}, fake = () => { const cls = new Set(); return { cls, classList: { add: (...c) => c.forEach((x) => cls.add(x)), remove: (...c) => c.forEach((x) => cls.delete(x)), toggle: (c, on) => { const v = on === undefined ? !cls.has(c) : !!on; v ? cls.add(c) : cls.delete(c); return v; }, contains: (c) => cls.has(c) }, style: {}, dataset: {}, innerHTML: '', textContent: '', scrollHeight: 0, get firstChild() { return this.innerHTML ? {} : null; }, querySelector: () => null }; };
+  const $ = (q) => els[q] || (els[q] = fake()), ts = Date.now() - 60000;
+  const S = { present: null, agents: { main: { id: 'main', name: 'Claude', gid: 'main' } }, term: { main: [{ k: 'cmd', ts, end: ts + 900, out: 'Gate passed.', tool: { name: 'Bash', d: { kind: 'cmd', text: 'npm test' } } }] }, todos: {}, speakers: new Set(), cur: { proj: 'p', id: 's' }, live: true };
+  const page = new Function('scope', 'with (scope) { ' + src + '\nreturn { showLastScreen }; }')(pageScope({ S, $, document: { body: fake() }, esc: (t) => String(t), L: (fr, en) => en, base: (f) => String(f).split('/').pop(), nameOf: () => 'Claude', prefs: { lang: 'en' }, spd: () => 1, performance }));
+  assert.equal(page.showLastScreen(), true);
+  assert.ok($('#present').cls.has('on'), 'the shared screen is on'); assert.ok($('#present').cls.has('idle'), 'dimmed: the last screen, not a live one');
+  assert.match($('#pbody').innerHTML, /npm test/); assert.match($('#pbody').innerHTML, /Gate passed\./);
+  assert.match($('#pbadge').textContent, /Claude, last shared screen/); assert.equal($('#ptitle').textContent, 'Claude');
+});
