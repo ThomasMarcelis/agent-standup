@@ -141,13 +141,17 @@ const rail = new Function('L', 'esc', 'S', grab(/const base = \(f\) =>[^\n]*/) +
 test('rail: what a session does is said in words, never as the command line', () => {
   assert.equal(rail.plainAct('Bash', "sed -n '385,430p' /home/user/work/agent-standup/public/index.html"), 'Reading index.html');
   assert.equal(rail.plainAct('Bash', 'cd /home/user/work && npm test'), 'Running tests');
-  assert.equal(rail.plainAct('exec_command', 'python3 -c "'), 'Running python3');
-  assert.equal(rail.plainAct('exec_command', "D=/home/user/runs/x; cd $D/harness && python3 - <<'EOF'"), 'Running python3 script');
+  assert.equal(rail.plainAct('exec_command', 'python3 -c "'), 'Running a script');
+  assert.equal(rail.plainAct('exec_command', "D=/home/user/runs/x; cd $D/harness && python3 - <<'EOF'"), 'Running a script');
   assert.equal(rail.plainAct('Bash', 'L=/home/user/work/g\nfor f in a b; do echo $f; done'), 'Running a script');
   assert.equal(rail.plainAct('Bash', 'ps -eo pid,ppid,etime,args | grep -E dotnet'), 'Searching files');
   assert.equal(rail.plainAct('mcp__plugin_playwright_playwright__browser_run_code_unsafe', ''), 'Using the browser');
   assert.equal(rail.plainAct('Edit', '/home/user/work/server.js'), 'Editing server.js');
-  assert.equal(rail.plainAct('Bash', 'git status --short'), 'Running git status');
+  assert.equal(rail.plainAct('Bash', 'git status --short'), 'Checking changes');
+  // never a binary's name (Tom): git add/commit is committing, sleep is waiting, anything else is a script or a command
+  for (const [cmd, want] of [['git add -A && git commit -m x', 'Committing'], ['git commit -qF -', 'Committing'], ['git push origin main', 'Pushing'], ['sleep 30', 'Waiting'], ['echo hello', 'Running a command'], ['install -m 0755 a ~/.local/bin/a', 'Managing files'], ['node scripts/stats.js', 'Running a script'], ['tmux capture-pane -pt x', 'Using a terminal']]) assert.equal(rail.plainAct('Bash', cmd), want, cmd);
+  assert.equal(rail.plainAct('Sleep', ''), 'Waiting'); assert.equal(rail.plainAct('apply_patch', "python3 - <<'PY'"), 'Editing files'); assert.equal(rail.plainAct('skill_manage', ''), 'Using a skill');
+  for (const cmd of ['python3 x.py', 'sleep 5', 'git add .', 'echo x', 'dotnet build -c Release', 'jq .a f.json', 'awk 1 f', 'perl -e 1']) assert.ok(!/(python3?|sleep|git|echo|dotnet|awk|perl)/.test(rail.plainAct('Bash', cmd)), 'no binary name: ' + rail.plainAct('Bash', cmd));
   assert.equal(rail.plainAct('Bash', '"$D/run.sh" --fast'), 'Running a script'); assert.equal(rail.plainAct('Bash', '(cd x; make)'), 'Running a script');
 });
 test('rail: one vocabulary for calls and agents, "N agents" only past one', () => {
@@ -168,14 +172,15 @@ test('a session that ended its turn is finished, then idle after 5 minutes, neve
   assert.ok(!/your turn/i.test(JSON.stringify(BSTATE)) && !/your turn/i.test(html.replace(/\/\/[^\n]*/g, '')), 'the words "your turn" are gone');
   const sp = rail.railSplit([{ id: 'x', state: 'turn', mtime: now - 60e3, group: { key: 'k', name: 'p' } }], '', now); assert.deepEqual([sp.needs.length, sp.live.length], [0, 1]);   // finished is not needs you
   assert.equal(rail.callStatus({ state: 'blocked', tool: 'AskUserQuestion', mtime: now, ageMs: 5000 }), 'Needs you: asking a question, 5s');
-  assert.equal(rail.plainAct('mcp__codex_tui__read_thread', '01a12b06-a451-7000-8000-000000000000'), 'read thread', 'a tool in words, no id');
+  assert.equal(rail.plainAct('mcp__codex_tui__read_thread', '01a12b06-a451-7000-8000-000000000000'), 'Read thread', 'a tool in words, no id');
+  assert.equal(rail.plainAct('SubagentHandback', ''), 'Reporting back'); assert.equal(rail.plainAct('cronjob_manage', ''), 'Cronjob manage');
 });
 test('rail: only what is live (busy, active in the last 5 min, needs Tom, on screen); stopped, done, old and one-offs are not shown; the rest is quiet', () => {
   const now = Date.now(), g = { key: 'repo:/w/game', name: 'gladiator-game' }, r = (id, state, ago, x = {}) => ({ id, state, mtime: now - ago, group: g, ...x });
   const rows = [r('ask', 'blocked', 30e3), r('busy', 'working', 20e3), r('fresh', 'turn', 120e3), r('sat', 'turn', 600e3), r('idle', 'idle', 1800e3), r('here', 'idle', 7200e3),
-    r('stopped', 'idle', 60e3, { stopped: true }), r('done', 'done', 30e3), r('cron', 'turn', 60e3, { oneshot: true }), r('old', 'idle', 3 * 3600e3)];
+    r('stopped', 'idle', 60e3, { stopped: true }), r('done', 'done', 30e3), r('cron', 'turn', 60e3, { oneshot: true }), r('old', 'idle', 3 * 3600e3), r('ping', 'working', 5e3, { oneshot: true, group: { key: '_other', other: true, name: 'Other' } })];
   const sp = rail.railSplit(rows, 'here', now), ids = (l) => l.map((x) => x.id);
-  assert.deepEqual([ids(sp.needs), ids(sp.live), ids(sp.quiet)], [['ask'], ['busy', 'fresh', 'here'], ['sat', 'idle']]);
+  assert.deepEqual([ids(sp.needs), ids(sp.live), ids(sp.quiet)], [['ask'], ['busy', 'fresh', 'here'], ['sat', 'idle', 'ping']]);   // a running one-off outside any project (a test ping) is quiet
   assert.equal(rail.railGroup({ group: { key: 'hermes:gaming:t1', name: 'Hermes gaming, Plan the roguelike', hermes: true } }), 'Hermes gaming');   // the thread is said once, on its row
 });
 
@@ -226,4 +231,28 @@ test('project switcher: per project, its live calls, agents working and who need
   assert.deepEqual(list.map((p) => [p.name, p.calls, p.agents, p.needs]), [['MarketSimulator', 3, 15, 1], ['gladiator-game', 1, 31, 0], ['agent-standup', 0, 0, 0]]);   // needs Tom first, though gladiator has more agents; the quiet one last; no "Other"
   assert.equal(sw.projLine(list[0]), '3 calls, 15 agents working, 1 needs you'); assert.equal(sw.projLine(list[2]), '0 calls, 0 agents working');
   assert.ok(!/·/.test(list.map(sw.projLine).join(' ')));
+});
+
+test('a shirt says its role in whole words, short enough to be read on a small tile', () => {
+  const shirtRole = new Function(grab(/const shirtRole = [^\n]*/) + '\nreturn shirtRole;')();
+  assert.equal(shirtRole('Build parrying decision page'), 'Build parrying'); assert.equal(shirtRole('Build target-picking decision page'), 'Build target');
+  assert.equal(shirtRole('Second cold read of page'), 'Second cold'); assert.equal(shirtRole('materials'), 'materials'); assert.equal(shirtRole('Supercalifragilisticexpialidocious'), 'Supercalifragi');
+  for (const t of ['Research real target picking', 'Initialize Codex peer inbox at session start']) { const r = shirtRole(t); assert.ok(r.length <= 14 && !/…$/.test(r) && t.startsWith(r), r); }
+});
+
+test('board card (denoised): who, what now, talks to whom, needs you, in plain words; nothing twice, no raw tool name, id or counter', () => {
+  const src = [grab(/const base = \(f\) =>[^\n]*/), grab(/function cmdLabel\(text\) \{[\s\S]*?\n\}/), grab(/function cmdVerb\(cmd\) \{[\s\S]*?\nfunction activityLabel/).replace(/\nfunction activityLabel$/, ''), grab(/const agoStr = [^\n]*/), grab(/const LIVE_MS = [^\n]*/), grab(/const peerWords = [\s\S]*?\n  return [^\n]*/), grab(/function boardCard\(r\) \{[\s\S]*?\n\}/)].join('\n');
+  const boardCard = new Function('L', 'esc', 'S', src + '\nreturn boardCard;')((fr, en) => en, (t) => String(t), { act: {} }), now = Date.now();
+  const codex = boardCard({ proj: '_codex', id: 'x1', title: 'Respond to greeting', state: 'working', tool: 'exec_command', arg: "python3 - <<'PY'", mtime: now, ageMs: 54000, source: 'codex', subTotal: 5, active: ['materials', 'stair artist'], peers: ['hermes:gaming:218dccb6', 'codex:respond-to-greeting-8d76'], group: { key: 'repo:/w/g', name: 'gladiator-game' } });
+  assert.match(codex, /Running a script/); assert.match(codex, /Codex, 6 agents, working: materials, stair artist/); assert.match(codex, /Talks to Hermes gaming, respond to greeting/);
+  assert.ok(!/exec_command|218dccb6|8d76|✉|👥|gladiator-game|·|54s/.test(codex), 'no raw tool, id, counter, repeated project or timing: ' + codex);
+  const herm = boardCard({ proj: '_hermes-default', id: 'h1', title: 'Initialize Codex peer inbox', state: 'blocked', tool: 'clarify', mtime: now, ageMs: 48000, source: 'hermes', group: { key: 'hermes:default:t', name: 'Hermes default, Initialize Codex peer inbox', hermes: true } });
+  assert.ok(!/<div class="bt">/.test(herm), 'the thread is the header, not said again on the card'); assert.match(herm, /class="needs">Needs you: asking a question, 48s/); assert.match(herm, /class="bcard needs"/);
+});
+
+test('the page script parses (a syntax error anywhere would leave the page blank; the other tests only take pieces of it)', () => {
+  const i = html.lastIndexOf('<script>'), j = html.lastIndexOf('</script>');
+  assert.doesNotThrow(() => new Function(html.slice(i + 8, j)));   // compiled, not run
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  assert.equal((css.match(/\/\*/g) || []).length, (css.match(/\*\//g) || []).length, 'every CSS comment is closed (an open one hides the rules after it)');
 });

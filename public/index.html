@@ -30,7 +30,7 @@
   #pmenu { position:fixed; top:50px; left:48px; z-index:30; width:390px; max-width:calc(100vw - 24px); max-height:min(70vh, 560px); overflow:auto; padding:6px; background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:0 18px 50px rgba(0,0,0,.55); opacity:0; transform:translateY(-6px) scale(.98); transform-origin:top left; pointer-events:none; visibility:hidden; transition:opacity .12s, transform .12s, visibility 0s .12s; scrollbar-width:thin; scrollbar-color:#3a4060 transparent }
   #pmenu.on { opacity:1; transform:none; pointer-events:auto; visibility:visible; transition:opacity .12s, transform .12s } #pmenu hr { border:0; border-top:1px solid var(--line); margin:4px 6px }
   .prow { display:flex; align-items:center; gap:10px; width:100%; padding:9px 10px; border:0; border-radius:8px; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer }
-  .prow:hover, .prow:focus-visible { background:var(--panel2); outline:none } .prow .pn { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1 } .prow b { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .prow:hover, .prow:focus-visible { background:var(--panel2); outline:none } .prow .pn { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1 } .prow b { font-size:13px; font-weight:600; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical }
   .prow small { font-size:11.5px; color:var(--dim) } .prow .pck { color:var(--accent); font-weight:700; flex:none } .prow.pq { color:var(--dim); font-size:12px; padding:7px 10px }
   .brand small { display:block; color:var(--dim); font-size:11px; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
   .sp { flex:1 }
@@ -62,46 +62,49 @@
   /* Guests: agents of other sessions that are in a current exchange with this one; a chip at the edge, not a desk */
   #guests { flex:none; display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:10px 14px 0; font-size:12px } #guests:empty, body.tree #guests, body.board #guests { display:none }
   #guests > em { color:var(--dim); font-style:normal; font-size:11px; text-transform:uppercase; letter-spacing:.06em; margin-right:2px }
-  .gchip { display:inline-flex; align-items:center; gap:6px; max-width:320px; padding:3px 10px 3px 6px; border-radius:99px; border:1px solid var(--line); background:var(--panel2); color:inherit; font:inherit; cursor:pointer; transition:box-shadow .2s }
-  .gchip i { width:10px; height:10px; border-radius:50%; background:var(--pc); flex:none } .gchip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap } .gchip small { color:var(--dim); white-space:nowrap }
+  .gchip { display:inline-flex; align-items:center; gap:6px; max-width:380px; padding:3px 10px 3px 6px; border-radius:12px; border:1px solid var(--line); background:var(--panel2); color:inherit; font:inherit; cursor:pointer; transition:box-shadow .2s }
+  .gchip i { width:10px; height:10px; border-radius:50%; background:var(--pc); flex:none } .gchip span { overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical } .gchip small { color:var(--dim); white-space:nowrap }
   .gchip.hl { box-shadow:0 0 0 2px var(--pc), 0 0 14px var(--pc) } .tile.guest { display:none !important }
   body.tree #stage, body.board #stage, body.board #tree { display:none } body.tree #tree { display:block } body.board #boardv { display:block } body.board #present, body.board #gantt { display:none !important }
   #side { display:none; width:310px; flex:none; flex-direction:column; min-height:0; border-right:1px solid var(--line); background:var(--panel) }
   @media (min-width:900px) { body:not(.tree):not(.board):not(.compact) #side { display:flex } }
   #roster { display:none; flex:1; min-height:0; flex-direction:column; gap:5px; padding:10px 8px; overflow-x:hidden; overflow-y:auto }
   /* Calls: the other ongoing calls, by project, the ones that need Tom first; click one to join it */
-  #calls { flex:0 1 auto; max-height:58%; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:4px; padding:10px 8px 8px; border-bottom:1px solid var(--line) }
-  #calls .ch { display:flex; align-items:center; gap:6px } #calls .ch h3 { margin:0 2px 0 6px } #calls select { flex:1; min-width:0; font:inherit; font-size:11.5px; background:var(--panel2); color:inherit; border:1px solid var(--line); border-radius:6px; padding:2px 4px }
-  #calls .cmin { background:none; border:0; color:var(--dim); cursor:pointer; font:inherit; padding:0 4px } #calls.min .crow, #calls.min .cq, #calls.min .cg, #calls.min .cwhy { display:none }
-  #calls .cwhy { font-size:11px; color:var(--dim); padding:0 6px } #calls .cg { font-size:10.5px; font-weight:700; color:var(--pc); margin:4px 6px 0 }
+  #calls .clist { display:flex; flex-direction:column; gap:4px; overflow:auto; min-height:0; flex:0 1 auto; scroll-snap-type:y proximity } #calls .crow { scroll-snap-align:start }
+  #calls .clist.more { -webkit-mask-image:linear-gradient(#000 calc(100% - 36px), transparent); mask-image:linear-gradient(#000 calc(100% - 36px), transparent) }   /* more rows below: the last one fades instead of being cut by the edge */
+  #calls { flex:0 1 auto; max-height:58%; min-height:0; overflow:hidden; display:flex; flex-direction:column; gap:4px; padding:10px 8px 8px; border-bottom:1px solid var(--line) }
+  #calls .ch { display:flex; align-items:center; gap:6px } #calls .ch h3 { margin:0 2px 0 6px }
+  #calls .cmin { margin-left:auto; background:none; border:0; color:var(--dim); cursor:pointer; font:inherit; padding:0 4px } #calls.min .clist, #calls.min .cq { display:none }
+  #calls .cg { font-size:10.5px; font-weight:700; color:var(--pc); margin:4px 6px 0 }
   .crow { display:flex; flex-direction:column; gap:2px; padding:6px 9px; border:0; border-radius:8px; background:var(--panel2); cursor:pointer; min-width:0; text-align:left; color:inherit; font:inherit }
   .crow.cur { background:rgba(124,156,255,.24) } .crow .cn { display:flex; align-items:flex-start; gap:6px; font-size:12.5px; min-width:0 }
   .crow .cn b, .rr .n { font-weight:600; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; min-width:0 }   /* the title in full, on two lines at most */
+  .crow .cpin { margin-left:auto; flex:none; font-size:10.5px; color:var(--dim); white-space:nowrap; cursor:pointer } .crow .cpin:hover { color:var(--text, #fff) }
   .crow .cn em { margin-left:auto; flex:none; font-style:normal; font-size:10.5px; font-weight:700; color:#c9d4ff; white-space:nowrap }
   .crow .ca, .rr .st { display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--dim); min-width:0 } .crow .ca span, .rr .st span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0 }
   .crow .ca small { margin-left:auto; flex:none; color:var(--dim); font-size:10.5px } .crow .ca .needs, .rr .st .needs { color:#f0a020; font-weight:700 }
   .sdot { width:8px; height:8px; border-radius:50%; flex:none; background:#6b7089 } .sdot.working { background:var(--ok) } .sdot.needs { background:#f0a020; box-shadow:0 0 6px #f0a020 } .sdot.waiting { background:#6ebeff }   /* working, needs you, waiting on an agent; grey: finished, done, idle */
   #calls .cg.needs { color:#f0a020 }
   #side, #side * { scrollbar-width:thin; scrollbar-color:#3a4060 transparent } #side ::-webkit-scrollbar { width:8px } #side ::-webkit-scrollbar-thumb { background:#3a4060; border-radius:4px } #side ::-webkit-scrollbar-track { background:transparent }
-  #calls > .cq { position:sticky; bottom:-8px; align-self:stretch; text-align:left; background:var(--panel); padding:5px 8px }   /* always in reach at the foot of the list */
+  #calls > .cq { flex:none; text-align:left; padding:5px 8px }   /* below the list, never over a row */
   .cq { align-self:flex-start; margin-left:6px; background:none; border:0; color:var(--dim); cursor:pointer; font:inherit; font-size:11.5px; padding:1px 2px }
   @media (min-width:900px) { body.rost:not(.tree):not(.board) #roster { display:flex } }
   #calls h3, #roster h3 { margin:2px 6px 4px; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--dim) }
   .rr { display:flex; flex-direction:column; gap:2px; padding:6px 9px; border-radius:9px; border-left:3px solid transparent; background:var(--panel2); cursor:pointer; min-width:0 }
   .rr:hover { background:#2a2f45 } .rr.sel { outline:1px solid var(--accent) }
   .rr .n { font-size:12.5px } .rr b { font-weight:600 } .rr .ro { color:var(--dim); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0 }
-  .rr .ro { color:var(--dim); font-size:11px; font-weight:400 } .rr.speaking { box-shadow:0 0 0 2px rgba(124,156,255,.5) }
+  .rr .ro { color:var(--dim); font-size:11px; font-weight:400 } .rr .st span { white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical } .rr.speaking { box-shadow:0 0 0 2px rgba(124,156,255,.5) }
   #boardv { flex:1; overflow:auto; padding:16px 18px; display:none }
   .bsum { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; font-size:12.5px } .bsum span { padding:3px 10px; border-radius:99px; background:var(--panel2); border:1px solid var(--line) }
   .bgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:10px }
   .bgroup.quiet { margin-bottom:6px } .bgh .bquiet { padding:2px 10px; font-size:12px; font-weight:400 }
   .sx { margin-left:.7em } .stc .sx { opacity:.9 } .bp .src { font-size:10.5px; padding:0 5px; margin-right:6px; border:1px solid var(--line); border-radius:4px; color:var(--dim) }
-  .bquiet { grid-column:1 / -1; justify-self:start; padding:6px 12px; border-radius:10px; border:1px dashed var(--line); border-left:4px solid var(--pc); background:transparent; color:var(--dim); font:inherit; font-size:12.5px; cursor:pointer } .bquiet:hover { color:inherit; background:var(--panel2) }
+  .bquiet { grid-column:1 / -1; justify-self:start; padding:6px 12px; border-radius:10px; border:1px dashed var(--line); background:transparent; color:var(--dim); font:inherit; font-size:12.5px; cursor:pointer } .bquiet:hover { color:inherit; background:var(--panel2) }
   body.board #pill, body.board #tok, body.board #ctxp, body.board #board, body.board #meet, body.board #subtitle { display:none !important }   /* those are about the followed session, which the board does not show */
-  .bcard { text-align:left; background:var(--panel2); border:1px solid var(--line); border-left:4px solid var(--pc, var(--line)); border-radius:12px; padding:11px 13px; display:flex; flex-direction:column; gap:5px; cursor:pointer }
+  .bcard { text-align:left; background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:11px 13px; display:flex; flex-direction:column; gap:5px; cursor:pointer }
   .bgroup { margin-bottom:16px } .bgh { display:flex; align-items:center; gap:8px; margin:0 0 8px; font-size:13.5px; font-weight:700 } .bgh .gdot { width:10px; height:10px; border-radius:50%; background:var(--pc); flex:none } .bgh .dim { font-weight:400 }
   .tile { box-shadow:inset 4px 0 0 var(--pc, transparent) } .row .pj { color:var(--dim); font-size:10.5px }
-  .bcard:hover { border-color:var(--accent) } .bcard.blocked { border-color:#ff5252; box-shadow:0 0 0 2px rgba(255,82,82,.25) } .bcard.working { border-color:rgba(240,160,32,.7) } .bcard.waiting { border-color:rgba(110,190,255,.8) } .bcard.idle { opacity:.8 }
+  .bcard:hover { border-color:var(--accent) } .bcard .bs { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--dim) } .bcard .bs .needs, .bgh .needs, .bsum .needs { color:#f0a020; font-weight:700 }
   .bcard .bt { font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical } .bcard .bp, .bcard .bm { color:var(--dim); font-size:11.5px }
   .bcard .stc { align-self:flex-start; display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; vertical-align:top } .bcard { min-width:0 }
   .stc { font-size:11.5px; padding:2px 9px; border-radius:99px; background:rgba(14,15,24,.6); white-space:nowrap } .stc.working { color:var(--gold) } .stc.waiting { color:#8fd3ff } .stc.blocked { color:#fff; background:#c0392b; font-weight:700 } .stc.stalled { color:#1b1d27; background:#ffb347; font-weight:700 } .stc.done, .stc.turn { color:var(--ok) } .stc.idle { color:var(--dim) }
@@ -139,7 +142,6 @@
   .tl { white-space:pre-wrap; word-break:break-word } .tl .ps { color:#7ee787 } .tl.cmd { color:#e6edf3 } .tl.tool { color:#8b95b0 } .dotg { color:#58a6ff }
   .tl.new { animation:lineIn .28s ease-out } @keyframes lineIn { from { opacity:0; transform:translateY(5px) } }
   .cursor { display:inline-block; width:7px; height:14px; background:#c9d1d9; vertical-align:-2px; animation:blinkc 1s steps(1) infinite } @keyframes blinkc { 50% { opacity:0 } }
-  #pstat { flex:none; padding:4px 12px; background:#161925; color:#8b95b0; font:11.5px ui-monospace,Menlo,monospace; border-top:1px solid #232637; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
   #ptodo { flex:0 0 230px; margin-left:12px; align-self:flex-start; position:relative; max-height:100%; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; background:rgba(20,22,32,.92); border:1px solid #2a2d3d; border-radius:10px; padding:8px 10px; font-size:12px }
   #ptodo h5 { margin:0 0 6px; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim) } .td { display:flex; gap:7px; padding:2px 0; color:#c3c6d4 } .td i { font-style:normal; flex:none } .td.completed { color:#6b7089; text-decoration:line-through } .td.completed i { color:var(--ok) } .td.in_progress { color:#fff } .td.in_progress i { color:var(--gold) }
   .tl.out { color:#aab2c5 } .tl.err { color:#ff7b72 } .tl.dim { color:#6b7089 } .tl.run { color:#ffd24a } .tl.cmd { margin-top:5px }
@@ -184,7 +186,9 @@
   .tag b, .tag span { background:rgba(14,15,24,.78); backdrop-filter:blur(6px); padding:2px 9px; border-radius:99px; font-size:11.5px; white-space:nowrap }
   .tag span { color:#e3e6f0; font-size:10.5px; overflow:hidden; text-overflow:ellipsis; min-width:0 }
   .tile .tag span:not(.tk):not(.cx) { display:none } .tile:not(.focus) .tag b { display:none }   /* the role is on the shirt; a small tile is named by its shirt and the agents list, never by a cut-off pill */
-  @media (min-width:900px) { body.rost:not(.tree):not(.board):not(.compact) .tile .status:not(.blocked):not(.stalled) { display:none } body.rost:not(.compact) .tile:not(.focus) .tag { top:6px; bottom:auto } }   /* the agents list says what each one does: a tile only raises a hand */
+  @media (min-width:900px) { body.rost:not(.tree):not(.board):not(.compact) .tile .status:not(.blocked):not(.stalled) { display:none } body.rost:not(.compact) .tile:not(.focus) .tag, body.rost.presenting:not(.compact) .tile.focus .tag { top:6px; bottom:auto } }
+  body:not(.presenting) .tile.focus svg { transform:translateY(-8%) }   /* the spotlight's name row sits below the shirt, not over its role */
+  body.presenting .tile.focus .tag b { display:none } .tile.focus .tag b { white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }   /* the agents list says what each one does: a tile only raises a hand */
   .status { position:absolute; top:6px; right:6px; font-size:11.5px; font-weight:600; padding:2px 9px; border-radius:99px; background:rgba(14,15,24,.8); backdrop-filter:blur(6px) }
   .status.working { color:var(--gold) } .status.done { color:var(--ok) }
   .status.waiting { color:#8fd3ff } .status.blocked { color:#fff; background:#c0392b; font-weight:700 } .status.stalled { color:#1b1d27; background:#ffb347; font-weight:700 }
@@ -334,7 +338,7 @@
   <div id="pmenu" role="listbox" aria-label="Projects"></div>
   <aside id="side"><div id="calls" aria-label="Calls"></div><nav id="roster" aria-label="Agents"></nav></aside>
   <section id="center">
-    <div id="present"><div class="pwin term"><div class="pbar"><i class="r"></i><i class="y"></i><i class="g"></i><span id="ptitle"></span><span id="pbadge"></span></div><div id="pbody"></div><div id="pstat"></div></div><div id="ptodo" style="display:none"></div><div id="pcap"></div><div id="pcam" class="tile working"></div></div>
+    <div id="present"><div class="pwin term"><div class="pbar"><i class="r"></i><i class="y"></i><i class="g"></i><span id="ptitle"></span><span id="pbadge"></span></div><div id="pbody"></div></div><div id="ptodo" style="display:none"></div><div id="pcap"></div><div id="pcam" class="tile working"></div></div>
     <div id="guests" aria-label="On the line"></div><div id="stage"></div><div id="tree"></div><div id="boardv"></div>
     <div id="reactBar" aria-label="Reactions"><button data-e="👍">👍</button><button data-e="👏">👏</button><button data-e="☕">☕</button><button data-e="🔥">🔥</button><button data-e="🙌">🙌</button></div>
     <div id="hl"></div>
@@ -406,6 +410,7 @@ const teamOf = (g) => (!g || g.other ? { key: '_other', short: '' } : { key: g.k
 const inkOn = (hex) => { const [r, g, b] = hexRGB(hex); return r * 0.299 + g * 0.587 + b * 0.114 > 125 ? '#1b1d2a' : '#ffffff'; };
 const monogram = (t) => (String(t || '').replace(/([a-z])([A-Z])/g, '$1 $2').match(/[A-Za-z0-9]+/g) || []).slice(0, 2).map((w) => w[0].toUpperCase()).join('');   // "MarketSimulator" → MS, "gladiator-game" → GG
 const roleTag = (t, n = 26) => { t = String(t || '').replace(/\s+/g, ' ').trim(); if (t.length <= n) return t; const c = t.lastIndexOf(' ', n - 1); return t.slice(0, c > n * 0.5 ? c : n - 1).replace(/[\s,;:/–—-]+$/, '') + '…'; };   // the role on a shirt: short, cut at a word
+const shirtRole = (t, n = 14) => { const w = String(t || '').replace(/\s+/g, ' ').trim().split(/(?<=[\s-])/); let out = ''; for (const x of w) { if ((out + x).trim().length > n) break; out += x; } return (out || w[0] || '').replace(/[\s,;:/–—-]+$/, '').slice(0, n); };   // "Build parrying decision page" → "Build parrying": whole words, no ellipsis
 const shirtText = (t) => { t = String(t || '').trim(); return t.length > 16 ? t.slice(0, 15) + '…' : t; };
 const hexRGB = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const mix = (a, b, t) => { const A = hexRGB(a), B = hexRGB(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
@@ -438,7 +443,7 @@ function persona0(a) {
   const team = teamOf(a.type === 'peer' ? a.group : S.group), tee = shirtText(team.short), shirt = tee ? GCOL(team.key) : a.id === 'main' ? '#e8845f' : PAL[(h >>> 6) % 8];   // no project (the demo, a one-off): the old colours
   if (a.id === 'main') return { ...base, name: a.name || 'Claude', role: L('Chef', 'Lead'), shirt, tee, roleTag: tee ? L('chef', 'lead') : '', shape: 0, acc: 1, eye: 0, glasses: false, scene: 6, prop: 1, acc2: '#f5c04a', lead: true, vi: 0, gid: 'main' };   // the lead is Claude, Codex or Hermes, as the server says
   if (a.id === 'user') return { ...base, name: L('Vous', 'You'), role: L('Humain', 'Human'), shirt: '#eef0f6', tee: OWNER, owner: true, shape: 1, acc: 2, eye: 1, glasses: false, scene: 7, prop: 1, acc2: '#ff7a6b', vi: 3, gid: 'user' };
-  return { ...base, name: a.name || uniqueName(a.id, h), roleEn: a.roleEn || a.role, role: (FR() && a.roleFr) || a.roleEn || a.role, shirt, tee, roleTag: tee ? roleTag(a.name || a.role) : '', shape: (h >>> 3) % 5, acc: (h >>> 9) % 6, eye: (h >>> 12) % 3, glasses: ((h >>> 15) % 4) === 0,
+  return { ...base, name: a.name || uniqueName(a.id, h), roleEn: a.roleEn || a.role, role: (FR() && a.roleFr) || a.roleEn || a.role, shirt, tee, roleTag: tee ? shirtRole(a.name || a.role) : '', shape: (h >>> 3) % 5, acc: (h >>> 9) % 6, eye: (h >>> 12) % 3, glasses: ((h >>> 15) % 4) === 0,
            scene: (h >>> 18) % 6, prop: (h >>> 21) % 3, acc2: PAL[(h >>> 24) % 8], vi: h >>> 4, gid: h.toString(36) };
 }
 
@@ -522,7 +527,7 @@ function avatarSVG(p, o, uid = '') {   // uid keeps SVG ids unique per instance:
   const prop = [`<path d="M11 62.4l1.6-7.4h7.2l1.6 7.4z" fill="#e07a5f"/><path d="M16 55q-6-8-2-12q5 4 2 12z" fill="#3fbf7f"/><path d="M16 55q6-7 10-5q-1 6-10 5z" fill="#53c98a"/>`,
     `<rect x="79" y="55.6" width="7.4" height="6.8" rx="1.6" fill="#f6f2ea"/><path d="M86.2 57q3.2 0 3.2 2.2t-3.2 2.2" fill="none" stroke="#f6f2ea" stroke-width="1.3"/><g class="steam" fill="none" stroke="#fff" stroke-width=".8" stroke-linecap="round" opacity=".7"><path d="M81.5 53q-1.4-1.8 0-3.4M84.3 53q-1.4-1.8 0-3.4"/></g>`,
     `<rect x="76" y="58.2" width="14" height="4.2" rx="1" fill="#ff7a6b"/><rect x="77.5" y="54.4" width="12" height="3.8" rx="1" fill="#4cc3ff"/><rect x="76.5" y="50.8" width="11" height="3.6" rx="1" fill="#ffd84a"/>`][p.prop];
-  const role = (y, fill, w, x = 50) => (p.roleTag ? `<text x="${x}" y="${y}" text-anchor="middle" font-size="3.5" font-weight="700" font-family="system-ui,sans-serif" fill="${fill}"${p.roleTag.length > 16 ? ` textLength="${Math.min(w, p.roleTag.length * 1.85)}" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(p.roleTag)}</text>` : '');   // the agent's role under the project, like a printed name
+  const role = (y, fill, w, x = 50) => (p.roleTag ? `<text x="${x}" y="${y}" text-anchor="middle" font-size="4.2" font-weight="700" font-family="system-ui,sans-serif" fill="${fill}"${p.roleTag.length > 11 ? ` textLength="${Math.min(w, p.roleTag.length * 2.25)}" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(p.roleTag)}</text>` : '');   // the agent's role under the project, like a printed name
   const tee = (y, fill, w, x = 50) => (p.tee ? `<text x="${x}" y="${y}" text-anchor="middle" font-size="5.2" font-weight="800" font-family="system-ui,sans-serif" fill="${fill}"${p.tee.length > 9 ? ` textLength="${Math.min(w, p.tee.length * 2.9)}" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(p.tee)}</text>` : '');   // the project (or the person's name) printed on the shirt, and on the laptop lid while it works
   const lap = `<rect x="33" y="46" width="34" height="18" rx="2.8" fill="#d3d8e6"/><rect x="33" y="46" width="34" height="18" rx="2.8" fill="url(#${uid}lg)" opacity=".5"/>${p.tee ? `<rect x="33" y="46" width="34" height="2.4" rx="1.2" fill="${c}"/>` + (p.roleTag ? tee(54.4, '#2a2f40', 30) + role(60.2, '#3b4152', 31) : tee(57.6, '#2a2f40', 30)) : `<circle cx="50" cy="55" r="2.3" fill="${c1}"/>`}<rect x="29.5" y="63.4" width="41" height="3" rx="1.5" fill="#aab1c2"/>`;
   const lapDark = `<rect x="33" y="46" width="34" height="18" rx="2.8" fill="#3b4152"/><rect x="33" y="46" width="34" height="18" rx="2.8" fill="url(#${uid}lg)" opacity=".18"/><circle cx="50" cy="55" r="2.3" fill="${c1}"/><rect x="29.5" y="63.4" width="41" height="3" rx="1.5" fill="#262a36"/>`;   // for custom characters: darker, so it still shows under a white or cream sprite
@@ -1196,19 +1201,24 @@ function cmdLabel(text) {
 }
 // What a command does, as a verb and its target: "Running tests", "Reading server.js", "Running git status". Never the command line itself.
 function cmdVerb(cmd) {
-  const c = cmdLabel(cmd), w = c.split(/\s+/), prog = base(w[0] || ''), path1 = base((w.slice(1).reverse().find((x) => /\w\.\w{1,8}['"]?$/.test(x)) || '').replace(/['"]/g, ''));
-  if (!c || !/^[\w.+-]+$/.test(prog) || /^(for|while|if|until|case|do|then)$/.test(prog)) return L('Exécute ', 'Running ') + L('un script', 'a script');
+  const c = cmdLabel(cmd), w = c.split(/\s+/), prog = base(w[0] || ''), sub = w[1] || '', path1 = base((w.slice(1).reverse().find((x) => /\w\.\w{1,8}['"]?$/.test(x)) || '').replace(/['"]/g, ''));
+  if (!c || !/^[\w.+-]+$/.test(prog) || /^(for|while|if|until|case|do|then)$/.test(prog)) return L('Exécute un script', 'Running a script');   // a loop, a subshell, a JS wrapper
   if (/\b(test|tests|pytest|jest|vitest|mocha)\b/.test(c) && /^(npm|pnpm|yarn|node|npx|pytest|jest|vitest|cargo|go|dotnet|make|python3?|mocha)$/.test(prog)) return L('Lance les tests', 'Running tests');
-  if (/^(npm|pnpm|yarn|pip3?|cargo|apt|dnf|brew)$/.test(prog) && /^(install|add|i)$/.test(w[1] || '')) return L('Installe', 'Installing');
+  if (/^(npm|pnpm|yarn|pip3?|cargo|apt|dnf|brew)$/.test(prog) && /^(install|add|i)$/.test(sub)) return L('Installe', 'Installing');
   if (/\b(build|tsc|msbuild|webpack)\b/.test(c) && /^(npm|pnpm|yarn|npx|dotnet|cargo|go|make|tsc|msbuild|webpack)$/.test(prog)) return L('Compile', 'Building');
+  if (prog === 'git') return /^(add|commit)$/.test(sub) ? L('Fait un commit', 'Committing') : /^push$/.test(sub) ? L('Pousse', 'Pushing') : /^(pull|fetch)$/.test(sub) ? L('Récupère des changements', 'Pulling changes') : /^(merge|rebase|cherry-pick)$/.test(sub) ? L('Fusionne', 'Merging') : /^(checkout|switch|branch|worktree)$/.test(sub) ? L('Change de branche', 'Switching branch') : L('Regarde les changements', 'Checking changes');
+  if (/^(sleep|wait|timeout)$/.test(prog)) return L('Attend', 'Waiting');
   if (/^(sed|cat|head|tail|less|nl|wc|jq|bat|diff)$/.test(prog)) return L('Lit ', 'Reading ') + (path1 || L('des fichiers', 'files'));
   if (/^(grep|rg|ag|find|fd|ls|tree|pgrep|ps)$/.test(prog)) return L('Cherche dans les fichiers', 'Searching files');
   if (/^(curl|wget)$/.test(prog)) return L('Consulte ', 'Fetching ') + ((/https?:\/\/([^/\s'"]+)/.exec(c) || [])[1] || L('le web', 'the web'));
-  return L('Exécute ', 'Running ') + (prog === 'git' && w[1] ? 'git ' + w[1] : / script$/.test(c) ? prog + ' script' : prog);
+  if (/^(mkdir|cp|mv|rm|ln|touch|chmod|install|tar|unzip|rsync)$/.test(prog)) return L('Range des fichiers', 'Managing files');
+  if (/^(agent-peers)$/.test(prog)) return L('Envoie un message', 'Sending a message');
+  if (/^(tmux|screen)$/.test(prog)) return L('Utilise un terminal', 'Using a terminal');
+  return /^(python3?|node|deno|bun|bash|sh|zsh|ruby|perl|npx|npm|pnpm|yarn|uv|make|dotnet|cargo|go)$/.test(prog) || / script$/.test(c) ? L('Exécute un script', 'Running a script') : L('Exécute une commande', 'Running a command');   // never a binary's name
 }
 // What a session is doing, from its board row (a tool and its argument), in the same words as the agents' own labels
 function plainAct(tool, arg) {
-  const t = String(tool || ''), a = String(arg || ''), f = base(a.split('\n')[0].trim().split(/\s+/)[0] || '');
+  const t = String(tool || ''), a = String(arg || ''), f = ((x) => (/\w\.\w{1,8}$/.test(x) ? x : ''))(base(a.split('\n')[0].trim().split(/\s+/)[0] || ''));   // a file's name, or nothing
   if (/^(Bash|exec_command|shell|terminal|local_shell|exec)$/.test(t)) return cmdVerb(a);
   if (t === 'write_stdin') return L('attend une commande', 'waiting on a command');
   if (/^(Edit|Write|MultiEdit|NotebookEdit|apply_patch|patch|write_file)$/.test(t)) return L('Modifie ', 'Editing ') + (f || L('des fichiers', 'files'));
@@ -1221,7 +1231,10 @@ function plainAct(tool, arg) {
   if (/^(TodoWrite|update_plan|todo)$/.test(t)) return L('Met à jour sa todo', 'Updating todo list');
   if (/^(ToolSearch|tool_search)$/.test(t)) return L('Cherche un outil', 'Looking for a tool');
   if (/^(AskUserQuestion|request_user_input|clarify)$/.test(t)) return L('Pose une question', 'Asking a question');
-  return t.replace(/^mcp__.+?__(?=[^_])/, '').replace(/_/g, ' ');
+  if (/handback|handoff|report/i.test(t)) return L('Rend compte', 'Reporting back');
+  if (/^(sleep|wait)$/i.test(t)) return L('Attend', 'Waiting');
+  if (/skill/i.test(t)) return L('Utilise une compétence', 'Using a skill');
+  const w = t.replace(/^mcp__.+?__(?=[^_])/, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim().toLowerCase(); return w.charAt(0).toUpperCase() + w.slice(1);
 }
 const lc1 = (x) => (x ? x.charAt(0).toLowerCase() + x.slice(1) : '');
 // One status vocabulary for calls and agents, a dot and a word: working (green), needs you (amber, the only loud one: a question, an approval, a permission), waiting on an
@@ -1250,7 +1263,7 @@ function activityLabel(t) {   // the short "what is on their screen" tag
     case 'read': return L('Lit ', 'Reading ') + f;
     case 'edit': return L('Modifie ', 'Editing ') + f;
     case 'write': return L('Crée ', 'Writing ') + f;
-    case 'cmd': { const n = (d.note || '').trim(); return n ? n.slice(0, 36) : cmdVerb(d.text); }
+    case 'cmd': { const n = (d.note || '').trim(); return n ? shirtRole(n, 48) : cmdVerb(d.text); }   // the agent's own words for it, cut at a word
     case 'grep': return L('Cherche « ', 'Searching “') + String(d.pattern || '').slice(0, 22) + L(' »', '”');
     case 'glob': return L('Liste ', 'Listing ') + String(d.pattern || '').slice(0, 24);
     case 'todo': return L('Met à jour sa todo', 'Updating todo list');
@@ -1288,20 +1301,14 @@ function tickTools(ev) {
 setInterval(() => {   // live "running…" counters
   if (!S.playing) return;
   for (const id in S.run) { const el = performance.now() - S.run[id].start, tag = $('#t-' + id + ' .ticker .el'); if (tag) tag.textContent = el > 1500 ? fmtDur(el) : ''; }
-  if (S.present && S.run[S.present]) { const m = termModel(S.present); $('#pstat').textContent = m.stat; }
 }, 250);
 
 // What the shared screen shows for an agent: terminal history with outputs, or an editor (file read / diff).
-function statOf(e, id) {
-  if (!e) return '';
-  if (e.end == null) { const r = S.run[id], el = r ? performance.now() - r.start : 0; return `⠋ ${e.tool.name} ${L('en cours', 'running')}${el > 1500 ? ' ' + fmtDur(el) : ''}`; }
-  return `${e.err ? '✗' : '✓'} ${e.tool.name} ${fmtDur(e.end - e.ts)}`;
-}
 const mediaUrl = (agent, tool, n) => `/api/media?proj=${encodeURIComponent(S.cur.proj)}&id=${encodeURIComponent(S.cur.id)}&agent=${encodeURIComponent(agent)}&tool=${encodeURIComponent(tool)}&n=${n}`;
 function termModel(id) {
   const buf = S.term[id] || [], last = buf[buf.length - 1], lines = [], more = (n) => ({ c: 'dim', t: `… +${n} ${L('lignes', 'lines')}` });
   const pic = S.cur && buf.slice(-12).reverse().find((e) => e.img), fresh = pic && performance.now() - pic.picAt < (S.live ? 8000 : 2500 / spd());   // a picture a tool returned (screenshot, image file) stays up for a few seconds whatever comes next, then for the next few calls: a screenshot is usually followed by a click or two
-  if (pic && (fresh || (buf.length - buf.indexOf(pic) <= 4 && (pic === last || !/^(edit|write|read)$/.test(last.k))))) return { view: 'image', title: pic.k === 'read' ? base(pic.tool.d.file) : pic.tool.name.split('__').pop(), imgs: Array.from({ length: Math.min(pic.img, 3) }, (_, n) => mediaUrl(id, pic.id, n)), more: pic.img - 3, lines, stat: statOf(last, id) };
+  if (pic && (fresh || (buf.length - buf.indexOf(pic) <= 4 && (pic === last || !/^(edit|write|read)$/.test(last.k))))) return { view: 'image', title: pic.k === 'read' ? base(pic.tool.d.file) : activityLabel(pic.tool), imgs: Array.from({ length: Math.min(pic.img, 3) }, (_, n) => mediaUrl(id, pic.id, n)), more: pic.img - 3, lines };
   if (last && (last.k === 'edit' || last.k === 'write' || last.k === 'read')) {
     const d = last.tool.d, rows = (txt, c) => String(txt || '').split('\n').slice(0, 14).map((t) => ({ c, t }));
     if (last.k === 'read') {
@@ -1311,14 +1318,14 @@ function termModel(id) {
       if (last.k === 'edit') lines.push(...rows(d.old, 'del'), ...rows(d.new, 'add')); else lines.push(...rows(d.text, 'add'));
       if (last.out) lines.push({ c: last.err ? 'err' : 'dim', t: (last.err ? '✗ ' : '✓ ') + last.out.split('\n')[0].slice(0, 140) });
     }
-    return { view: 'editor', title: `${base(d.file)} — ${last.k === 'read' ? L('lecture', 'read-only') : L('Éditeur', 'Editor')}`, tab: { file: base(d.file), path: (d.file || '').split('/').slice(-4, -1).join(' › ') }, lines, stat: statOf(last, id) };
+    return { view: 'editor', title: `${base(d.file)} — ${last.k === 'read' ? L('lecture', 'read-only') : L('Éditeur', 'Editor')}`, tab: { file: base(d.file), path: (d.file || '').split('/').slice(-4, -1).join(' › ') }, lines };
   }
   for (const e of buf.slice(-10)) {
     const d = e.tool.d || {}, out = (n) => { if (e.out == null) return; const r = e.out.split('\n'); r.slice(0, n).forEach((t) => lines.push({ c: e.err ? 'err' : 'out', t })); if (r.length > n) lines.push(more(r.length - n)); };
     if (e.k === 'cmd') { lines.push({ c: 'cmd', t: d.text.split('\n').slice(0, 3).join('\n') }); if (d.note) lines.push({ c: 'dim', t: '# ' + d.note }); out(12); if (e.end == null) lines.push({ c: 'run', t: L('en cours…', 'running…') }); }
-    else { lines.push({ c: 'tool', t: `${e.tool.name}(${e.k === 'read' || e.k === 'edit' || e.k === 'write' ? base(d.file) : (e.tool.arg || '').slice(-70)})` }); if (e.k === 'grep' || e.k === 'glob' || e.k === 'web') out(6); if (e.end == null && e.k !== 'todo') lines.push({ c: 'run', t: '…' }); }
+    else { lines.push({ c: 'tool', t: '• ' + activityLabel(e.tool) }); if (e.k === 'grep' || e.k === 'glob' || e.k === 'web') out(6); if (e.end == null && e.k !== 'todo') lines.push({ c: 'run', t: '…' }); }   // a tool in words, never its raw name or an id
   }
-  return { view: 'term', lines: lines.slice(-60), stat: statOf(last, id) };
+  return { view: 'term', lines: lines.slice(-60) };
 }
 const lineHtml = (l, view) => view === 'editor'
   ? `<div class="ln ${l.c}"><b>${esc(l.n != null ? l.n : l.c === 'add' ? '+' : l.c === 'del' ? '−' : '')}</b>${esc(l.t) || ' '}</div>`
@@ -1328,11 +1335,11 @@ const lineHtml = (l, view) => view === 'editor'
 function renderPresent() {
   const id = S.present, p = S.agents[id]; if (!p) return; const m = termModel(id);
   $('#present .pwin').className = 'pwin ' + (m.view === 'term' ? 'term' : m.view); if ($('#present').classList.toggle('pic', m.view === 'image') !== S.picUp) { S.picUp = m.view === 'image'; layout(); }   // a picture gets a taller window
-  $('#ptitle').textContent = m.view === 'term' ? `${p.name} — zsh — 96×24` : m.title;
+  $('#ptitle').textContent = m.view === 'term' ? nameOf(p.id) : m.title;
   const pb = $('#pbody'), shown = m.view === 'image' ? m.imgs.join(' ') : '';
   if (shown) { if (pb.dataset.img !== shown) pb.innerHTML = m.imgs.map((u) => `<img src="${esc(u)}" alt="">`).join('') + (m.more > 0 ? `<span class="pmore">+${m.more}</span>` : ''); }   // the same pictures are left in place: redrawing them would make them blink
   else pb.innerHTML = (m.view === 'editor' ? `<div class="ptab"><span>${esc(m.tab.file)}</span><em>${esc(m.tab.path)}</em></div>` : '') + m.lines.map((l) => lineHtml(l, m.view)).join('') + (m.view === 'term' ? '<div class="tl"><span class="ps">❯</span> <span class="cursor"></span></div>' : '');
-  pb.dataset.img = shown; pb.scrollTop = m.view === 'term' ? pb.scrollHeight : 0; $('#pstat').textContent = m.stat;
+  pb.dataset.img = shown; pb.scrollTop = m.view === 'term' ? pb.scrollHeight : 0;
   const td = S.todos[id], el = $('#ptodo'), tk = td && td.length ? prefs.lang + '\n' + td.map((x) => x.s + ' ' + x.c).join('\n') : ''; el.style.display = tk ? '' : 'none'; $('#present').classList.toggle('has-todo', !!tk);
   if (tk && el.dataset.k !== tk) {   // redrawn only when it changes, so it stays where you scrolled it; the task in progress is brought into view
     el.innerHTML = `<h5>${L('Tâches', 'Tasks')} ${td.filter((x) => x.s === 'completed').length}/${td.length}</h5>` + td.map((x) => `<div class="td ${x.s}"><i>${x.s === 'completed' ? '☑' : x.s === 'in_progress' ? '◐' : '☐'}</i>${esc(x.c)}</div>`).join('');
@@ -2041,7 +2048,7 @@ function closeProjects(refocus) { $('#pmenu').classList.remove('on'); $('#pbtn')
 async function followProject(key) {   // '' is everything
   closeProjects(); const rows = await boardNow(0), t = key ? followTarget(rows, 'g:' + key) : null, g = key && rows.find((r) => boardKey(r) === key);
   prefs.follow = key ? 'g:' + key : 'all'; S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; prefs.proj = ''; Q.delete('proj'); savePrefs();
-  S.autoPin = t ? { proj: t.proj, id: t.id } : null; S.switchAt = t ? Date.now() : 0; S.why = g ? L('suit ', 'following ') + g.group.name : '';
+  S.autoPin = t ? { proj: t.proj, id: t.id } : null; S.switchAt = t ? Date.now() : 0;
   if (document.body.classList.contains('board')) setView('call');
   if (!S.live || S.demo) await setMode('live'); else { S.cur = null; await followCurrent(); }   // a replay or the demo: back to the live call
   $('#calls')._h = ''; renderCalls();
@@ -2130,25 +2137,29 @@ const boardOpen = new Set();
 const boardTool = plainAct;
 const GCOL = (key) => (key && key !== '_other' ? PAL[hash(String(key)) % PAL.length] : '#6b7089');   // one colour per project, the same everywhere
 const agoStr = (ms) => (ms < 90e3 ? Math.max(1, Math.round(ms / 1000)) + 's' : ms < 5400e3 ? Math.round(ms / 60e3) + ' min' : Math.round(ms / 3600e3) + ' h');
+// A board card says who, what it is doing now, who it talks to and whether Tom is needed, in the rail's words; its project is the group's header, said once.
+function boardCard(r) {
+  const thread = r.group && r.group.hermes ? String(r.group.name).split(', ').slice(1).join(', ') : '', title = /^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(r.title) ? L('Session sans titre', 'Untitled session') : r.title;
+  const run = r.source === 'codex' ? 'Codex' : r.source === 'hermes' ? 'Hermes' : '', n = (r.subTotal || 0) + 1;
+  const team = n > 1 ? `${n} ${L('agents', 'agents')}` + (r.state !== 'waiting' && r.active && r.active.length ? `, ${L('au travail', 'working')}: ${r.active.join(', ')}` : '') : '';   // waiting: the status line names them already
+  const talks = r.peers && r.peers.length ? `${L('Parle à', 'Talks to')} ${[...new Set(r.peers.map((x) => peerWords(x)))].join(', ')}` : '', meta = [run, team].filter(Boolean).join(', ');
+  return `<div class="bcard${r.state === 'blocked' ? ' needs' : ''}" tabindex="0" role="button" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" title="${esc(title)}">${thread && thread === r.title ? '' : `<div class="bt">${esc(title)}</div>`}<div class="bs">${sHtml(r.state, callStatus(r))}</div>${meta ? `<div class="bm">${esc(meta)}</div>` : ''}${talks ? `<div class="bm">${esc(talks)}</div>` : ''}</div>`;
+}
 let boardBusy = false;
 async function renderBoardView() {
   if (!document.body.classList.contains('board') || boardBusy) return; boardBusy = true;
   try {
     const data = await (await fetch('/api/board?meta=1')).json(); noteNames(data.rows); const rows = (data.rows || []).sort((a, b) => BORDER.indexOf(a.state) - BORDER.indexOf(b.state) || b.mtime - a.mtime), now = Date.now();
     if (!document.body.classList.contains('board')) return;
-    const cnt = {}; rows.forEach((r) => (cnt[r.state] = (cnt[r.state] || 0) + 1));
-    const sum = BORDER.filter((k) => cnt[k]).map((k) => `<span class="stc ${k}">${BSTATE[k][0]} ${cnt[k]} ${L(BSTATE[k][2], BSTATE[k][1])}</span>`).join('') + Object.entries(data.errors || {}).map(([k, m]) => `<span class="stc blocked" title="${esc(m)}">⚠ ${esc(k)} ${L('illisible', 'unreadable')}: ${esc(String(m).slice(0, 80))}</span>`).join('') + (data.unplaced ? `<span class="stc idle" title="${esc(L('Sessions dont le projet est inconnu', 'Sessions whose project is unknown'))}">? ${data.unplaced} ${L('sans projet', 'unplaced')}</span>` : '');
+    const need = rows.filter((r) => r.state === 'blocked').length;   // the one count on top: who needs Tom
+    const sum = `<span class="${need ? 'needs' : ''}">${need ? `✋ ${need} ${need === 1 ? L('vous attend', 'needs you') : L('vous attendent', 'need you')}` : L('Personne ne vous attend', 'Nobody needs you')}</span>` + Object.entries(data.errors || {}).map(([k, m]) => `<span class="stc blocked" title="${esc(m)}">⚠ ${esc(k)} ${L('illisible', 'unreadable')}: ${esc(String(m).slice(0, 80))}</span>`).join('') + (data.unplaced ? `<span class="stc idle" title="${esc(L('Sessions dont le projet est inconnu', 'Sessions whose project is unknown'))}">? ${data.unplaced} ${L('sans projet', 'unplaced')}</span>` : '');
     // one group per project (a git repo, a Hermes thread); the one-off runs (cron, codex exec without agents) and the sessions outside any repo share the last group
     const groups = new Map(), gkey = boardKey;
     for (const r of rows) { const k = gkey(r); if (!groups.has(k)) groups.set(k, { key: k, name: k === '_other' ? L('Autres / isolées', 'Other / single') : r.group.name, rows: [], best: BORDER.indexOf(r.state), mtime: r.mtime }); const g = groups.get(k); g.rows.push(r); g.best = Math.min(g.best, BORDER.indexOf(r.state)); g.mtime = Math.max(g.mtime, r.mtime); }
     const list = [...groups.values()].sort((a, b) => (a.key === '_other') - (b.key === '_other') || a.best - b.best || b.mtime - a.mtime);
-    const card = (r) => {
-      const [ic, en, fr] = BSTATE[r.state], what = r.tool ? `<span class="sx">${esc(boardTool(r.tool, r.arg))}</span>` : '';   // what it is doing right now, and for how long
-      const extra = r.state === 'blocked' || r.state === 'working' || r.state === 'waiting' ? `${what}<span class="sx">${agoStr(r.ageMs)}</span>` : `<span class="sx">${agoStr(now - r.mtime)}</span>`;
-      return `<div class="bcard ${r.state}" tabindex="0" role="button" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" style="--pc:${GCOL(gkey(r))}"><div><span class="stc ${r.state}">${ic} ${L(fr, en)}${extra}</span></div><div class="bt">${esc(/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(r.title) ? L('Session sans titre', 'Untitled session') : r.title)}</div><div class="bp">${r.source === 'hermes' ? esc(niceProj(r.proj)) : (r.source && r.source !== 'claude' ? `<span class="src">${esc(niceProj(r.proj))}</span>` : '') + esc(r.group ? r.group.name : projLabel(r))}</div>${r.subActive ? `<div class="bm">👥 ${r.subActive}/${r.subTotal} ${L('sous-agents actifs', 'sub-agents active')}${r.active && r.active.length ? ': ' + esc(r.active.join(', ')) + (r.subActive > r.active.length ? '…' : '') : ''}</div>` : ''}${r.peers && r.peers.length ? `<div class="bm">↔ ${esc([...new Set(r.peers.map((n) => peerWords(n)))].join(', '))}${r.msgs ? `<span class="sx">✉ ${r.msgs}</span>` : ''}</div>` : ''}</div>`; };
     $('#boardv').innerHTML = `<div class="bsum">${sum || `<span>${L('Aucune session récente', 'No recent session')}</span>`}</div>` + list.map((g) => { const c = {}; g.rows.forEach((r) => (c[r.state] = (c[r.state] || 0) + 1));
       const sp = splitGroup(g.rows, boardOpen.has(g.key)), fold = sp.quiet.length ? `<button class="bquiet" data-g="${esc(g.key)}">＋ ${BORDER.filter((k) => sp.quiet.some((r) => r.state === k)).map((k) => `${sp.quiet.filter((r) => r.state === k).length} ${L(BSTATE[k][2], BSTATE[k][1])}`).join(', ')}</button>` : '';
-      return `<div class="bgroup${sp.cards.length ? '' : ' quiet'}" style="--pc:${GCOL(g.key)}"><h3 class="bgh"><span class="gdot"></span>${esc(g.name)} <span class="dim">${g.rows.length}${BORDER.filter((k) => c[k] && k !== 'idle' && k !== 'done').map((k) => `<span class="sx">${BSTATE[k][0]} ${c[k]}</span>`).join('')}</span>${sp.cards.length ? '' : fold}</h3>${sp.cards.length ? `<div class="bgrid">${sp.cards.map(card).join('')}${fold}</div>` : ''}</div>`; }).join('');   // a group with nothing going on is one line
+      return `<div class="bgroup${sp.cards.length ? '' : ' quiet'}" style="--pc:${GCOL(g.key)}"><h3 class="bgh"><span class="gdot"></span>${esc(g.name)}${c.blocked ? ` <span class="needs">${c.blocked} ${c.blocked === 1 ? L('vous attend', 'needs you') : L('vous attendent', 'need you')}</span>` : ''}${sp.cards.length ? '' : fold}</h3>${sp.cards.length ? `<div class="bgrid">${sp.cards.map(boardCard).join('')}${fold}</div>` : ''}</div>`; }).join('');   // a group with nothing going on is one line
   } catch {} finally { boardBusy = false; }
 }
 // ---- Calls rail (call view): the other ongoing calls, live, by project, the ones that need Tom on top; a click joins one.
@@ -2161,8 +2172,9 @@ function railSplit(rows, curId, now = Date.now()) {
   const needs = [], live = [], quiet = [];
   for (const r of rows) {
     const here = r.id === curId, busy = /^(working|waiting|blocked)$/.test(r.state), age = now - r.mtime;
-    if (!here && !busy && (r.stopped || r.state === 'done' || r.oneshot || age > OLD_MS)) continue;
-    if (r.state === 'blocked') needs.push(r); else if (here || busy || age < LIVE_MS) live.push(r); else quiet.push(r);
+    if (!here && !busy && (r.stopped || r.state === 'done' || r.oneshot || age > OLD_MS)) continue;   // a one-off that ended is not shown at all
+    const stray = r.oneshot && (!r.group || r.group.other);   // a one-off outside any project ("Reply with PONG-3969"): quiet even while it runs
+    if (r.state === 'blocked') needs.push(r); else if (here || (!stray && (busy || age < LIVE_MS))) live.push(r); else quiet.push(r);
   }
   return { needs, live, quiet };
 }
@@ -2171,8 +2183,8 @@ function updateFollow(rows) {   // whether the rail is on screen or not (the tre
   const follow = prefs.follow || 'all', cur = S.cur || {}, t = !S.pin && followTarget(rows, follow);
   if (!S.pin) {   // follow: switch with a hold so the call does not flicker between sessions
     const there = t && cur.id === t.id, hold = Date.now() - (S.switchAt || 0) < FOLLOW_HOLD;
-    if (t && !there && !hold) { S.autoPin = { proj: t.proj, id: t.id }; S.switchAt = Date.now(); S.why = (t.state === 'blocked' ? L('a basculé : ', 'switched: ') + (t.group ? t.group.name : t.title) + ' ' + L('vous attend', 'needs you') : L('suit ', 'following ') + (t.group ? t.group.name : t.title)); S.cur = null; followCurrent(); }
-    else if (!t && S.autoPin && !hold) { S.autoPin = null; S.why = ''; S.cur = null; followCurrent(); }   // nothing needs Tom any more: back to the most active session
+    if (t && !there && !hold) { S.autoPin = { proj: t.proj, id: t.id }; S.switchAt = Date.now(); if (t.state === 'blocked') toast(L('a basculé : ', 'switched: ') + (t.group ? t.group.name : t.title) + ' ' + L('vous attend', 'needs you')); S.cur = null; followCurrent(); }
+    else if (!t && S.autoPin && !hold) { S.autoPin = null; S.cur = null; followCurrent(); }   // nothing needs Tom any more: back to the most active session
   }
 }
 setInterval(async () => { if (S.live && !S.demo && !document.hidden && !document.body.classList.contains('board')) updateFollow(await boardNow(1000)); }, 3000);
@@ -2188,26 +2200,22 @@ async function renderCalls() {
 
   const groups = new Map(); for (const r of rows) { const k = boardKey(r); if (!groups.has(k)) groups.set(k, { key: k, name: railGroup(r), rows: [] }); groups.get(k).rows.push(r); }
   const row = (r, proj) => { const n = (r.subTotal || 0) + 1, here = cur.id === r.id;   // two lines: the title in full; one status word and what it is doing
-    return `<button class="crow${here ? ' cur' : ''}" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" title="${esc(r.title)}"${here ? ` aria-current="true"` : ''}><span class="cn"><b>${proj ? `<span style="color:${GCOL(boardKey(r))}">${esc(railGroup(r))}</span> ` : ''}${esc(r.title)}</b></span><span class="ca">${sHtml(r.state, callStatus(r))}${n > 1 ? `<small>${n} ${L('agents', 'agents')}</small>` : ''}</span></button>`; };
-  const opts = [['all', L('Suivre : tout', 'Follow: everything')], ...[...groups.values()].filter((g) => g.key !== '_other' && (g.rows.some((r) => r.state !== 'idle' && r.state !== 'done') || 'g:' + g.key === follow)).map((g) => ['g:' + g.key, L('Suivre : ', 'Follow: ') + g.name])];   // projects with something going on
-  const sel = S.pin ? 'pin' : follow, options = (S.pin ? [['pin', L('Épinglé', 'Pinned')]] : []).concat(opts).map(([v, l]) => `<option value="${esc(v)}"${v === sel ? ' selected' : ''}>${esc(l)}</option>`).join('');
-  let html = `<div class="ch"><h3>${L('Appels', 'Calls')}</h3><select id="follow" aria-label="${esc(L('Quel appel suivre', 'Which call to follow'))}">${options}</select><button class="cmin" title="${esc(L('Replier', 'Fold'))}">${box.classList.contains('min') ? '▸' : '▾'}</button></div>${!S.pin && (S.why || follow === 'all') ? `<div class="cwhy">${esc(S.why || L('l’appel le plus actif, ou celui qui vous attend', 'the most active call, or one that needs you'))}</div>` : ''}`;
+    return `<button class="crow${here ? ' cur' : ''}" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" title="${esc(r.title)}"${here ? ` aria-current="true"` : ''}><span class="cn"><b>${proj ? `<span style="color:${GCOL(boardKey(r))}">${esc(railGroup(r))}</span> ` : ''}${esc(r.title)}</b>${S.pin && S.pin === r.id ? `<span class="cpin" role="button" tabindex="0" title="${esc(L('Désépingler : suivre à nouveau', 'Unpin: follow again'))}">📌 ${L('désépingler', 'unpin')}</span>` : ''}</span><span class="ca">${sHtml(r.state, callStatus(r))}${n > 1 ? `<small>${n} ${L('agents', 'agents')}</small>` : ''}</span></button>`; };
+  let html = `<div class="ch"><h3>${L('Appels', 'Calls')}</h3><button class="cmin" title="${esc(L('Replier', 'Fold'))}">${box.classList.contains('min') ? '▸' : '▾'}</button></div>`;   // what to follow is picked in the header
   const { needs, live, quiet } = railSplit(rows, cur.id), mine = cur.id && rows.find((r) => r.id === cur.id), first = mine ? boardKey(mine) : '';
+  html += '<div class="clist">';
   if (needs.length) html += `<div class="cg needs">${L('Vous attend', 'Needs you')}</div>` + needs.map((r) => row(r, true)).join('');   // across every project, on top
   const lg = new Map(); for (const r of live) { const k = boardKey(r); if (!lg.has(k)) lg.set(k, []); lg.get(k).push(r); }
   let last = ''; for (const [k, rs] of [...lg.entries()].sort((a, b) => (b[0] === first) - (a[0] === first))) { const name = railGroup(rs[0]); if (name !== last) html += `<div class="cg" style="--pc:${GCOL(k)}">${esc(name)}</div>`; last = name; html += rs.map((r) => row(r)).join(''); }   // the call on screen's project first; a project with nothing live has no header
-  if (quiet.length) html += `<button class="cq">${callsOpen.has('_quiet') ? '−' : '＋'} ${quiet.length} ${L('inactives', 'quiet')}</button>` + (callsOpen.has('_quiet') ? quiet.map((r) => row(r, true)).join('') : '');
-  if (box._h !== html) { box._h = html; box.innerHTML = html; }
+  html += (callsOpen.has('_quiet') ? quiet.map((r) => row(r, true)).join('') : '') + '</div>' + (quiet.length ? `<button class="cq">${callsOpen.has('_quiet') ? '−' : '＋'} ${quiet.length} ${L('inactives', 'quiet')}</button>` : '');
+  if (box._h !== html) { box._h = html; box.innerHTML = html; const l = box.querySelector('.clist'); if (l) { const more = () => l.classList.toggle('more', l.scrollHeight - l.scrollTop - l.clientHeight > 4); l.onscroll = more; more(); } }
 }
 setInterval(renderCalls, 3000); if (prefs.callsMin) $('#calls').classList.add('min');
 $('#calls').onclick = (e) => {
   if (e.target.closest('.cmin')) { prefs.callsMin = $('#calls').classList.toggle('min'); savePrefs(); $('#calls')._h = ''; renderCalls(); return; }
   if (e.target.closest('.cq')) { if (!callsOpen.delete('_quiet')) callsOpen.add('_quiet'); $('#calls')._h = ''; renderCalls(); return; }
-  const c = e.target.closest('.crow'); if (c) { S.why = ''; openSession(c.dataset.p, c.dataset.i).then(renderCalls); }
-};
-$('#calls').onchange = (e) => {
-  if (e.target.id !== 'follow') return; const v = e.target.value; if (v === 'pin') return;
-  prefs.follow = v; S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; prefs.proj = ''; S.autoPin = null; S.switchAt = 0; S.why = ''; savePrefs(); S.cur = null; followCurrent().then(renderCalls);   // unpinned: follow everything, or one project
+  if (e.target.closest('.cpin')) { S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; savePrefs(); S.autoPin = null; S.switchAt = 0; S.cur = null; followCurrent().then(() => { $('#calls')._h = ''; renderCalls(); }); return; }   // back to following what the header says
+  const c = e.target.closest('.crow'); if (c) openSession(c.dataset.p, c.dataset.i).then(renderCalls);
 };
 $('#boardv').onkeydown = (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('bcard')) { e.preventDefault(); e.target.click(); } };
 async function openSession(proj, id) {
