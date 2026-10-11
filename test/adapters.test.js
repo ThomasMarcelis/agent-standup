@@ -35,6 +35,7 @@ test('codex: rollouts become sessions, a board and a timeline with sub-agents, c
   assert.ok(codex.exists('_codex', PARENT) && codex.exists('_codex', CHILD) && !codex.exists('_codex', '01a129a4-0000-7000-8000-000000000000'));
   assert.ok(codex.stamp('_codex', PARENT) > 0 && codex.mtime('_codex', PARENT) > 0);
   const tl = codex.timeline('_codex', PARENT), kinds = {}; for (const e of tl.events) kinds[e.kind] = (kinds[e.kind] || 0) + 1;
+  assert.equal(tl.agents.find((a) => a.id === 'main').name, 'Codex');
   const child = tl.agents.find((a) => a.id === CHILD); assert.ok(child); assert.equal(child.role, 'Socrates · /root/oom_timeline');
   const order = tl.events.find((e) => e.kind === 'order'); assert.deepEqual([order.agent, order.to, order.title], ['main', CHILD, 'oom_timeline']);
   assert.ok(tl.events.some((e) => e.kind === 'finish' && e.agent === CHILD), 'SubAgentActivity completed → finish');
@@ -43,7 +44,12 @@ test('codex: rollouts become sessions, a board and a timeline with sub-agents, c
   const cmd = tools.find((t) => t.d.kind === 'cmd'); assert.match(cmd.d.text, /^pwd; date/); assert.equal(cmd.name, 'exec_command');   // the shell command inside the exec script, not the JavaScript
   const res = tl.events.filter((e) => e.kind === 'results').flatMap((e) => e.items).find((it) => it.id === cmd.id); assert.match(res.out, /^\$ pwd; date[\s\S]*\n\/home\/user/);
   assert.ok(tools.some((t) => t.name === 'send_message' || t.name === 'wait_agent') === false, 'collaboration calls are edges or waits, not shown as tools when they are messages');
-  const native = tl.events.filter((e) => e.kind === 'msg' && e.native); assert.ok(native.length >= 2); assert.ok(native.every((e) => e.text === '' && (e.to === CHILD || e.agent === CHILD)));   // bodies stay encrypted
+  const native = tl.events.filter((e) => e.kind === 'msg' && e.native); assert.ok(native.length >= 2); assert.ok(native.every((e) => e.text === '' && (e.to === CHILD || e.agent === CHILD || e.to === 'x_oom_controls')));   // bodies stay encrypted; the second agent's rollout is not in the fixture, so it is a placeholder
+  assert.ok(native.some((e) => e.to === CHILD) && native.some((e) => e.agent === CHILD && e.to === 'main')); assert.equal(tl.agents.find((a) => a.id === 'x_oom_controls').type, 'peer');
+  const { assemble } = require('../adapters/timeline.js');   // a nested agent's relative target resolves against its own path; an agent outside the files still gets an edge
+  const deep = assemble({ id: 'x', proj: '_codex', agents: { main: { id: 'main', role: 'Lead', type: 'main' }, k: { id: 'k', role: '/root/kitchen', type: 'worker' }, p: { id: 'p', role: '/root/kitchen/pizza', type: 'worker' } }, childByPath: { '/root': 'main', '/root/kitchen': 'k', '/root/kitchen/pizza': 'p' }, pathOf: { main: '/root', k: '/root/kitchen', p: '/root/kitchen/pizza' },
+    states: [{ agent: 'k', raw: [{ ts: 1, agent: 'k', kind: 'msg', native: true, target: 'pizza', text: '' }, { ts: 2, agent: 'k', kind: 'msg', native: true, target: '/root', text: '' }, { ts: 3, agent: 'k', kind: 'msg', native: true, target: 'ghost', text: '' }] }, { agent: 'p', raw: [{ ts: 4, agent: 'p', kind: 'msg', native: true, target: 'kitchen', text: '' }] }] });
+  assert.deepEqual(deep.events.map((e) => [e.agent, e.to]), [['k', 'p'], ['k', 'main'], ['k', 'x_ghost'], ['p', 'k']]); assert.equal(deep.agents.find((a) => a.id === 'x_ghost').type, 'peer');
   const usage = tl.events.filter((e) => e.kind === 'usage'); assert.ok(usage.length >= 5 && usage.every((u) => u.model === 'gpt-6-astra' && u.u.i >= 0));
   const seen = new Set(fs.readFileSync(fix('codex-parent.jsonl'), 'utf8').split('\n').filter((l) => l.includes('token_usage_record')).map((l) => JSON.parse(l).payload.response_id)); assert.equal(usage.filter((u) => u.agent === 'main').length, seen.size);   // one per API response, duplicates dropped
   const out = tl.events.find((e) => e.kind === 'msg' && !e.native && e.agent === 'main'), inn = tl.events.find((e) => e.kind === 'msg' && !e.native && e.to === 'main');
@@ -65,7 +71,8 @@ test('hermes: the SQLite store becomes sessions, a board and a timeline with del
   for (const s of f.sessions) ins.run(s.id, s.source, s.title, s.started_at + shift, s.ended_at == null ? null : s.ended_at + shift, s.end_reason, s.last_activity_at == null ? null : s.last_activity_at + shift, s.model, s.parent_session_id, s.display_name, s.cwd, s.message_count, s.input_tokens, s.output_tokens, s.cache_read_tokens, s.cache_write_tokens);
   const im = db.prepare('insert into messages (id, session_id, role, content, tool_call_id, tool_calls, tool_name, timestamp, display_kind, finish_reason, platform_message_id, active, compacted) values (?,?,?,?,?,?,?,?,?,?,?,?,?)');
   for (const m of f.messages) im.run(m.id, m.session_id, m.role, m.content, m.tool_call_id, m.tool_calls, m.tool_name, m.timestamp + shift, m.display_kind, m.finish_reason, m.platform_message_id, m.active, m.compacted);
-  const t0 = kids[0].started_at + shift - 1, tasks = JSON.stringify({ tasks: kids.slice(0, 3).map((k, i) => ({ goal: 'Task ' + (i + 1) + ' for ' + k.id })) });   // a delegation of three tasks: the three sub-agent sessions started right after it
+  const firstPrompt = f.messages.find((m) => m.session_id === K && m.role === 'user').content.replace(/^\[[^\]]+\]\s*/, '');   // a child's first user row is its task's goal
+  const t0 = kids[0].started_at + shift - 1, tasks = JSON.stringify({ tasks: [{ goal: 'Task 1: a child session this fixture does not have' }, { goal: firstPrompt }, { goal: 'Task 3: no child either' }] });   // a delegation of three tasks; only the second one's child is in the fixture, and it is not the first child by start time
   im.run(34000, MAIN, 'assistant', '', null, JSON.stringify([{ id: 'toolu_deleg', type: 'function', function: { name: 'delegate_task', arguments: tasks } }]), null, t0, null, 'tool_calls', null, 1, 0);
   im.run(34001, MAIN, 'tool', JSON.stringify({ results: [{ task_index: 0, status: 'completed', summary: 'done A' }, { task_index: 1, status: 'completed', summary: 'done B' }, { task_index: 2, status: 'completed', summary: 'done C' }] }), 'toolu_deleg', null, 'delegate_task', t0 + 100, null, null, null, 1, 0);
   const t1 = Date.now() / 1000 - 20;   // the last exchange, 20 s ago: a question left unanswered that long means "needs you"
@@ -81,7 +88,7 @@ test('hermes: the SQLite store becomes sessions, a board and a timeline with del
   assert.ok(hermes.exists('_hermes-gaming', MAIN) && !hermes.exists('_hermes-gaming', 'nope') && !hermes.exists('_hermes', MAIN));
   const tl = hermes.timeline('_hermes-gaming', MAIN);
   assert.ok(tl.agents.some((a) => a.id === K && a.type === 'subagent' && /^Research what real wounds/.test(a.role)));   // a child's task is its first user row
-  const orders = tl.events.filter((e) => e.kind === 'order'); assert.equal(orders.length, 3); assert.deepEqual(orders.map((o) => o.to), kids.slice(0, 3).map((k) => k.id)); assert.match(orders[0].text, /^Task 1/);
+  const orders = tl.events.filter((e) => e.kind === 'order'); assert.equal(orders.length, 1); assert.equal(orders[0].to, K); assert.equal(orders[0].toolId, 'toolu_deleg|delegate_task#1'); assert.match(orders[0].text, /^Research what real wounds/);   // matched by goal, not by start order
   assert.ok(tl.events.some((e) => e.kind === 'finish' && e.agent === K) && tl.events.some((e) => e.kind === 'results' && e.items.some((it) => /#1 completed: done A/.test(it.out))));
   const tools = tl.events.filter((e) => e.kind === 'tools').flatMap((e) => e.tools), term = tools.find((t) => t.id.startsWith('toolu_t|')), patch = tools.find((t) => t.id.startsWith('toolu_p|'));
   assert.deepEqual(term.d, { kind: 'cmd', text: 'ls -la /tmp' }); assert.deepEqual(patch.d, { kind: 'edit', file: '/home/user/a.py', old: 'x = 1', new: 'x = 2' });

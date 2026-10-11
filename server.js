@@ -92,8 +92,7 @@ function listSessions() {
 }
 function listSessions0() {
   const rows = [];
-  if (!fs.existsSync(ROOT)) return rows;
-  for (const proj of fs.readdirSync(ROOT)) {
+  for (const proj of fs.existsSync(ROOT) ? fs.readdirSync(ROOT) : []) {   // no Claude Code folder is fine: the other sources still list
     const dir = path.join(ROOT, proj);
     let files;
     try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')); } catch { continue; }
@@ -144,7 +143,9 @@ function timelineEntry(proj, id) {
   }
   return entry;
 }
-const samePrefix = (a, b) => a.length <= b.length && a.every((e, i) => e.ts === b[i].ts && e.kind === b[i].kind && e.agent === b[i].agent);
+// The events already sent must be unchanged for the page to keep appending: same place, and same content for what can grow or flip (a tool beat, a message's state, usage).
+const evSig = (e) => (e.kind === 'tools' ? e.tools.length : e.kind === 'msg' ? e.state + '|' + e.to : e.kind === 'usage' ? e.u.i + e.u.o + e.u.r + e.u.w : e.kind === 'results' ? e.items.length : 0);
+const samePrefix = (a, b) => a.length <= b.length && a.every((e, i) => e.ts === b[i].ts && e.kind === b[i].kind && e.agent === b[i].agent && (i === a.length - 1 && e.kind === 'tools' ? e.tools.length <= b[i].tools.length : evSig(e) === evSig(b[i])));   // the last beat may still be growing: the page patches that one
 const timeline = (proj, id) => timelineEntry(proj, id).tl;
 
 // ---- Board: one cheap row per recent session (state from the tail of its transcript), so many parallel sessions can be watched at once.
@@ -179,8 +180,7 @@ function boardRows() {
 }
 function boardRows0() {
   const now = Date.now(), rows = [];
-  if (!fs.existsSync(ROOT)) return rows;
-  for (const proj of fs.readdirSync(ROOT)) {
+  for (const proj of fs.existsSync(ROOT) ? fs.readdirSync(ROOT) : []) {
     const dir = path.join(ROOT, proj); let files; try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')); } catch { continue; }
     for (const f of files) { try { const st = fs.statSync(path.join(dir, f)); if (now - st.mtimeMs < 12 * 3600e3) rows.push({ proj, id: f.slice(0, -6), st }); } catch {} }
   }
@@ -614,7 +614,7 @@ function start(port = PORT) {
         res.writeHead(200, { 'content-type': 'application/json', ...(gz ? { 'content-encoding': 'gzip' } : {}), vary: 'accept-encoding' });
         return res.end(gz ? entry.gz : entry.json);
       }
-      return json({ id: tl.id, agents: tl.agents, total: tl.events.length, rev: entry.rev, events: tl.events.slice(+after) });
+      return json({ id: tl.id, agents: tl.agents, total: tl.events.length, rev: entry.rev, events: tl.events.slice(+after), last: +after > 0 ? tl.events[+after - 1] : null });   // last: the event before `after` as it is now, in case the beat grew
     }
     if (url.pathname.startsWith('/characters/')) {   // only plain image files of the characters folder, by exact name
       let f = ''; try { f = decodeURIComponent(url.pathname.slice('/characters/'.length)); } catch {}

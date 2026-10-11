@@ -110,8 +110,14 @@ function label(name, a, ts, id) {   // what the call looks like on a screen: the
   return out;
 }
 const ROWS = 'id, role, content, tool_call_id, tool_calls, tool_name, timestamp, display_kind, finish_reason, platform_message_id';
+// Which sub-agent session ran which task of a delegation: the child's first user row is the task's goal, verbatim (children start within seconds of the call, but not in task order).
+function childFor(db, kids, goal, used) {
+  const g = String(goal || '').trim(); if (!g) return null;
+  for (const k of kids) { if (used.has(k.id)) continue; let first = ''; try { first = cleanUser((q(db, "select content from messages where session_id=? and role='user' order by id limit 1", k.id)[0] || {}).content); } catch {} if (first && (first === g || first.startsWith(g.slice(0, 200)) || g.startsWith(first.slice(0, 200)))) { used.add(k.id); return k; } }
+  return null;
+}
 function parseSession(db, s, agent, kids) {
-  const st = { agent, raw: [], childByTool: {} }, pend = new Map(); let spawned = 0;
+  const st = { agent, raw: [], childByTool: {} }, pend = new Map(), used = new Set();
   const rows = tryq(db, [`select ${ROWS} from messages where session_id=? and (active=1 or compacted=1) order by id`, `select ${ROWS.replace('display_kind', 'null as display_kind').replace('platform_message_id', 'null as platform_message_id')} from messages where session_id=? order by id`], s.id);   // superseded copies (neither active nor compacted) are not part of the conversation
   for (const r of rows) {
     const ts = Math.round((r.timestamp || 0) * 1000);
@@ -124,9 +130,9 @@ function parseSession(db, s, agent, kids) {
       const t = String(r.content || '').trim(); if (t) st.raw.push({ ts, agent, kind: 'say', text: t });
       for (const c of calls(r)) {
         pend.set(c.key, { ...c, ts });
-        if (c.name === 'delegate_task') {   // one sub-agent session per task, created right after the call in task order
+        if (c.name === 'delegate_task') {   // one sub-agent session per task, matched by its goal; a task whose child is not found stays an order without a tile
           const tasks = Array.isArray(c.args.tasks) ? c.args.tasks : c.args.goal ? [c.args] : [];
-          tasks.forEach((t, i) => { const toolId = c.key + '#' + i, child = kids[spawned++]; if (child) st.childByTool[toolId] = child.id; st.raw.push({ ts, agent, kind: 'agentcall', toolId, bg: false, title: clip(t.goal, 90), text: clip(t.goal, 2000) + (t.context ? '\n\n' + clip(t.context, 1500) : '') }); });
+          tasks.forEach((t, i) => { const toolId = c.key + '#' + i, child = childFor(db, kids, t.goal, used); if (child) st.childByTool[toolId] = child.id; st.raw.push({ ts, agent, kind: 'agentcall', toolId, bg: false, title: clip(t.goal, 90), text: clip(t.goal, 2000) + (t.context ? '\n\n' + clip(t.context, 1500) : '') }); });
         } else if (c.name !== 'send_peer' && c.name !== 'list_peers') st.raw.push({ ts, agent, kind: 'tool', tool: label(c.name, c.args, ts, c.key) });   // peer calls are emitted once their result says what happened
       }
     } else if (r.role === 'tool') {
@@ -141,14 +147,14 @@ function parseSession(db, s, agent, kids) {
   const u = usageOf(db, s, agent); if (u) st.raw.push(u);
   return st;
 }
-function usageOf(db, s, agent) {   // Hermes keeps totals per session and model, not per message: one event with the session's total
-  let rows = []; try { rows = q(db, "select model, input_tokens i, output_tokens o, cache_read_tokens r, cache_write_tokens w from session_model_usage where session_id=? and task='' order by input_tokens desc", s.id); } catch {}
-  const r = rows[0], u = r ? { i: r.i || 0, o: r.o || 0, r: r.r || 0, w: r.w || 0 } : { i: s.input_tokens || 0, o: s.output_tokens || 0, r: s.cache_read_tokens || 0, w: s.cache_write_tokens || 0 };
-  return u.i + u.o + u.r + u.w ? { ts: mtimeOf(s), agent, kind: 'usage', u, model: (r && r.model) || s.model || '', total: true } : null;
+function usageOf(db, s, agent) {   // Hermes keeps totals per session and model (a conversation can switch models), not per message: one event with the session's total
+  let rows = []; try { rows = q(db, "select model, input_tokens i, output_tokens o, cache_read_tokens r, cache_write_tokens w from session_model_usage where session_id=? and task='' order by input_tokens + cache_read_tokens desc", s.id); } catch {}
+  const u = rows.length ? rows.reduce((a, r) => ({ i: a.i + (r.i || 0), o: a.o + (r.o || 0), r: a.r + (r.r || 0), w: a.w + (r.w || 0) }), { i: 0, o: 0, r: 0, w: 0 }) : { i: s.input_tokens || 0, o: s.output_tokens || 0, r: s.cache_read_tokens || 0, w: s.cache_write_tokens || 0 };
+  return u.i + u.o + u.r + u.w ? { ts: mtimeOf(s), agent, kind: 'usage', u, model: (rows[0] && rows[0].model) || s.model || '', total: true } : null;
 }
 function timeline(proj, id) {
   const db = dbOf(proj), s = db && SAFE.test(id) ? one(db, id) : null; if (!s) throw new Error('session not found');
-  const agents = { main: { id: 'main', role: 'Lead', type: 'main' } }, states = [], kids = children(db, id);
+  const agents = { main: { id: 'main', role: 'Lead', type: 'main', name: 'Hermes' } }, states = [], kids = children(db, id);
   const st = parseSession(db, s, 'main', kids); states.push(st);
   for (const k of kids) {
     agents[k.id] = { id: k.id, role: clip(titleOf(db, k), 60), type: 'subagent', mtime: mtimeOf(k) };
@@ -188,9 +194,13 @@ function mtime(proj, id) {
   const db = dbOf(proj); if (!db || !SAFE.test(id)) return 0;
   try { const s = one(db, id); if (!s) return 0; let m = mtimeOf(s); const r = q(db, 'select max(timestamp) t from messages where session_id=?', id)[0]; if (r && r.t) m = Math.max(m, Math.round(r.t * 1000)); for (const k of children(db, id)) m = Math.max(m, mtimeOf(k)); return m; } catch { return 0; }
 }
-function stamp(proj, id) {
+function stamp(proj, id) {   // changes when rows are added, when compression flips which rows count, when a session ends or its usage moves
   const db = dbOf(proj); if (!db || !SAFE.test(id)) return 0;
-  try { let n = 0; const ids = [id, ...children(db, id).map((k) => k.id)]; for (const x of ids) { const r = q(db, 'select count(*) n, max(id) m from messages where session_id=?', x)[0]; n += (r.n || 0) + (r.m || 0); } return n + ids.length; } catch { return 0; }
+  try {
+    const s = one(db, id); if (!s) return 0; const kids = children(db, id); let n = kids.length + (s.input_tokens || 0) + (s.output_tokens || 0) + (s.cache_read_tokens || 0);
+    for (const x of [s, ...kids]) { const r = q(db, 'select count(*) n, max(id) m, sum(active) a, sum(compacted) c from messages where session_id=?', x.id)[0]; n += (r.n || 0) + (r.m || 0) * 3 + (r.a || 0) * 7 + (r.c || 0) * 11 + (x.ended_at || 0) + (x.last_activity_at || 0); }
+    return n;
+  } catch { return 0; }
 }
 // A Hermes inbox (hermes-<32 hex>) is only ever written in that conversation's own send_peer results: look it up among the recently active sessions of each profile.
 let addrMemo = { at: 0, map: new Map() };

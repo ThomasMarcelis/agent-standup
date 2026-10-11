@@ -66,7 +66,8 @@ function tree() {   // root threads and their descendants among the listed files
   for (const m of byId.values()) if (m.child && m.root && !roots.has(m.root) && !byId.has(m.root)) { const r = metaById(m.root); if (r) roots.set(r.id, r); }   // a root older than the window still shows while its agents work
   return { roots, kids };
 }
-function descendants(id, kids, cap = 60) { const out = []; const walk = (x) => { for (const c of kids.get(x) || []) { if (out.length >= cap) return; out.push(c); walk(c.id); } }; walk(id); return out; }
+const MAX_AGENTS = 150;   // sub-agent rollouts read per session, listing and timeline alike (a Codex tree can have dozens of agents, nested)
+function descendants(id, kids, cap = MAX_AGENTS) { const out = []; const walk = (x) => { for (const c of kids.get(x) || []) { if (out.length >= cap) return; out.push(c); walk(c.id); } }; walk(id); return out; }
 function sessionRows() {
   const { roots, kids } = tree(), rows = [];
   for (const r of roots.values()) { const all = [r, ...descendants(r.id, kids)]; let mtime = 0, size = 0; for (const m of all) { const s = statOf(m); if (!s) continue; mtime = Math.max(mtime, s.mtime); size += s.size; } rows.push({ meta: r, all, mtime, size }); }
@@ -214,14 +215,14 @@ function item(st, it, ts) {   // the structured record of each thing a script di
 }
 function timeline(proj, id) {
   const root = metaById(id); if (!root) throw new Error('session not found');
-  const { kids } = tree(), all = [root, ...descendants(root.id, kids, 40)];
-  const agents = { main: { id: 'main', role: 'Lead', type: 'main' } }, states = [], childByTool = {}, childByPath = {};
+  const { kids } = tree(), all = [root, ...descendants(root.id, kids)];
+  const agents = { main: { id: 'main', role: 'Lead', type: 'main', name: 'Codex' } }, states = [], childByTool = {}, childByPath = { '/root': 'main' }, pathOf = { main: '/root' };
   for (const m of all) {
     const aid = m === root ? 'main' : m.id;
-    if (aid !== 'main') { agents[aid] = { id: aid, role: (m.nickname ? m.nickname + ' · ' : '') + (m.agentPath || 'sub-agent'), type: m.role || 'agent', mtime: (statOf(m) || {}).mtime }; if (m.agentPath) childByPath[m.agentPath] = aid; }
+    if (aid !== 'main') { agents[aid] = { id: aid, role: (m.nickname ? m.nickname + ' · ' : '') + (m.agentPath || 'sub-agent'), type: m.role || 'agent', mtime: (statOf(m) || {}).mtime }; if (m.agentPath) { childByPath[m.agentPath] = aid; pathOf[aid] = m.agentPath; } }
     const st = readNew(m.file, aid, m); if (!st) continue; states.push(st); Object.assign(childByTool, st.childByCall);
   }
-  return assemble({ id, proj, agents, states, childByTool, childByPath });
+  return assemble({ id, proj, agents, states, childByTool, childByPath, pathOf });
 }
 
 // ---- board, liveness, cache keys

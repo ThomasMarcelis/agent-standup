@@ -389,7 +389,7 @@ function renderCharInfo() {
 function persona(a) { const p = persona0(a); p.custom = customFor(a.id); return p; }
 function persona0(a) {
   const h = hash(a.id), base = { ...a };
-  if (a.id === 'main') return { ...base, name: 'Claude', role: L('Chef', 'Lead'), shirt: '#e8845f', shape: 0, acc: 1, eye: 0, glasses: false, scene: 6, prop: 1, acc2: '#f5c04a', lead: true, vi: 0, gid: 'main' };
+  if (a.id === 'main') return { ...base, name: a.name || 'Claude', role: L('Chef', 'Lead'), shirt: '#e8845f', shape: 0, acc: 1, eye: 0, glasses: false, scene: 6, prop: 1, acc2: '#f5c04a', lead: true, vi: 0, gid: 'main' };   // the lead is Claude, Codex or Hermes, as the server says
   if (a.id === 'user') return { ...base, name: L('Vous', 'You'), role: L('Humain', 'Human'), shirt: '#8a94c9', shape: 1, acc: 2, eye: 1, glasses: false, scene: 7, prop: 1, acc2: '#ff7a6b', vi: 3, gid: 'user' };
   return { ...base, name: a.name || uniqueName(a.id, h), roleEn: a.roleEn || a.role, role: (FR() && a.roleFr) || a.roleEn || a.role, shirt: PAL[(h >>> 6) % 8], shape: (h >>> 3) % 5, acc: (h >>> 9) % 6, eye: (h >>> 12) % 3, glasses: ((h >>> 15) % 4) === 0,
            scene: (h >>> 18) % 6, prop: (h >>> 21) % 3, acc2: PAL[(h >>> 24) % 8], vi: h >>> 4, gid: h.toString(36) };
@@ -1713,6 +1713,8 @@ setInterval(async () => {
     if (switched || !S.cur) return;
     const d = await (await fetch(`/api/session?proj=${encodeURIComponent(S.cur.proj)}&id=${S.cur.id}&after=${S.events.length}`)).json();
     if (d.error) return; if (d.total < S.events.length || (d.rev != null && S.rev != null && d.rev !== S.rev)) { S.cur = null; return; }   // transcript was rewritten, or events were inserted before what we have: reload next tick
+    const mine = S.events[S.events.length - 1];   // consecutive tool calls share one beat: the last one we have may have grown since we got it
+    if (d.last && mine && mine.kind === 'tools' && d.last.kind === 'tools' && d.last.tools.length > mine.tools.length) { const extra = d.last.tools.slice(mine.tools.length); mine.tools.push(...extra); if (S.idx >= S.events.length - 1 && S.playing) { tickTools({ agent: mine.agent, tools: extra }); S.tc[mine.agent] -= 0; paintStatus(); } }
     if (!d.events || !d.events.length) return;
     for (const a of d.agents) if (!S.agents[a.id]) { S.agents[a.id] = persona(a); addTile(S.agents[a.id]); }
     const from = S.events.length; S.events = S.events.concat(d.events); $('#seek').max = S.events.length - 1; trNew(from); warmTTS(from); renderLog(false); paintStatus();

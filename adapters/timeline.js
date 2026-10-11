@@ -4,15 +4,20 @@
 //              msg {dir:'out', to|target, name, text, state, msgId} / {dir:'in', from, name, text, msgId}
 const peers = require('./peers.js');
 
-function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}, finishedIds = [], now = Date.now() }) {
+function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}, pathOf = {}, finishedIds = [], now = Date.now() }) {
   const finished = new Set(finishedIds);
   for (const st of states) for (const e of st.raw) if (e.kind === 'agentdone') { const to = e.child || childByTool[e.toolId]; if (to && agents[to]) finished.add(to); }
   let recentUntil = 0;
   for (const a of Object.values(agents)) if (a.id !== 'main' && a.type !== 'peer') { if (a.mtime && now - a.mtime <= 240000) recentUntil = Math.max(recentUntil, a.mtime + 241000); else if (a.mtime && now - a.mtime > 240000) finished.add(a.id); }   // silent for 4 min counts as finished
   const events = [], parent = {}, doneSeen = new Set(), book = peers.nameBook(states);
-  const target = (st, e) => {   // a native message between agents of this session: by thread id, by agent path, or the lead
-    if (e.target === '/root' || e.target === 'main') return 'main';
-    return (e.target && (agents[e.target] ? e.target : childByPath[e.target] || childByPath['/root/' + e.target])) || null;
+  const target = (st, e) => {   // a native message between agents of this session: a thread id, an absolute agent path, or a name relative to the sender (its child, its sibling, or under the lead)
+    const t = String(e.target || ''); if (!t || t === '/root' || t === 'main') return 'main';
+    if (agents[t]) return t;
+    const mine = pathOf[st.agent] || '/root', up = mine.replace(/\/[^/]+$/, '') || '/root';
+    for (const p of [t, mine + '/' + t, up + '/' + t, '/root/' + t]) if (childByPath[p]) return childByPath[p];
+    const stray = 'x_' + t.replace(/[^\w-]/g, '_');   // an agent this session's files do not show (not listed, or beyond the cap): still an edge, to a placeholder
+    if (!agents[stray]) agents[stray] = { id: stray, name: t.replace(/^.*\//, ''), role: t, type: 'peer' };
+    return stray;
   };
   for (const st of states) {
     let lastSay = -1;
@@ -21,7 +26,7 @@ function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}
       if (e.kind === 'agentdone') { const to = e.child || childByTool[e.toolId]; if (to && agents[to] && !doneSeen.has(to)) { doneSeen.add(to); events.push({ ts: e.ts, agent: to, kind: 'finish', to: e.agent }); } }
       else if (e.kind === 'agentcall') { const to = childByTool[e.toolId]; if (to && agents[to]) { parent[to] = e.agent; events.push({ ts: e.ts, agent: e.agent, to, kind: 'order', toolId: e.toolId, bg: !!e.bg, text: e.text || '', title: e.title || '' }); } }
       else if (e.kind === 'msg') {
-        if (e.native) { const to = target(st, e); if (to) events.push({ ts: e.ts, agent: e.agent, kind: 'msg', to, text: e.text || '', state: e.state || 'accepted', native: true }); return; }
+        if (e.native) { events.push({ ts: e.ts, agent: e.agent, kind: 'msg', to: target(st, e), text: e.text || '', state: e.state || 'accepted', native: true }); return; }
         const pa = peers.peerAgent(e.dir === 'out' ? e.to : e.from, e.name, book); if (!agents[pa.id]) agents[pa.id] = pa; else if (e.name && !agents[pa.id].named) { agents[pa.id].name = e.name; agents[pa.id].named = true; }
         if (e.dir === 'out') events.push({ ts: e.ts, agent: e.agent, kind: 'msg', to: pa.id, text: e.text || '', state: e.state || 'accepted', msgId: e.msgId || '', detail: e.detail || '' });
         else events.push({ ts: e.ts, agent: pa.id, kind: 'msg', to: e.agent, text: e.text || '', state: 'received', msgId: e.msgId || '' });
