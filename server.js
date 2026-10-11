@@ -583,7 +583,13 @@ function elevenSetup() {   // model and lead voice from the Hermes config (tts: 
   const tts = (/^tts:\n((?:[ \t]+[^\n]*\n?)*)/m.exec(y) || [])[1] || '', el = (/^[ \t]+elevenlabs:\n((?:[ \t]{3,}[^\n]*\n?)*)/m.exec(tts) || [])[1] || '', get = (k) => ((new RegExp('^[ \\t]+' + k + ':[ \\t]*["\']?([\\w.-]+)', 'm').exec(el) || [])[1] || '');
   return { model: get('model_id') || 'eleven_flash_v2_5', lead: get('voice_id') || 'pNInz6obpgDQGcFmaJgB' };
 }
-let elevenVoices = { at: 0, list: [], error: '' }; const elevenStats = { requests: 0, chars: 0, hits: 0, failed: 0 };
+let elevenVoices = { at: 0, list: [], error: '' }; const elevenStats = { requests: 0, chars: 0, hits: 0, failed: 0, retried: 0, fallbacks: 0 };
+// eleven_v4_turbo takes about 1 s per line (flash: 0.25 s). At most ELEVEN_PARALLEL requests are in flight (a plan's concurrency limit answers 429 beyond it), a request gives up after
+// ELEVEN_TIMEOUT, a 429 is retried once, and what still fails is made by a system voice (tts() below), so a line is late, never lost. No audio tags, no expressive settings: the text as it is.
+const ELEVEN_PARALLEL = 2, ELEVEN_TIMEOUT = () => +process.env.AGENT_STANDUP_ELEVEN_TIMEOUT_MS || 12000, ELEVEN_RETRY_MS = () => +process.env.AGENT_STANDUP_ELEVEN_RETRY_MS || 700;
+let elevenBusy = 0; const elevenWait = [];
+const elevenSlot = () => new Promise((go) => { if (elevenBusy < ELEVEN_PARALLEL) { elevenBusy++; go(); } else elevenWait.push(go); });
+const elevenFree = () => { const next = elevenWait.shift(); if (next) next(); else elevenBusy--; };
 async function listElevenVoices() {   // the account's voices, cached for an hour; the lead's voice first
   const key = elevenKey(), setup = elevenSetup(); if (!key) return { available: false, voices: [], model: setup.model, error: 'no ELEVENLABS_API_KEY in ' + path.join(HERMES_PROFILE(), '.env') };
   if (Date.now() - elevenVoices.at > 3600e3) {
@@ -598,10 +604,16 @@ async function listElevenVoices() {   // the account's voices, cached for an hou
 }
 async function elevenSynth(text, voice, out) {
   const key = elevenKey(), vs = await listElevenVoices(); if (!key || !vs.voices.some((v) => v.name === voice)) throw new Error('unknown voice');
-  elevenStats.requests++; elevenStats.chars += text.length;
-  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_22050_32`, { method: 'POST', headers: { 'xi-api-key': key, 'content-type': 'application/json', accept: 'audio/mpeg' }, body: JSON.stringify({ text, model_id: vs.model }) });
-  if (!r.ok) { elevenStats.failed++; throw new Error('elevenlabs ' + r.status); }
-  fs.writeFileSync(out, Buffer.from(await r.arrayBuffer()));
+  await elevenSlot();
+  try {
+    for (let attempt = 0; ; attempt++) {
+      elevenStats.requests++;
+      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_22050_32`, { method: 'POST', headers: { 'xi-api-key': key, 'content-type': 'application/json', accept: 'audio/mpeg' }, body: JSON.stringify({ text, model_id: vs.model }), signal: AbortSignal.timeout(ELEVEN_TIMEOUT()) });
+      if (r.status === 429 && attempt === 0) { elevenStats.retried++; await new Promise((ok) => setTimeout(ok, ELEVEN_RETRY_MS())); continue; }   // over the concurrency limit: once more, then the system voice
+      if (!r.ok) { elevenStats.failed++; throw new Error('elevenlabs ' + r.status); }
+      elevenStats.chars += text.length; fs.writeFileSync(out, Buffer.from(await r.arrayBuffer())); return;
+    }
+  } catch (e) { if (e && e.name !== 'Error') elevenStats.failed++; throw e; } finally { elevenFree(); }   // a timeout or a refused connection counts as a failure too
 }
 function tts(text, voice, rate, engine) {
   const kk = engine === 'kokoro', el = engine === 'elevenlabs';
@@ -615,7 +627,7 @@ function tts(text, voice, rate, engine) {
   fs.mkdirSync(ttsDir, { recursive: true });
   const tmp = file + '.part' + ext;
   const fallback = (e) => { const vs = listVoices(), v = vs.voices.find((x) => x.locale.startsWith((voice.startsWith('ff_') ? 'fr' : 'en') + '_')); if (!v) throw e; return synthesize(v.name, rate, text, tmp); };   // a line the engine cannot make goes to a system voice instead of being dropped
-  const job = (kk ? kokoro.synth(text, voice, kokoro.speedFor(rate), tmp).catch(fallback) : el ? elevenSynth(text, voice, tmp).catch(fallback) : synthesize(voice, rate, text, tmp))
+  const job = (kk ? kokoro.synth(text, voice, kokoro.speedFor(rate), tmp).catch(fallback) : el ? elevenSynth(text, voice, tmp).catch((e) => { elevenStats.fallbacks++; return fallback(e); }) : synthesize(voice, rate, text, tmp))
     .then(() => { fs.renameSync(tmp, file); return file; }).finally(() => ttsJobs.delete(key));
   ttsJobs.set(key, job); return job;
 }
@@ -726,7 +738,7 @@ function start(port = PORT) {
   } catch (e) { if (res.headersSent) return res.destroy(); json({ error: String(e.message || e) }, 500); }
   }).listen(port, '127.0.0.1', function () { console.log(`Agent Standup → http://localhost:${this.address().port}`); });
 }
-module.exports = { start, currentSession, shutdown, findClaude, bundledClaude, boardRows, placement, charactersDir, listCharacters, triageInput, TRIAGE_SYS, TRIAGE_SCHEMA, SUMMARY_URL, SUMMARY_MODEL };   // the triage pieces: for the offline evaluation of thinking levels
+module.exports = { tts, elevenStats, start, currentSession, shutdown, findClaude, bundledClaude, boardRows, placement, charactersDir, listCharacters, triageInput, TRIAGE_SYS, TRIAGE_SCHEMA, SUMMARY_URL, SUMMARY_MODEL };   // the triage pieces: for the offline evaluation of thinking levels
 if (require.main === module) {
   start().on('error', (e) => {
     console.error(e.code === 'EADDRINUSE' ? `Port ${PORT} is already in use (maybe Agent Standup is already running, e.g. inside VS Code). Try: PORT=4790 node server.js` : String(e));

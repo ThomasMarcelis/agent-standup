@@ -750,6 +750,7 @@ function rankVoices(list) {   // list of names → best distinct voices first
   [...list].sort((a, b) => voiceScore(b) - voiceScore(a)).forEach((n) => { const base = n.replace(/\s*\(.*$/, ''); if (voiceScore(n) > -100 && !seen.has(base)) { seen.add(base); out.push(n); } });
   return out.slice(0, 5);
 }
+const TTS_WAIT = 16000;   // past the server's own 12 s limit and its one retry: after that the line goes to the system voice
 const TTS = {
   server: false, engine: 'system', platform: '', pool: { fr: [], en: [] }, cache: new Map(),
   async init() {
@@ -769,9 +770,9 @@ const TTS = {
   voiceFor(p, fr = FR()) { const pool = this.pool[fr ? 'fr' : 'en']; return pool.length ? (p.id === 'main' ? pool[0] : pool[(p.vi >>> 2) % pool.length]) : null; },
   rate() { return Math.round(Math.max(120, Math.min(330, 178 * (S.live ? 1.12 * lagFactor() : +$('#speed').value))) / 10) * 10; },
   buf(text, voice, rate) {
-    const key = this.engine + '|' + voice + '|' + rate + '|' + text;
+    const key = this.engine + '|' + voice + '|' + (this.engine === 'elevenlabs' ? 0 : rate) + '|' + text;   // ElevenLabs makes one file per line whatever the pace: a line warmed at one pace is a hit at another
     if (!this.cache.has(key)) {
-      this.cache.set(key, fetch(`/api/tts?engine=${this.engine}&voice=${encodeURIComponent(voice)}&rate=${rate}&text=${encodeURIComponent(text)}`).then((r) => { if (!r.ok) throw new Error('tts'); return r.arrayBuffer(); }).then((b) => AUD.ctx.decodeAudioData(b)));
+      this.cache.set(key, fetch(`/api/tts?engine=${this.engine}&voice=${encodeURIComponent(voice)}&rate=${rate}&text=${encodeURIComponent(text)}`, { signal: AbortSignal.timeout(TTS_WAIT) }).then((r) => { if (!r.ok) throw new Error('tts'); return r.arrayBuffer(); }).then((b) => AUD.ctx.decodeAudioData(b)));
       if (this.cache.size > 60) this.cache.delete(this.cache.keys().next().value);
       this.cache.get(key).catch(() => this.cache.delete(key));
     }
@@ -850,9 +851,9 @@ async function speakBabble(text, p, gain, token) {
   await new Promise((res) => setTimeout(res, Math.max(100, (Math.min(t, end) - c.currentTime) * 1000 + 80)));
   nodes.forEach((o) => AUD.live.delete(o)); delete S.level[p.id];
 }
-async function speakServer(text, p, gain, token, fr = FR()) {
+async function speakServer(text, p, gain, token, fr = FR(), still) {
   const voice = TTS.voiceFor(p, fr); if (!voice) throw new Error('no voice');
-  const buf = await TTS.buf(speakable(text), voice, TTS.rate()); if (token !== S.token) return;
+  const buf = await TTS.buf(speakable(text), voice, TTS.rate()); if (token !== S.token || (still && !still())) return;   // a line that went stale while it was being made is not played
   const c = AUD.ctx, src = c.createBufferSource(); src.buffer = buf;
   const an = c.createAnalyser(); an.fftSize = 256; const g = c.createGain(); g.gain.value = gain; let stops = [];
   if (prefs.vstyle !== 'cartoon') src.connect(an); else { const ch = fxChain(c, src, fxFor(p)); stops = ch.stops; ch.node.connect(an); }   // only the cartoon style runs the voice through effects
@@ -904,12 +905,12 @@ function captionRun(id, text, totalMs) {
   for (let i = 1; i < ps.length; i++) { const x = ps[i], when = at; timers.push(setTimeout(() => setCaption(id, x), when)); at += totalMs * x.length / n; }
   capTimers.set(id, timers);
 }
-async function speakLine(text, p, primary, token, fr = FR()) {
+async function speakLine(text, p, primary, token, fr = FR(), still) {
   captionRun(p.id, text, estMs(text));
   if (AUD.off() || !prefs.voice) { if (!AUD.off() && prefs.office) AUD.murmur(0.5 + (p.vi % 5) / 10, estMs(text) / 1000); return sleep(estMs(text)); }
   if (S.hurry) return sleep(estMs(text));
   if ((prefs.vstyle === 'animal' || prefs.vstyle === 'sims') && AUD.ctx) { try { await speakBabble(text, p, primary ? 1 : 0.5, token); return; } catch {} }
-  if (TTS.server && AUD.ctx) { try { await speakServer(text, p, primary ? 1 : 0.5, token, fr); return; } catch {} }
+  if (TTS.server && AUD.ctx) { try { await speakServer(text, p, primary ? 1 : 0.5, token, fr, still); return; } catch {} }
   if (primary && synth && !EMBED && (await speakBrowser(text, p, token, fr))) return;
   AUD.murmur(0.5 + (p.vi % 5) / 10, estMs(text) / 1000); return sleep(estMs(text));
 }
@@ -1784,13 +1785,32 @@ function localPick(items) {   // without the model: everything that needs Tom, e
 }
 // ---- end triage policy
 const D = { done: new WeakSet(), said: [], pending: null };
+// eleven_v4_turbo takes about 1 s per line (flash 0.25 s). Synthesis starts the moment a line is picked, and the next batch is picked, so made, while the
+// current line plays: a line is ready when its turn comes. A line is never played once it has gone stale, and one that would go stale while being made is not made.
+const synthMs = () => (TTS.engine === 'elevenlabs' ? 1200 : 400);
+function warmLines(lines) {
+  if (!S.live || !prefs.voice || AUD.off() || !TTS.server || !AUD.ctx || prefs.vstyle === 'animal' || prefs.vstyle === 'sims') return lines;
+  for (const ln of lines) {
+    const p = S.agents[ln.items[0].agent] || S.agents.main, v = p && TTS.voiceFor(p);
+    if (v) ln.ready = TTS.buf(speakable(ln.line), v, TTS.rate()).catch(() => null);   // the same text and voice speakServer will ask for: a cache hit
+  }
+  return lines;
+}
+async function speakQueue(lines, io) {   // io: { synthMs, fresh(line, ahead), say(line) }
+  for (const ln of lines) {
+    if (!io.fresh(ln, io.synthMs)) continue;   // would be stale before it could be heard
+    if (ln.ready) await ln.ready;              // made since it was picked: usually already
+    if (!io.fresh(ln, 0)) continue;            // stale by the time its audio exists
+    await io.say(ln);
+  }
+}
 async function decide(items) {
   if (prefs.vstyle !== 'animal' && prefs.vstyle !== 'sims') try {   // gibberish voices need no words chosen
     const body = { items: items.map(({ ev, ...x }) => ({ ...x, project: teamOf(S.group).short || niceProj((S.cur || {}).proj || '') })), said: D.said.filter((x) => Date.now() - x.at < 120000).map((x) => x.line), viewing: S.title };
     const res = await Promise.race([fetch('/api/triage', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json()), sleep(TRIAGE_WAIT).then(() => null)]);
-    const out = applyTriage(items, res); if (out) return out;
+    const out = applyTriage(items, res); if (out) return warmLines(out);
   } catch {}
-  return localPick(items);
+  return warmLines(localPick(items));
 }
 function collect() { const items = triageItems(S.events, D.done, Date.now(), new Set(S.needs || []), S.agents); items.forEach((it) => D.done.add(it.ev)); return items; }
 async function directorStep() {
@@ -1798,11 +1818,11 @@ async function directorStep() {
   if (!D.pending) { const items = collect(); if (!items.length) return; D.pending = { cur: S.cur, p: decide(items) }; }
   const { cur, p } = D.pending, lines = await p; D.pending = null; if (S.cur !== cur) return;   // another session meanwhile: its lines are not this one's
   const next = collect(); if (next.length) D.pending = { cur, p: decide(next) };   // the next batch is decided while these lines are said
-  for (const ln of lines) {
-    if (S.cur !== cur || !S.playing || !ln.items.some((it) => Date.now() - it.ev.ts <= keepOf(it))) continue;   // gone stale while waiting: not said
+  const fresh = (ln, ahead) => S.cur === cur && S.playing && ln.items.some((it) => Date.now() + ahead - it.ev.ts <= keepOf(it));   // gone stale while waiting: not said
+  await speakQueue(lines, { synthMs: synthMs(), fresh, say: async (ln) => {
     const id = S.agents[ln.items[0].agent] ? ln.items[0].agent : 'main'; D.said.push({ at: Date.now(), line: ln.line }); if (D.said.length > 30) D.said.shift();
-    startTalk(id, ln.line, ''); await speakLine(ln.line, S.agents[id], true, S.token); stopTalk(id);
-  }
+    startTalk(id, ln.line, ''); await speakLine(ln.line, S.agents[id], true, S.token, FR(), () => fresh(ln, 0)); stopTalk(id);
+  } });
 }
 (async () => { for (;;) { await sleep(300); try { await directorStep(); } catch {} } })();
 const SPEECH_MAX = 560;   // the server reads at most 600 characters of a line (ELEVEN_MAX): what is sent always ends before that, at a sentence or a clause
