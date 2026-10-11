@@ -186,7 +186,7 @@ function boardRows0() {
   }
   rows.sort((a, b) => b.st.mtimeMs - a.st.mtimeMs);
   const others = []; for (const src of SOURCES) { try { others.push(...src.board(now)); } catch {} }
-  return others.concat(rows.slice(0, 40).map(({ proj, id, st }) => {
+  return others.concat(rows.slice(0, 80).map(({ proj, id, st }) => {
     const file = path.join(ROOT, proj, id + '.jsonl'); let p; try { p = parseTail(file, st); } catch { p = { pending: [] }; }
     const age = now - st.mtimeMs, lp = (p.pending || [])[(p.pending || []).length - 1]; let state = 'idle', tool = '', ageMs = age;
     if (age < 30 * 60e3) {
@@ -198,8 +198,12 @@ function boardRows0() {
     let subActive = 0, subTotal = 0; const sd = path.join(ROOT, proj, id, 'subagents');
     try { for (const x of fs.readdirSync(sd)) if (x.endsWith('.jsonl')) { subTotal++; if (now - fs.statSync(path.join(sd, x)).mtimeMs < 90e3) subActive++; } } catch {}
     return { proj, id, title: p.title || id, mtime: st.mtimeMs, state, tool, ageMs, subActive, subTotal, source: 'claude', peers: (p.talks || {}).names || [], msgs: (p.talks || {}).n || 0 };
-  })).sort((a, b) => b.mtime - a.mtime).slice(0, 40);
+  })).sort((a, b) => boardRank(a) - boardRank(b) || b.mtime - a.mtime).slice(0, BOARD_MAX);
 }
+// What the board keeps when there are more sessions than rows: whoever needs the human, then whoever is busy, then finished turns, then idle;
+// a scheduled job (Hermes cron) or a finished one-shot run ranks behind a conversation in the same state, so they never crowd out the live ones.
+const BOARD_MAX = 60, RANK = { blocked: 0, stalled: 0, working: 1, waiting: 1, turn: 2, idle: 3 };
+const boardRank = (r) => (RANK[r.state] == null ? 3 : RANK[r.state]) * 2 + (r.oneshot && r.state !== 'working' && r.state !== 'waiting' ? 1 : 0);
 // Settings live in a file, not only in the page's localStorage: the port changes between VS Code windows and reloads, and localStorage is per origin (port included).
 const PREFS = process.env.AGENT_STANDUP_PREFS || (process.platform === 'win32' ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'agent-standup', 'prefs.json') : path.join(os.homedir(), '.config', 'agent-standup', 'prefs.json'));
 function readPrefs() { try { const v = JSON.parse(fs.readFileSync(PREFS, 'utf8')); return v && typeof v === 'object' && !Array.isArray(v) ? v : null; } catch { return null; } }
@@ -511,17 +515,49 @@ function synthesize(voice, wpm, text, out) {
     p.on('error', reject); p.on('close', (code) => (code === 0 && fs.existsSync(out) ? resolve() : reject(new Error('tts failed'))));
   });
 }
+// ---- ElevenLabs voices (optional): the key stays on this machine (ELEVENLABS_API_KEY, or a .env file next to the Hermes profile), never in the page or the logs.
+// Flash v2.5 is the cheapest model (0.5 credit per character); the audio is cached on disk by voice and text, so a line is paid for once.
+const ELEVEN_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_flash_v2_5', ELEVEN_MAX = 600;   // characters per line: a spoken line is short, and this bounds the cost of any one request
+function envFileValue(file, name) { try { const m = new RegExp('^\\s*(?:export\\s+)?' + name + '\\s*=\\s*(.*?)\\s*$', 'm').exec(fs.readFileSync(file, 'utf8')); return m ? m[1].replace(/^(["'])(.*)\1$/, '$2') : ''; } catch { return ''; } }
+function elevenKey() {
+  if (process.env.ELEVENLABS_API_KEY) return process.env.ELEVENLABS_API_KEY;
+  for (const f of [process.env.AGENT_STANDUP_ENV_FILE, path.join(os.homedir(), '.hermes', 'profiles', 'gaming', '.env'), path.join(os.homedir(), '.hermes', '.env')].filter(Boolean)) { const v = envFileValue(f, 'ELEVENLABS_API_KEY'); if (v) return v; }
+  return '';
+}
+let elevenVoices = { at: 0, list: [], error: '' }; const elevenStats = { requests: 0, chars: 0, hits: 0, failed: 0 };
+const ELEVEN_FIRST = 'pNInz6obpgDQGcFmaJgB';   // Adam, the voice Hermes already speaks with: the lead gets it when it is in the account
+async function listElevenVoices() {   // the account's stock voices, cached for an hour
+  const key = elevenKey(); if (!key) return { available: false, voices: [], model: ELEVEN_MODEL, error: 'no key' };
+  if (Date.now() - elevenVoices.at > 3600e3) {
+    try {
+      const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } }); if (!r.ok) throw new Error('voices ' + r.status);
+      const vs = ((await r.json()).voices || []).filter((v) => v && typeof v.voice_id === 'string' && /^[A-Za-z0-9]{10,40}$/.test(v.voice_id) && (!v.category || v.category === 'premade' || v.category === 'professional' || v.category === 'cloned'));
+      vs.sort((a, b) => (a.voice_id === ELEVEN_FIRST ? -1 : b.voice_id === ELEVEN_FIRST ? 1 : 0));
+      elevenVoices = { at: Date.now(), list: vs.map((v) => ({ name: v.voice_id, label: String(v.name || v.voice_id).slice(0, 40), locale: 'xx' })), error: '' };
+    } catch (e) { elevenVoices = { at: Date.now() - 3300e3, list: elevenVoices.list, error: String(e.message || e).slice(0, 80) }; }   // retry in 5 min, keep what we had
+  }
+  return { available: elevenVoices.list.length > 0, voices: elevenVoices.list, model: ELEVEN_MODEL, error: elevenVoices.error, stats: elevenStats };
+}
+async function elevenSynth(text, voice, out) {
+  const key = elevenKey(), vs = await listElevenVoices(); if (!key || !vs.voices.some((v) => v.name === voice)) throw new Error('unknown voice');
+  elevenStats.requests++; elevenStats.chars += text.length;
+  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_22050_32`, { method: 'POST', headers: { 'xi-api-key': key, 'content-type': 'application/json', accept: 'audio/mpeg' }, body: JSON.stringify({ text, model_id: ELEVEN_MODEL }) });
+  if (!r.ok) { elevenStats.failed++; throw new Error('elevenlabs ' + r.status); }
+  fs.writeFileSync(out, Buffer.from(await r.arrayBuffer()));
+}
 function tts(text, voice, rate, engine) {
-  const kk = engine === 'kokoro';
+  const kk = engine === 'kokoro', el = engine === 'elevenlabs';
   if (kk) { if (!kokoro.hasVoice(voice)) return Promise.reject(new Error('unknown voice')); }
+  else if (el) { if (!/^[A-Za-z0-9]{10,40}$/.test(String(voice))) return Promise.reject(new Error('unknown voice')); }
   else { const vs = listVoices(); if (!vs.available || !vs.voices.some((v) => v.name === voice)) return Promise.reject(new Error('unknown voice')); }
-  text = String(text).slice(0, kk ? 1500 : 700); rate = Math.max(90, Math.min(360, Math.round(+rate || 180)));
-  const key = crypto.createHash('sha1').update([kk ? 'kokoro' : 'system', voice, rate, text].join('|')).digest('hex'), file = path.join(ttsDir, key + '.wav');
-  if (fs.existsSync(file)) return Promise.resolve(file);
+  text = String(text).slice(0, kk ? 1500 : el ? ELEVEN_MAX : 700); rate = Math.max(90, Math.min(360, Math.round(+rate || 180)));
+  const ext = el ? '.mp3' : '.wav', key = crypto.createHash('sha1').update([kk ? 'kokoro' : el ? 'elevenlabs|' + ELEVEN_MODEL : 'system', voice, el ? '' : rate, text].join('|')).digest('hex'), file = path.join(ttsDir, key + ext);   // ElevenLabs: one file per line and voice whatever the pace, so a line is never paid twice
+  if (fs.existsSync(file)) { if (el) elevenStats.hits++; return Promise.resolve(file); }
   if (ttsJobs.has(key)) return ttsJobs.get(key);
   fs.mkdirSync(ttsDir, { recursive: true });
-  const tmp = file + '.part.wav';
-  const job = (kk ? kokoro.synth(text, voice, kokoro.speedFor(rate), tmp).catch((e) => { const vs = listVoices(), v = vs.voices.find((x) => x.locale.startsWith((voice.startsWith('ff_') ? 'fr' : 'en') + '_')); if (!v) throw e; return synthesize(v.name, rate, text, tmp); }) : synthesize(voice, rate, text, tmp))   // a line Kokoro cannot make goes to a system voice instead of being dropped
+  const tmp = file + '.part' + ext;
+  const fallback = (e) => { const vs = listVoices(), v = vs.voices.find((x) => x.locale.startsWith((voice.startsWith('ff_') ? 'fr' : 'en') + '_')); if (!v) throw e; return synthesize(v.name, rate, text, tmp); };   // a line the engine cannot make goes to a system voice instead of being dropped
+  const job = (kk ? kokoro.synth(text, voice, kokoro.speedFor(rate), tmp).catch(fallback) : el ? elevenSynth(text, voice, tmp).catch(fallback) : synthesize(voice, rate, text, tmp))
     .then(() => { fs.renameSync(tmp, file); return file; }).finally(() => ttsJobs.delete(key));
   ttsJobs.set(key, job); return job;
 }
@@ -579,13 +615,14 @@ function start(port = PORT) {
     if (url.pathname === '/api/warm') { trWorkers.forEach((w) => { if (!w.p) w.start(); }); return json({ ok: true }); }
     if (url.pathname === '/api/voices') {
       if (url.searchParams.get('engine') === 'kokoro') { const st = kokoro.status(); if (st.installed && !st.gaveUp) kokoro.warm(); return json({ available: st.installed && !st.gaveUp, ready: st.ready, voices: kokoro.voices(), platform: process.platform, engine: 'kokoro' }); }
+      if (url.searchParams.get('engine') === 'elevenlabs') return listElevenVoices().then((v) => json({ ...v, platform: process.platform, engine: 'elevenlabs' }));
       return json(listVoices());
     }
     if (url.pathname === '/api/kokoro/install' && req.method === 'POST') return json(kokoro.install());
     if (url.pathname === '/api/kokoro') return json(kokoro.status());
     if (url.pathname === '/api/tts') {
       return tts(url.searchParams.get('text') || '', url.searchParams.get('voice'), url.searchParams.get('rate'), url.searchParams.get('engine'))
-        .then((f) => { res.writeHead(200, { 'content-type': 'audio/wav', 'cache-control': 'max-age=86400' }); fs.createReadStream(f).pipe(res); })
+        .then((f) => { res.writeHead(200, { 'content-type': f.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav', 'cache-control': 'max-age=86400' }); fs.createReadStream(f).pipe(res); })
         .catch((e) => json({ error: String(e.message) }, 400));
     }
     if (url.pathname === '/api/prefs.js') { res.writeHead(200, { 'content-type': 'application/javascript', 'cache-control': 'no-store' }); return res.end('window.SAVED_PREFS = ' + JSON.stringify(readPrefs()).replace(/</g, '\\u003c') + ';'); }

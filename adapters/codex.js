@@ -29,7 +29,7 @@ function metaOf(file) {
     if (p && typeof p.id === 'string') {
       const sp = (p.source && typeof p.source === 'object' && p.source.subagent && p.source.subagent.thread_spawn) || {};
       m = { id: p.id, file, parent: p.parent_thread_id || sp.parent_thread_id || null, root: p.session_id || p.id, child: p.thread_source === 'subagent' || !!(p.parent_thread_id || sp.parent_thread_id), depth: sp.depth || 0,
-        agentPath: p.agent_path || sp.agent_path || '', nickname: p.agent_nickname || sp.agent_nickname || '', role: p.agent_role || sp.agent_role || '', cwd: p.cwd || '', start: Date.parse(p.timestamp) || Date.parse(r.timestamp) || 0, histStart: p.subagent_history_start_ordinal || 0 };
+        agentPath: p.agent_path || sp.agent_path || '', nickname: p.agent_nickname || sp.agent_nickname || '', role: p.agent_role || sp.agent_role || '', cwd: p.cwd || '', start: Date.parse(p.timestamp) || Date.parse(r.timestamp) || 0, histStart: p.subagent_history_start_ordinal || 0, originator: p.originator || '' };
     }
   } catch {}
   if (m) metaCache.set(file, m); return m;
@@ -243,7 +243,7 @@ function tail(file) {
 }
 const isOpen = (id) => fs.existsSync(path.join(HOME(), 'thread-writer-locks', id + '.lock'));   // Codex holds a lock file while a thread is loaded
 function board(now = Date.now()) {
-  return sessionRows().filter((r) => now - r.mtime < 12 * 3600e3).slice(0, 40).map(({ meta, all, mtime }) => {
+  return sessionRows().filter((r) => now - r.mtime < 12 * 3600e3).slice(0, 80).map(({ meta, all, mtime }) => {
     const t = tail(meta.file), age = now - mtime; let state = 'idle', tool = '', ageMs = age;
     if (age < 30 * 60e3) {
       const lp = t.pending[t.pending.length - 1];
@@ -252,7 +252,7 @@ function board(now = Date.now()) {
       else state = age < 10 * 60e3 ? 'working' : 'idle';
     }
     let subActive = 0; for (const m of all.slice(1)) { const s = statOf(m); if (s && now - s.mtime < 90e3) subActive++; }
-    return { proj: '_codex', id: meta.id, title: titleOf(meta), mtime, state, tool, ageMs, subActive, subTotal: all.length - 1, source: 'codex', project: meta.cwd, peers: t.peers.names, msgs: t.peers.n };
+    return { proj: '_codex', id: meta.id, title: titleOf(meta), mtime, state, tool, ageMs, subActive, subTotal: all.length - 1, source: 'codex', project: meta.cwd, peers: t.peers.names, msgs: t.peers.n, oneshot: meta.originator === 'codex_exec' && all.length === 1 };   // a `codex exec` run with no agents of its own: a one-shot job
   });
 }
 const exists = (proj, id) => !!fileOf(id);

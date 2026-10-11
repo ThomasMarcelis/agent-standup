@@ -13,7 +13,7 @@
 <meta name="twitter:image" content="https://atoll92.github.io/agent-standup/media/social.jpg">
 <link rel="icon" href="icon.png">
 <style>
-:root { --bg:#fbf8f3; --ink:#1f1b16; --dim:#70675c; --line:#e9e1d5; --card:#fff; --accent:#d9604a; --accent-ink:#fff; --coffee:#ffdd00 }
+:root { --bg:#fbf8f3; --ink:#1f1b16; --dim:#70675c; --line:#e9e1d5; --card:#fff; --accent:#d9604a; --accent-ink:#fff }
 @media (prefers-color-scheme:dark) { :root { --bg:#14120f; --ink:#f4eee5; --dim:#a79e90; --line:#2b2720; --card:#1c1915; --accent:#ff8a70; --accent-ink:#1a0d08 } }
 * { box-sizing:border-box }
 html { scroll-behavior:smooth }
@@ -46,10 +46,6 @@ ol.steps li { counter-increment:s; position:relative; padding:0 0 14px 48px }
 ol.steps li::before { content:counter(s); position:absolute; left:0; top:0; width:32px; height:32px; border-radius:50%; background:var(--card); border:1.5px solid var(--line); display:grid; place-items:center; font-weight:700; font-size:15px }
 code { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:.9em }
 ul.list { padding-left:22px } ul.list li { margin-bottom:8px }
-.coffee { margin-top:40px; background:var(--card); border:1.5px dashed var(--line); border-radius:20px; padding:26px 26px 24px; text-align:center }
-.coffee p { margin:0 auto 16px; max-width:480px }
-.coffee a { display:inline-block; background:var(--coffee); color:#1a1500; font-weight:700; padding:11px 22px; border-radius:99px; text-decoration:none }
-.coffee a:hover { filter:brightness(.96) }
 footer { margin:54px 0 40px; padding-top:22px; border-top:1px solid var(--line); color:var(--dim); font-size:14px; display:flex; flex-wrap:wrap; gap:6px 18px; justify-content:space-between }
 footer a { color:inherit }
 .shot { display:block; width:100%; border-radius:16px; background:#111; box-shadow:0 10px 30px rgba(60,40,20,.22) }
@@ -131,11 +127,6 @@ p a, .fine a, li a { color:var(--accent) } p a:hover, .fine a:hover, li a:hover 
     <h2 data-en="Is it serious?" data-fr="C’est sérieux ?">Is it serious?</h2>
     <p data-en="Mostly for fun. A little for clarity: when eight sub-agents are working at once, seeing who’s doing what, and what’s on their screen, is easier than scrolling through a log." data-fr="Surtout pour le plaisir. Un peu pour la clarté : quand huit sous-agents travaillent en même temps, voir qui fait quoi, et ce qu’il y a sur leur écran, est plus simple que de faire défiler un journal.">Mostly for fun.</p>
     <p data-en="<b>Is my code sent anywhere?</b> No. Everything runs on your machine and reads the session files Claude Code already writes. (Only if you turn on French translation or the jokes, short lines go through your own Claude login.)" data-fr="<b>Mon code part-il quelque part ?</b> Non. Tout tourne sur votre machine et lit les fichiers de session que Claude Code écrit déjà. (Si vous choisissez le français, de courtes phrases sont traduites via votre propre connexion Claude.)">No.</p>
-
-    <div class="coffee">
-      <p data-en="Made by a bored dev and his robots. <br>This dev was replaced by his own agents. If this made you smile, spare a coffee for his career change? ☕" data-fr="Fait par un dev qui s’ennuie et ses robots.<br>Ce développeur a été remplacé par ses propres agents. Si ça vous a fait sourire, un café pour sa reconversion ? ☕">Made by a bored dev and his robots.</p>
-      <a href="https://www.buymeacoffee.com/bored_dev_and_his_robots" target="_blank" rel="noopener" data-en="☕ Buy him a coffee" data-fr="☕ Lui offrir un café">☕ Buy him a coffee</a>
-    </div>
   </main>
 
   <footer>
@@ -191,7 +182,7 @@ function renderCharInfo() {
 function persona(a) { const p = persona0(a); p.custom = customFor(a.id); return p; }
 function persona0(a) {
   const h = hash(a.id), base = { ...a };
-  if (a.id === 'main') return { ...base, name: 'Claude', role: L('Chef', 'Lead'), shirt: '#e8845f', shape: 0, acc: 1, eye: 0, glasses: false, scene: 6, prop: 1, acc2: '#f5c04a', lead: true, vi: 0, gid: 'main' };
+  if (a.id === 'main') return { ...base, name: a.name || 'Claude', role: L('Chef', 'Lead'), shirt: '#e8845f', shape: 0, acc: 1, eye: 0, glasses: false, scene: 6, prop: 1, acc2: '#f5c04a', lead: true, vi: 0, gid: 'main' };   // the lead is Claude, Codex or Hermes, as the server says
   if (a.id === 'user') return { ...base, name: L('Vous', 'You'), role: L('Humain', 'Human'), shirt: '#8a94c9', shape: 1, acc: 2, eye: 1, glasses: false, scene: 7, prop: 1, acc2: '#ff7a6b', vi: 3, gid: 'user' };
   return { ...base, name: a.name || uniqueName(a.id, h), roleEn: a.roleEn || a.role, role: (FR() && a.roleFr) || a.roleEn || a.role, shirt: PAL[(h >>> 6) % 8], shape: (h >>> 3) % 5, acc: (h >>> 9) % 6, eye: (h >>> 12) % 3, glasses: ((h >>> 15) % 4) === 0,
            scene: (h >>> 18) % 6, prop: (h >>> 21) % 3, acc2: PAL[(h >>> 24) % 8], vi: h >>> 4, gid: h.toString(36) };

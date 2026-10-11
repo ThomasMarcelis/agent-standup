@@ -12,8 +12,6 @@
 
 _A fictional team fixing a slow login page — the built-in demo (⚙ → Source → Demo). [Watch the full 1-minute video](https://atoll92.github.io/agent-standup/media/demo.mp4)._
 
-[![Buy me a coffee](https://img.shields.io/badge/-Buy%20the%20(replaced)%20dev%20a%20coffee-ffdd00?logo=buymeacoffee&logoColor=black)](https://www.buymeacoffee.com/bored_dev_and_his_robots)
-
 > Unofficial community project, not affiliated with or endorsed by Anthropic. "Claude" is a trademark of Anthropic.
 
 ## What you get
@@ -112,7 +110,8 @@ The **Sessions** tab lists every session active in the last 12 hours, across all
 Every tile carries one status: **working** (with what it is doing), **waiting on another agent** (who), **needs you?** (a file edit or write, or a question, has been pending for 15 s+), **stalled** (waiting on an agent that has been silent for 2 min+), or **done**. A summary sits in the header, and the tab title shows how many agents need you. The "needs you?" signal is a heuristic: Claude Code does not record permission prompts, so commands (Bash) are not flagged because they can legitimately run for minutes (they get a ⏳ badge after 1 min instead). Measured on real sessions, edits that stay pending for 15 s+ are rare, so the signal is mostly right.
 
 ## Voices
-Four styles in ⚙ (default: **Cartoon voices**, so everything stays understandable):
+Six styles in ⚙ (default: **Cartoon voices**, so everything stays understandable):
+- **ElevenLabs voices** — your own ElevenLabs account, server-side only: set `ELEVENLABS_API_KEY` in the server's environment (a Hermes profile's `.env` is read as a fallback) and pick the style in ⚙. The cheapest model, `eleven_flash_v2_5` (0.5 credit per character; `ELEVENLABS_MODEL` overrides it), one stock voice per agent, every line cached on disk by voice and text so it is paid for once, nothing synthesised while muted, system voices as the fallback. The key never reaches the page.
 - **Animal Crossing** — every agent "talks" in gibberish, one blip per letter, with a sentence melody (up for questions, down for statements) and a register of its own.
 - **Simlish** — the same idea with flowing syllables, vowels and little consonant noises.
 - **Cartoon voices** — the real words read by your system voice, with a character per agent (chipmunk, deep, robot, wobbly, radio, monster, squeaky).
@@ -266,10 +265,8 @@ Several ideas in 1.23 (settings kept in a file, session stickiness, subtitles th
 
 MIT
 
-## Support the project / work with me
-This dev was replaced by his own agents. If Agent Standup made your sessions more fun, you can [buy him a coffee](https://www.buymeacoffee.com/bored_dev_and_his_robots) ☕ — there is also a ☕ line in the ⚙ menu and at the end of each recap.
-
-Agent Standup is free and MIT licensed. I'm also available for work around AI agents and developer tooling: reach me through my GitHub profile, [Atoll92](https://github.com/Atoll92).
+## Author
+Agent Standup is free and MIT licensed, made by [Atoll92](https://github.com/Atoll92); this fork adds Codex CLI, Hermes and agent-peers support. I'm also available for work around AI agents and developer tooling: reach me through my GitHub profile, [Atoll92](https://github.com/Atoll92).
 
 ## Settings menu and shortcuts
 ⚙ has sections that fold (and remember it), a search box, and a Display section. “Notify me when the agents finish” is on by default (change it in ⚙ → Sound). The **?** help also explains what each status means.

@@ -50,14 +50,14 @@ const frameHtml = (src) => `<!doctype html><html><head><meta charset="utf-8">
     <style>html,body{margin:0;height:100%;background:#12131a}iframe{border:0;width:100%;height:100vh}</style></head>
     <body><iframe src="${src}" allow="autoplay; clipboard-write"></iframe>
     <script>const vs = acquireVsCodeApi(); const fr = document.querySelector('iframe'); addEventListener('message', (e) => { if (e.source === fr.contentWindow) { if (e.data && e.data.agentStandup) vs.postMessage(e.data); } else if (e.data && e.data.agentStandup === 'pin') fr.contentWindow.postMessage(e.data, '*'); });</script></body></html>`;
-// Messages from the page: open it in the browser, or open a donation link (https only, known donation sites only).
-const DONATE_HOSTS = /^(www\.)?(buymeacoffee\.com|ko-fi\.com|paypal\.me|paypal\.com|github\.com)$/;
+// Messages from the page: open it in the browser, or open a link to the project (https only, GitHub only).
+const LINK_HOSTS = /^(www\.)?github\.com$/;
 const relay = (webview) => webview.onDidReceiveMessage((m) => {
   if (!m) return;
   if (m.agentStandup === 'openBrowser') openBrowser();
   if (m.agentStandup === 'openCharacters') openCharacters();
   if (m.agentStandup === 'notify' && typeof m.text === 'string') vscode.window.showInformationMessage('Agent Standup: ' + m.text.slice(0, 120));
-  if (m.agentStandup === 'openExternal') { try { const u = new URL(m.url); if (u.protocol === 'https:' && DONATE_HOSTS.test(u.hostname)) vscode.env.openExternal(vscode.Uri.parse(u.toString())); } catch {} }
+  if (m.agentStandup === 'openExternal') { try { const u = new URL(m.url); if (u.protocol === 'https:' && LINK_HOSTS.test(u.hostname)) vscode.env.openExternal(vscode.Uri.parse(u.toString())); } catch {} }
 });
 
 // Sidebar view: the same live call, in the activity bar.

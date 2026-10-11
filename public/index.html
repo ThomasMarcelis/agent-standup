@@ -187,9 +187,7 @@
   .cta { background:var(--accent); color:#0b1020; font-weight:700; padding:10px 22px; border-radius:99px; font-size:14px } .cta:hover { filter:brightness(1.1) }
   .btn { background:var(--panel2); border:1px solid var(--line); padding:6px 12px; border-radius:8px } .btn:hover { border-color:var(--accent) }
   #menu { position:absolute; top:52px; right:10px; z-index:12; width:280px; background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:0 14px 40px rgba(0,0,0,.55); padding:6px; display:none; max-height:calc(100vh - 62px); max-height:calc(100dvh - 62px); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin }   /* never taller than the window: it scrolls instead of being cut off */
-  .coffee-btn { color:#ffd24a !important; background:rgba(255,210,74,.12); box-shadow:inset 0 0 0 1px rgba(255,210,74,.35) } .coffee-btn:hover { background:rgba(255,210,74,.22) !important }
   .glink { color:var(--dim); font-size:12.5px; text-decoration:underline; text-underline-offset:3px } .glink:hover { color:#ffd24a }
-  #mCoffee { background:rgba(255,210,74,.10); box-shadow:inset 0 0 0 1px rgba(255,210,74,.3); margin-top:4px } #mCoffee:hover { background:rgba(255,210,74,.2) }
   #menuQ { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:6px 9px; font:inherit; font-size:12.5px; outline:none } #menuQ:focus { border-color:var(--accent) }
   #switcher { position:fixed; inset:0; z-index:20; background:rgba(5,6,12,.7); display:flex; align-items:flex-start; justify-content:center; padding-top:12vh } #switcher .sbox { width:min(560px,92vw); background:var(--panel); border:1px solid var(--line); border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.6); overflow:hidden }
   #swq { width:100%; border:0; border-bottom:1px solid var(--line); background:transparent; color:var(--text); font:inherit; font-size:15px; padding:14px 16px; outline:none } #swl { max-height:50vh; overflow:auto } .swr { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; padding:9px 14px; cursor:pointer; align-items:center } .swr.on, .swr:hover { background:var(--panel2) } .swr b { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap } .swr i { grid-column:2; font-style:normal; font-size:11px; color:var(--dim) }
@@ -225,7 +223,6 @@
   #recap .box { max-width:860px; margin:0 auto; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px 26px }
   #recap h1 { margin:0 0 14px; font:900 26px "Comic Sans MS","Chalkboard SE",sans-serif; text-shadow:2px 2px 0 #d8372b } #recap h3 { margin:20px 0 6px; font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim) }
   .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:10px } .kpi { background:var(--bg); border-radius:10px; padding:10px 12px } .kpi b { display:block; font-size:22px } .kpi span { color:var(--dim); font-size:11.5px }
-  .coffee { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:20px; padding:12px 14px; background:var(--bg); border:1px dashed #4a4f66; border-radius:10px; font-size:13px; color:#c3c6d4 }
   #recap table { width:100%; border-collapse:collapse; font-size:12.5px } #recap td, #recap th { padding:4px 8px; border-bottom:1px solid var(--line); text-align:left } #recap th { color:var(--dim); font-weight:500 } #recap .f { font:12px ui-monospace,Menlo,monospace; word-break:break-all }
 
   /* ---------- tree ---------- */
@@ -249,7 +246,6 @@
   <button class="ic" id="bPlay" title="Pause / Lecture (espace)">⏸</button>
   <button class="ic" id="bLog" title="Transcript">☰</button>
   <button class="ic" id="bMute" title="Son (M)">🔊</button>
-  <button class="ic coffee-btn" id="bCoffee" style="display:none">☕</button>
   <button class="ic" id="bMenu" title="Réglages">⚙</button>
 </header>
 
@@ -282,7 +278,6 @@
   <div class="box"><div id="charInfo" class="dim" style="font-size:11.5px;line-height:1.5"></div><div style="display:flex;gap:6px;margin-top:6px"><button class="btn" id="charReload" data-fr="Recharger" data-en="Reload">Recharger</button><button class="btn" id="charOpen" style="display:none" data-fr="Ouvrir le dossier" data-en="Open folder">Ouvrir le dossier</button></div></div>
   <button class="mi" data-t="customLaptop"><span data-fr="Ordinateur devant vos personnages" data-en="Laptop in front of your own characters">Ordinateur devant vos personnages</span><i class="sw"></i></button>
   <h4 data-fr="Outils" data-en="Tools">Outils</h4>
-  <button class="mi" id="mCoffee" style="display:none"><span id="mCoffeeT"></span></button>
   <button class="mi" id="mKeys"><span data-fr="⌨ Raccourcis clavier (?)" data-en="⌨ Keyboard shortcuts (?)">⌨ Raccourcis clavier (?)</span></button>
   <button class="mi" id="mRecap"><span data-fr="📋 Récapitulatif" data-en="📋 Recap">📋 Récapitulatif</span></button>
   <button class="mi" id="mExport"><span data-fr="🎞 Exporter la vidéo" data-en="🎞 Export video">🎞 Exporter la vidéo</span></button>
@@ -302,7 +297,7 @@
     <canvas id="gantt" height="90"></canvas>
     <div id="toasts" role="status" aria-live="polite"></div>
     <div id="empty"><h2 id="eT"></h2><p id="eP"></p><button class="cta" id="eDemo"></button></div>
-    <div id="gate"><h2 id="gT"></h2><p id="gP"></p><button class="cta" id="gB"></button><button class="glink" id="gCoffee" style="display:none"></button></div>
+    <div id="gate"><h2 id="gT"></h2><p id="gP"></p><button class="cta" id="gB"></button></div>
     <div id="detail"><div class="hd"><b id="dname"></b><button class="ic" id="dclose">✕</button></div><div id="dbody"></div></div>
   </section>
   <aside><h2 id="logH">Transcript</h2><input id="logQ" type="search" placeholder="Search…" aria-label="Search the transcript" style="margin:0 10px 8px;width:calc(100% - 20px)"><div id="log"></div></aside>
@@ -323,7 +318,6 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 const hash = (s) => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const SUPPORT = { url: 'https://www.buymeacoffee.com/bored_dev_and_his_robots' };   // e.g. 'https://www.buymeacoffee.com/yourname' — the coffee button stays hidden while this is empty
 const CID = Math.random().toString(36).slice(2, 12);   // identifies this window for the audio-ownership handshake
 const Q = new URLSearchParams(location.search);
 const EMBED = Q.get('embed') === '1' || window.parent !== window;
@@ -712,6 +706,10 @@ const TTS = {
         const k = await (await fetch('/api/voices?engine=kokoro')).json();
         if (k.available && k.ready) { this.server = true; this.engine = 'kokoro'; this.platform = k.platform || ''; for (const l of ['fr', 'en']) this.pool[l] = k.voices.filter((v) => v.locale.startsWith(l + '_')).map((v) => v.name); return; }
       }
+      if (prefs.vstyle === 'elevenlabs') {   // the server's ElevenLabs key; the same stock voices speak every language, one per agent
+        const e = await (await fetch('/api/voices?engine=elevenlabs')).json(); this.eleven = e;
+        if (e.available) { this.server = true; this.engine = 'elevenlabs'; this.platform = e.platform || ''; for (const l of ['fr', 'en']) this.pool[l] = e.voices.map((v) => v.name); return; }
+      }
       const d = await (await fetch('/api/voices')).json(); this.platform = d.platform || ''; if (!d.available) return; this.server = true;
       for (const l of ['fr', 'en']) this.pool[l] = rankVoices(d.voices.filter((v) => v.locale.startsWith(l + '_')).map((v) => v.name)); } catch {}
   },
@@ -727,9 +725,9 @@ const TTS = {
     return this.cache.get(key);
   },
 };
-function warmTTS(i) {   // synthesize the next few lines ahead of time
-  if (!TTS.server || !AUD.ctx || !prefs.voice || prefs.vstyle === 'animal' || prefs.vstyle === 'sims') return;
-  let n = 0; for (let k = i; k < S.events.length && n < 4; k++) {
+function warmTTS(i) {   // synthesize the next few lines ahead of time (never while muted: a paid voice must not be billed for lines nobody hears)
+  if (!TTS.server || !AUD.ctx || !prefs.voice || AUD.off() || prefs.vstyle === 'animal' || prefs.vstyle === 'sims') return;
+  let n = 0; for (let k = i; k < S.events.length && n < (TTS.engine === 'elevenlabs' ? 2 : 4); k++) {
     const e = S.events[k]; if (quiet(e)) continue; n++;
     const p = S.agents[e.agent], v = p && TTS.voiceFor(p, FR() && trMem.has(baseText(e))); if (v) TTS.buf(speakable(spoken(e)), v, TTS.rate()).catch(() => {});
   }
@@ -803,7 +801,7 @@ async function speakServer(text, p, gain, token, fr = FR()) {
   const buf = await TTS.buf(speakable(text), voice, TTS.rate()); if (token !== S.token) return;
   const c = AUD.ctx, src = c.createBufferSource(); src.buffer = buf;
   const an = c.createAnalyser(); an.fftSize = 256; const g = c.createGain(); g.gain.value = gain; let stops = [];
-  if (prefs.vstyle === 'natural' || prefs.vstyle === 'kokoro') src.connect(an); else { const ch = fxChain(c, src, fxFor(p)); stops = ch.stops; ch.node.connect(an); }
+  if (prefs.vstyle === 'natural' || prefs.vstyle === 'kokoro' || prefs.vstyle === 'elevenlabs') src.connect(an); else { const ch = fxChain(c, src, fxFor(p)); stops = ch.stops; ch.node.connect(an); }
   an.connect(g); g.connect(AUD.voice);
   const data = new Uint8Array(an.fftSize);
   S.level[p.id] = () => { an.getByteTimeDomainData(data); let s = 0; for (const v of data) { const x = (v - 128) / 128; s += x * x; } return Math.sqrt(s / data.length); };   // drives the mouth
@@ -1338,17 +1336,9 @@ function drawGantt() {
 $('#gantt').onclick = (e) => { const r = e.currentTarget.getBoundingClientRect(); seekTo(Math.floor(((e.clientX - r.left) / r.width) * S.events.length)); };
 
 // =====================================================================
-//  support the dev
+//  links out of the page
 // =====================================================================
-const coffeeMsg = () => L('Ce développeur a été remplacé par ses propres agents. Un café pour sa reconversion ? ☕', 'This dev was replaced by his own agents. Spare a coffee for his career change? ☕');
 function openExternal(url) { if (EMBED) window.parent.postMessage({ agentStandup: 'openExternal', url }, '*'); else window.open(url, '_blank', 'noopener'); }   // VS Code webviews must ask the extension
-function renderCoffee() {
-  const on = !!SUPPORT.url, b = $('#mCoffee'); b.style.display = on ? '' : 'none'; $('#mCoffeeT').textContent = L('☕ Offrir un café au développeur', '☕ Buy the (replaced) dev a coffee'); b.title = coffeeMsg();
-  const h = $('#bCoffee'); h.style.display = on ? '' : 'none'; h.title = coffeeMsg(); h.setAttribute('aria-label', coffeeMsg());
-  const g = $('#gCoffee'); g.style.display = on ? '' : 'none'; g.textContent = L('☕ Ce développeur a été remplacé par ses agents — lui offrir un café', '☕ This dev was replaced by his agents — buy him a coffee');
-}
-$('#bCoffee').onclick = $('#gCoffee').onclick = () => openExternal(SUPPORT.url);
-$('#mCoffee').onclick = () => { $('#menu').classList.remove('on'); openExternal(SUPPORT.url); };
 
 // =====================================================================
 //  recap
@@ -1400,7 +1390,6 @@ function openRecap() {
     <h3>${L('Agents les plus actifs', 'Busiest agents')}</h3><table><tr><th></th><th>${L('Rôle', 'Role')}</th><th>${L('Outils', 'Tools')}</th><th>${L('Fichiers', 'Files')}</th><th>${L('Jetons', 'Tokens')}</th><th>${L('Durée', 'Time')}</th></tr>
     ${rows.map((a) => `<tr><td><b>${esc(nameOf(a.id))}</b></td><td>${esc(S.agents[a.id].role)}</td><td>${a.tools}</td><td>${a.files.size || ''}</td><td title="${tk[a.id] ? esc(tokTip(tk[a.id])) : ''}">${tk[a.id] ? '⚡ ' + fmtTok(tokTotal(tk[a.id])) : ''}</td><td>${a.t0 != null && a.t1 != null ? fmt(a.t1 - a.t0) : ''}</td></tr>`).join('')}</table>
     <h3>${L('Fichiers touchés', 'Files touched')}</h3>${fl.length ? `<table>${fl.map(([f, v]) => `<tr><td class="f">${esc(f)}</td><td>×${v.n}</td><td>${esc([...v.who].join(', '))}</td></tr>`).join('')}</table>` : `<div class="dim">${L('Aucune modification.', 'No edits.')}</div>`}
-    ${SUPPORT.url ? `<div class="coffee"><span>${esc(coffeeMsg())}</span><button class="btn" id="recapCoffee">☕ ${L('Offrir un café', 'Buy a coffee')}</button></div>` : ''}
     <p style="text-align:right;margin:18px 0 0"><button class="btn" id="recapMd">📋 ${L('Copier en Markdown', 'Copy as Markdown')}</button> <button class="cta" id="recapx">${L('Fermer', 'Close')}</button></p>`;
   const md = [`# Agent Standup — ${S.title || L('épisode', 'session')}`, `_${new Date().toLocaleString()}_ · ${Math.max(0, Object.keys(S.agents).length - 2)} agents · ${tools} ${L('appels d’outils', 'tool calls')} · ${cmds} ${L('commandes', 'commands')} · ${errs} ${L('erreurs', 'errors')}${totTok ? ' · ⚡ ' + fmtTok(totTok) + ' tokens' : ''}`, '', '## Standup'];
   rows.forEach((a) => { let rep = ''; for (let i = S.events.length - 1; i >= 0; i--) { const e = S.events[i]; if (e.agent === a.id && (e.kind === 'report' || (a.id === 'main' && e.kind === 'say'))) { rep = spoken(e).replace(/\s+/g, ' ').trim().slice(0, 240); break; } }
@@ -1408,7 +1397,6 @@ function openRecap() {
   if (fl.length) { md.push('', '## ' + L('Fichiers touchés', 'Files touched')); fl.forEach(([f, v]) => md.push(`- \`${f}\` ×${v.n} (${[...v.who].join(', ')})`)); }
   md.push('', '_Made with Agent Standup — https://atoll92.github.io/agent-standup/_');
   $('#recapMd').onclick = async () => { const txt = md.join('\n'); let ok = false; try { await navigator.clipboard.writeText(txt); ok = true; } catch { try { const ta = document.createElement('textarea'); ta.value = txt; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); } catch {} } $('#recapMd').textContent = ok ? '✓ ' + L('Copié', 'Copied') : L('Copie impossible', 'Copy failed'); setTimeout(() => ($('#recapMd').textContent = '📋 ' + L('Copier en Markdown', 'Copy as Markdown')), 2000); };
-  if ($('#recapCoffee')) $('#recapCoffee').onclick = () => openExternal(SUPPORT.url);
   $('#recapx').onclick = () => $('#recap').classList.remove('on'); $('#recap').classList.add('on');
 }
 
@@ -1902,7 +1890,7 @@ function applyLang() {
   $('#gT').textContent = L('Rejoindre l’appel', 'Join the call'); $('#gP').textContent = L('Cliquez pour activer le son et suivre votre session Claude Code en direct.', 'Click to enable sound and follow your Claude Code session live.'); $('#gB').textContent = L('▶ Rejoindre', '▶ Join');
   $('#eDemo').textContent = L('▶ Voir la démo', '▶ Watch the demo'); $('#eT').textContent = L('En attente d’une session', 'Waiting for a session'); $('#eP').textContent = L('Lancez Claude Code dans ce dossier : l’appel démarrera tout seul.', 'Start Claude Code in this folder — the call will start by itself.');
   for (const id in S.agents) { const p = persona(S.agents[id]); Object.assign(S.agents[id], { name: p.name, role: p.role }); const t = $('#t-' + id); if (t) { t.querySelector('.tag span').textContent = p.role; t.querySelector('.tag b').textContent = p.name; if (id === 'main' || id === 'user') t.querySelector('.tag span').textContent = p.role; } }
-  document.querySelectorAll('#menu .mi[data-t]').forEach((b) => b.querySelector('.sw').classList.toggle('on', !!prefs[b.dataset.t])); renderCoffee(); renderTokens(); updateHint(); renderLog(true); syncUI();
+  document.querySelectorAll('#menu .mi[data-t]').forEach((b) => b.querySelector('.sw').classList.toggle('on', !!prefs[b.dataset.t])); renderTokens(); updateHint(); renderLog(true); syncUI();
 }
 const elsewhere = () => !!(S.owner && S.owner !== CID);
 function applyMute() {
@@ -1946,11 +1934,17 @@ $('#station').innerHTML = STATIONS.map((s) => `<option value="${s.id}">📻 ${s.
 $('#station').value = prefs.station; $('#musicVol').value = prefs.musicVol; $('#musicBox').style.display = prefs.music ? '' : 'none';
 $('#station').onchange = (e) => { prefs.station = e.target.value; savePrefs(); AUD.init(); RADIO.sync(); };
 $('#chatSel').value = ['quiet', 'normal', 'lively'].includes(prefs.chat) ? prefs.chat : 'quiet'; $('#chatSel').onchange = () => { prefs.chat = $('#chatSel').value; savePrefs(); };
-$('#vstyle').innerHTML = [['animal', 'Animal Crossing (babillage)', 'Animal Crossing (babble)'], ['sims', 'Simlish (babillage)', 'Simlish (babble)'], ['cartoon', 'Voix cartoon (voix réelle)', 'Cartoon voices (real voice)'], ['natural', 'Voix naturelles', 'Natural voices'], ['kokoro', 'Voix très naturelles (à installer)', 'Very natural voices (installs on demand)']].map(([v, fr, en]) => `<option value="${v}" data-fr="${fr}" data-en="${en}">${L(fr, en)}</option>`).join(''); $('#vstyle').value = prefs.vstyle; $('#vstyle').onchange = () => { prefs.vstyle = $('#vstyle').value; prefs.vstyleChosen = true; savePrefs(); TTS.init().then(kokoroUI); kokoroUI(); };
-// ---- ⚙ → very natural voices (Kokoro): install box and status, polled while installing
+$('#vstyle').innerHTML = [['animal', 'Animal Crossing (babillage)', 'Animal Crossing (babble)'], ['sims', 'Simlish (babillage)', 'Simlish (babble)'], ['cartoon', 'Voix cartoon (voix réelle)', 'Cartoon voices (real voice)'], ['natural', 'Voix naturelles', 'Natural voices'], ['kokoro', 'Voix très naturelles (à installer)', 'Very natural voices (installs on demand)'], ['elevenlabs', 'Voix ElevenLabs (clé API sur le serveur)', 'ElevenLabs voices (API key on the server)']].map(([v, fr, en]) => `<option value="${v}" data-fr="${fr}" data-en="${en}">${L(fr, en)}</option>`).join(''); $('#vstyle').value = prefs.vstyle; $('#vstyle').onchange = () => { prefs.vstyle = $('#vstyle').value; prefs.vstyleChosen = true; savePrefs(); TTS.init().then(kokoroUI); kokoroUI(); };
+// ---- ⚙ → very natural voices (Kokoro): install box and status, polled while installing; ElevenLabs: whether the server has a key
 let kokoroTimer = null;
 async function kokoroUI() {
-  const box = $('#kokoroBox'), on = prefs.vstyle === 'kokoro'; box.style.display = on ? '' : 'none'; if (!on) { clearInterval(kokoroTimer); kokoroTimer = null; return; }
+  const box = $('#kokoroBox'), on = prefs.vstyle === 'kokoro'; box.style.display = on || prefs.vstyle === 'elevenlabs' ? '' : 'none';
+  if (prefs.vstyle === 'elevenlabs') {   // nothing to install: either the server has a key, or the system voices speak instead
+    clearInterval(kokoroTimer); kokoroTimer = null; $('#kokoroInstall').style.display = 'none'; const e = TTS.eleven || {};
+    $('#kokoroHint').textContent = e.available ? `${L('Voix ElevenLabs prêtes', 'ElevenLabs voices ready')} · ${e.model || ''} · ${(e.voices || []).length} ${L('voix', 'voices')}` : L('Pas de clé ElevenLabs sur le serveur (ELEVENLABS_API_KEY) : les voix du système servent à la place.', 'No ElevenLabs key on the server (ELEVENLABS_API_KEY): system voices are used instead.');
+    return;
+  }
+  if (!on) { clearInterval(kokoroTimer); kokoroTimer = null; return; }
   let st; try { st = await (await fetch('/api/kokoro')).json(); } catch { return; }
   const b = $('#kokoroInstall'), h = $('#kokoroHint'); b.style.display = st.installed ? 'none' : '';
   b.disabled = st.installing || !st.npm; b.textContent = st.installing ? L('Installation…', 'Installing…') : L(`Installer (${st.sizeMb} Mo)`, `Install (${st.sizeMb} MB)`);

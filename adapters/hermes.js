@@ -187,7 +187,7 @@ function boardRow(db, p, s, now) {
     else if (last && last.role === 'assistant' && last.finish_reason === 'stop') state = 'turn';
     else state = age < 10 * 60e3 ? 'working' : 'idle';
   }
-  return { proj: p.proj, id: s.id, title: titleOf(db, s), mtime, state, tool, ageMs, subActive: kids.filter((k) => !k.ended_at).length, subTotal: kids.length, source: 'hermes', project: projectOf(s), peers: seen.names, msgs: seen.n };
+  return { proj: p.proj, id: s.id, title: titleOf(db, s), mtime, state, tool, ageMs, subActive: kids.filter((k) => !k.ended_at).length, subTotal: kids.length, source: 'hermes', project: projectOf(s), peers: seen.names, msgs: seen.n, oneshot: /^(cron|webhook|healthcheck|tool)$/.test(s.source || '') };
 }
 const exists = (proj, id) => { const db = dbOf(proj); if (!db || !SAFE.test(id)) return false; try { return !!one(db, id); } catch { return false; } };
 function mtime(proj, id) {
