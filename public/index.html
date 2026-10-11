@@ -23,6 +23,15 @@
   @media (max-width:480px) { header { gap:6px; padding:0 8px } .ctxp { display:none !important } } @media (max-width:420px) { .tok { display:none !important } }
   .logo { width:26px; height:26px; border-radius:8px; background:#d97757; display:grid; place-items:center; font-size:15px; flex:none }
   .brand b { font:700 14px "Comic Sans MS","Chalkboard SE",system-ui,sans-serif; white-space:nowrap }
+  .pbtn { display:flex; align-items:center; gap:9px; min-width:0; padding:3px 10px 3px 8px; border:1px solid transparent; border-radius:10px; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; transition:background .12s, border-color .12s }
+  .pbtn:hover, .pbtn:focus-visible, .pbtn[aria-expanded="true"] { background:var(--panel2); border-color:var(--line); outline:none } .pbtn > div { min-width:0 }
+  .psw { width:10px; height:10px; border-radius:3px; flex:none; background:var(--proj, var(--line)) } .psw.all { background:conic-gradient(#7c9cff, #58d68d, #f0a020, #ff7ab6, #7c9cff) }
+  .pchev { color:var(--dim); font-size:11px; transition:transform .12s } .pbtn[aria-expanded="true"] .pchev { transform:rotate(180deg) }
+  #pmenu { position:fixed; top:50px; left:48px; z-index:30; width:390px; max-width:calc(100vw - 24px); max-height:min(70vh, 560px); overflow:auto; padding:6px; background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:0 18px 50px rgba(0,0,0,.55); opacity:0; transform:translateY(-6px) scale(.98); transform-origin:top left; pointer-events:none; visibility:hidden; transition:opacity .12s, transform .12s, visibility 0s .12s; scrollbar-width:thin; scrollbar-color:#3a4060 transparent }
+  #pmenu.on { opacity:1; transform:none; pointer-events:auto; visibility:visible; transition:opacity .12s, transform .12s } #pmenu hr { border:0; border-top:1px solid var(--line); margin:4px 6px }
+  .prow { display:flex; align-items:center; gap:10px; width:100%; padding:9px 10px; border:0; border-radius:8px; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer }
+  .prow:hover, .prow:focus-visible { background:var(--panel2); outline:none } .prow .pn { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1 } .prow b { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .prow small { font-size:11.5px; color:var(--dim) } .prow .pck { color:var(--accent); font-weight:700; flex:none } .prow.pq { color:var(--dim); font-size:12px; padding:7px 10px }
   .brand small { display:block; color:var(--dim); font-size:11px; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
   .sp { flex:1 }
   .tok { font-size:11px; font-weight:600; padding:3px 9px; border-radius:99px; background:var(--panel2); color:#c3c6d4; white-space:nowrap } .tok:hover { color:#fff }
@@ -274,7 +283,7 @@
 </head>
 <body>
 <header>
-  <div class="brand"><div class="logo">🎥</div><div><b>Agent Standup</b><small id="subtitle"></small></div></div>
+  <div class="brand"><div class="logo">🎥</div><button id="pbtn" class="pbtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="pmenu"><i class="psw"></i><div><b>Agent Standup</b><small id="subtitle"></small></div><span class="pchev" aria-hidden="true">▾</span></button></div>
   <span id="pill">REPLAY</span><button id="tok" class="tok" style="display:none"></button><button id="ctxp" class="ctxp" style="display:none"></button><span id="board" aria-live="polite"></span>
   <div class="sp"></div>
   <div class="seg" id="viewSeg"><button data-v="call" class="on" data-fr="Appel" data-en="Call">Appel</button><button data-v="tree" data-fr="Arbre" data-en="Tree">Arbre</button><button data-v="board" data-fr="Sessions" data-en="Sessions">Sessions</button></div>
@@ -322,6 +331,7 @@
 </div>
 
 <main>
+  <div id="pmenu" role="listbox" aria-label="Projects"></div>
   <aside id="side"><div id="calls" aria-label="Calls"></div><nav id="roster" aria-label="Agents"></nav></aside>
   <section id="center">
     <div id="present"><div class="pwin term"><div class="pbar"><i class="r"></i><i class="y"></i><i class="g"></i><span id="ptitle"></span><span id="pbadge"></span></div><div id="pbody"></div><div id="pstat"></div></div><div id="ptodo" style="display:none"></div><div id="pcap"></div><div id="pcam" class="tile working"></div></div>
@@ -1990,8 +2000,48 @@ async function loadSession(proj, id, gentle = false) {
 function paintSubtitle() {   // in a call the header names the project in its colour, with a stripe of it, so a jump to another project is obvious
   const team = teamOf(S.group), b = $('.brand b'), inCall = !!(S.cur && S.cur.proj !== '_demo' && team.short && !document.body.classList.contains('board'));   // the board is every project: no one project's name on top
   b.textContent = inCall ? team.short : 'Agent Standup'; b.style.color = inCall ? GCOL(team.key) : ''; document.documentElement.style.setProperty('--proj', inCall ? GCOL(team.key) : 'var(--line)');
-  const s = $('#subtitle'); s.textContent = (S.live && S.pin ? '📌 ' : '') + (S.title || '').replace(inCall ? team.short + ', ' : '\u0000', ''); s.title = S.live && S.pin ? L('Épinglé. Cliquer pour suivre à nouveau la dernière activité', 'Pinned. Click to follow the latest activity again') : ''; s.style.cursor = S.live && S.pin ? 'pointer' : ''; }
-$('#subtitle').onclick = () => { if (!(S.live && S.pin)) return; S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; savePrefs(); S.cur = null; followCurrent(); };
+  const s = $('#subtitle'), sum = inCall && S.projSum && S.projSum[team.key], own = (S.title || '').replace(inCall ? team.short + ', ' : '\u0000', '');
+  s.textContent = sum || (S.live && S.pin ? '📌 ' : '') + own; $('#pbtn').title = [own, L('Changer de projet', 'Switch project')].filter(Boolean).join('\n'); s.title = S.live && S.pin ? L('Épinglé. Cliquer pour suivre à nouveau la dernière activité', 'Pinned. Click to follow the latest activity again') : ''; s.style.cursor = S.live && S.pin ? 'pointer' : ''; }
+// ---- the header is a project switcher: every project with something going on and its counts; picking one follows it and opens its most urgent or most active call
+let boardMemo = { at: 0, rows: [] };
+async function boardNow(maxAge = 2500) { if (Date.now() - boardMemo.at > maxAge) { try { boardMemo = { at: Date.now(), rows: (await (await fetch('/api/board')).json()) || [] }; } catch {} } return boardMemo.rows; }
+function projectCounts(rows, now = Date.now()) {   // per project: live calls, agents working (the busy sessions and their active sub-agents), who needs Tom; those that need him first, then the most active
+  const m = new Map(), { needs, live, quiet } = railSplit(rows, '', now);
+  const add = (r, on) => { const k = boardKey(r); if (k === '_other') return; let p = m.get(k); if (!p) m.set(k, (p = { key: k, name: r.group.name, calls: 0, agents: 0, needs: 0, mtime: 0 }));
+    if (on) p.calls++; if (r.state === 'blocked') p.needs++; p.agents += (/^(working|waiting|blocked)$/.test(r.state) ? 1 : 0) + (r.subActive || 0); p.mtime = Math.max(p.mtime, r.mtime); };
+  needs.forEach((r) => add(r, true)); live.forEach((r) => add(r, true)); quiet.forEach((r) => add(r, false));
+  return [...m.values()].sort((a, b) => (b.needs > 0) - (a.needs > 0) || b.agents - a.agents || b.calls - a.calls || b.mtime - a.mtime);
+}
+const projLine = (p) => [`${p.calls} ${p.calls === 1 ? L('appel', 'call') : L('appels', 'calls')}`, `${p.agents} ${p.agents === 1 ? L('agent au travail', 'agent working') : L('agents au travail', 'agents working')}`, p.needs ? `${p.needs} ${p.needs === 1 ? L('vous attend', 'needs you') : L('vous attendent', 'need you')}` : ''].filter(Boolean).join(', ');
+function paintProjSum(rows) { const sum = {}; for (const p of projectCounts(rows)) sum[p.key] = projLine(p); const was = JSON.stringify(S.projSum || {}); S.projSum = sum; if (S.cur && JSON.stringify(sum) !== was) paintSubtitle(); }   // not while a session reloads (no call on screen for a moment)
+setInterval(async () => { if (S.live && !document.hidden && !document.body.classList.contains('board')) paintProjSum(await boardNow(4000)); }, 5000);
+let pmQuiet = false;
+function renderProjects(rows) {
+  const list = projectCounts(rows), cur = S.group && !document.body.classList.contains('board') ? teamOf(S.group).key : '', all = !S.pin && (prefs.follow || 'all') === 'all', busy = list.filter((p) => p.calls), quiet = list.filter((p) => !p.calls);
+  const row = (p) => `<button class="prow" role="option" data-k="${esc(p.key)}" aria-selected="${p.key === cur}"><i class="psw" style="background:${GCOL(p.key)}"></i><span class="pn"><b>${esc(p.name)}</b><small>${esc(projLine(p))}</small></span>${p.needs ? '<i class="sdot needs"></i>' : ''}${p.key === cur ? '<span class="pck">✓</span>' : ''}</button>`;
+  $('#pmenu').innerHTML = `<button class="prow" role="option" data-k="" aria-selected="${all}"><i class="psw all"></i><span class="pn"><b>${L('Tout', 'Everything')}</b><small>${L('l’appel le plus actif, ou celui qui vous attend', 'the most active call, or one that needs you')}</small></span>${all ? '<span class="pck">✓</span>' : ''}</button><hr>`
+    + busy.map(row).join('') + (quiet.length ? (pmQuiet ? quiet.map(row).join('') : `<button class="prow pq">＋ ${quiet.length} ${L('inactives', 'quiet')}</button>`) : '');
+}
+async function openProjects() {
+  const m = $('#pmenu'), b = $('#pbtn'), r = b.getBoundingClientRect(); m.style.left = Math.max(8, r.left) + 'px'; m.style.top = r.bottom + 6 + 'px';
+  pmQuiet = false; renderProjects(await boardNow(1500)); m.classList.add('on'); b.setAttribute('aria-expanded', 'true'); (m.querySelector('[aria-selected="true"]') || m.querySelector('.prow')).focus();
+}
+function closeProjects(refocus) { $('#pmenu').classList.remove('on'); $('#pbtn').setAttribute('aria-expanded', 'false'); if (refocus) $('#pbtn').focus(); }
+async function followProject(key) {   // '' is everything
+  closeProjects(); const rows = await boardNow(0), t = key ? followTarget(rows, 'g:' + key) : null, g = key && rows.find((r) => boardKey(r) === key);
+  prefs.follow = key ? 'g:' + key : 'all'; S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; prefs.proj = ''; Q.delete('proj'); savePrefs();
+  S.autoPin = t ? { proj: t.proj, id: t.id } : null; S.switchAt = t ? Date.now() : 0; S.why = g ? L('suit ', 'following ') + g.group.name : '';
+  if (document.body.classList.contains('board')) setView('call'); S.cur = null; await followCurrent(); $('#calls')._h = ''; renderCalls();
+}
+$('#pbtn').onclick = () => ($('#pmenu').classList.contains('on') ? closeProjects() : openProjects());
+$('#pbtn').onkeydown = (e) => { if (e.key === 'ArrowDown' && !$('#pmenu').classList.contains('on')) { e.preventDefault(); openProjects(); } };
+$('#pmenu').onclick = (e) => { const r = e.target.closest('.prow'); if (!r) return; if (r.classList.contains('pq')) { pmQuiet = true; renderProjects(boardMemo.rows); $('#pmenu .prow:last-child').focus(); return; } followProject(r.dataset.k); };
+$('#pmenu').onkeydown = (e) => {
+  const rows = [...$('#pmenu').querySelectorAll('.prow')], i = rows.indexOf(document.activeElement);
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeProjects(true); }
+  else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); rows[(i + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length].focus(); }
+};
+document.addEventListener('pointerdown', (e) => { if ($('#pmenu').classList.contains('on') && !e.target.closest('#pmenu') && !e.target.closest('#pbtn')) closeProjects(); });
 const PNAME = {};   // a project folder's own name (the git root), from the rows the server sent: "agent-standup", not "agent/standup"
 const noteNames = (rows) => { for (const r of rows || []) { const n = r.name || (r.group && !r.group.other && r.group.name); if (n && r.proj && !/^_/.test(r.proj)) PNAME[r.proj] = n; } };
 const niceProj = (p) => (PNAME[p] ? PNAME[p] : p === '_demo' ? '' : p === '_codex' ? 'Codex' : /^_hermes/.test(p) ? 'Hermes' + (p.length > 7 ? ' ' + p.slice(8) : '') : String(p).replace(/^-+/, '').replace(/-/g, '/').split('/').slice(-2).join('/'));
@@ -2111,7 +2161,7 @@ function followTarget(rows, follow) {
 }
 async function renderCalls() {
   const box = $('#calls'); if (!box || document.hidden || !S.live || document.body.classList.contains('board') || document.body.classList.contains('tree') || getComputedStyle($('#side')).display === 'none') return;
-  let rows; try { rows = (await (await fetch('/api/board')).json()) || []; } catch { return; }
+  const rows = await boardNow(1000); paintProjSum(rows);
   const follow = prefs.follow || 'all', cur = S.cur || {}, t = !S.pin && followTarget(rows, follow);
   if (!S.pin) {   // follow: switch with a hold so the call does not flicker between sessions
     const there = t && cur.id === t.id, hold = Date.now() - (S.switchAt || 0) < FOLLOW_HOLD;

@@ -215,3 +215,15 @@ test('denoise: a peer is named by what it is, never by an inbox id (a Hermes thr
   assert.equal(peerWords('codex:respond-to-greeting-8d76'), 'respond to greeting');
   assert.equal(peerWords('standup-round5-opus'), 'standup-round5-opus');
 });
+
+test('project switcher: per project, its live calls, agents working and who needs Tom; those that need him first, then the most active; quiet projects have no live call', () => {
+  const sw = new Function('L', grab(/const boardKey = [^\n]*/) + '\n' + grab(/const LIVE_MS = [\s\S]*?\nfunction railSplit\(rows, curId, now = Date\.now\(\)\) \{[\s\S]*?\n\}/) + '\n' + grab(/function projectCounts\(rows, now = Date\.now\(\)\) \{[\s\S]*?\n\}/) + '\n' + grab(/const projLine = [^\n]*/) + '\nreturn { projectCounts, projLine };')((fr, en) => en);
+  const now = Date.now(), G = (k, n) => ({ key: k, name: n }), r = (id, g, state, ago, x = {}) => ({ id, group: g, state, mtime: now - ago, ...x });
+  const ms = G('repo:/w/ms', 'MarketSimulator'), gl = G('repo:/w/gl', 'gladiator-game'), st = G('repo:/w/as', 'agent-standup');
+  const rows = [r('m1', ms, 'working', 5e3, { subActive: 12 }), r('m2', ms, 'working', 9e3), r('m3', ms, 'blocked', 30e3), r('m4', ms, 'idle', 1800e3),
+    r('g1', gl, 'working', 3e3, { subActive: 30 }), r('s1', st, 'idle', 1200e3), r('s2', st, 'done', 60e3), r('o1', { key: '_other', other: true, name: 'Other' }, 'working', 1e3, { oneshot: true })];
+  const list = sw.projectCounts(rows, now);
+  assert.deepEqual(list.map((p) => [p.name, p.calls, p.agents, p.needs]), [['MarketSimulator', 3, 15, 1], ['gladiator-game', 1, 31, 0], ['agent-standup', 0, 0, 0]]);   // needs Tom first, though gladiator has more agents; the quiet one last; no "Other"
+  assert.equal(sw.projLine(list[0]), '3 calls, 15 agents working, 1 needs you'); assert.equal(sw.projLine(list[2]), '0 calls, 0 agents working');
+  assert.ok(!/·/.test(list.map(sw.projLine).join(' ')));
+});
