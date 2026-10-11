@@ -33,7 +33,7 @@ function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}
         if (e.native) { events.push({ ts: e.ts, agent: e.agent, kind: 'msg', to: target(st, e), text: e.text || '', state: e.state || 'accepted', native: true }); return; }
         const mine = own(e.dir === 'out' ? e.to : e.from) || own(e.name);   // a send_peer between two agents of this very session is not another session
         if (mine) { if (e.dir === 'out' && mine !== e.agent) events.push({ ts: e.ts, agent: e.agent, kind: 'msg', to: mine, text: e.text || '', state: e.state || 'accepted', msgId: e.msgId || '' }); return; }   // its arrival is the same message, seen from the other end
-        const pa = peers.peerAgent(e.dir === 'out' ? e.to : e.from, e.name, book); if (!agents[pa.id]) agents[pa.id] = pa; else if (e.name && !agents[pa.id].named) { agents[pa.id].name = e.name; agents[pa.id].named = true; }
+        const gone = e.dir === 'out' && e.state === 'failed' && !peers.parseAddress(e.to) && !book.has(peers.cleanName(e.to)) && !/^codex:/.test(peers.cleanName(e.to)), pa = gone ? peers.ghost(e.to) : peers.peerAgent(e.dir === 'out' ? e.to : e.from, e.name, book, { msgId: e.msgId, not: { proj, id } }); if (!agents[pa.id]) agents[pa.id] = pa; else if (e.name && !agents[pa.id].named) { agents[pa.id].name = peers.cleanName(e.name); agents[pa.id].named = true; }
         if (e.dir === 'out') events.push({ ts: e.ts, agent: e.agent, kind: 'msg', to: pa.id, text: e.text || '', state: e.state || 'accepted', msgId: e.msgId || '', detail: e.detail || '' });
         else events.push({ ts: e.ts, agent: pa.id, kind: 'msg', to: e.agent, text: e.text || '', state: 'received', msgId: e.msgId || '' });
       }

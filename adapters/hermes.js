@@ -74,8 +74,8 @@ function titleOf(db, s) {
 function list(limit = 60) {
   const out = [];
   for (const p of profiles()) {
-    const db = open(p.db); if (!db) continue;
-    let rows = []; try { rows = recent(db, Date.now() / 1000 - 30 * 86400, limit); } catch (e) { if (process.env.AGENT_STANDUP_DEBUG) console.error('hermes list', p.name, e.message); continue; }
+    const db = open(p.db); if (!db) { peers.problem('Hermes ' + p.name, 'its database could not be opened (is node:sqlite available?)'); continue; }
+    let rows = []; try { rows = recent(db, Date.now() / 1000 - 30 * 86400, limit); } catch (e) { peers.problem('Hermes ' + p.name, e); continue; } peers.problem('Hermes ' + p.name, null);
     for (const s of rows) { let kids = 0; try { kids = children(db, s.id).length; } catch {} out.push({ proj: p.proj, id: s.id, mtime: mtimeOf(s), size: s.message_count || 0, agents: kids, title: titleOf(db, s), project: projectOf(s), group: groupOf(p, s), source: 'hermes' }); }
   }
   return out;
@@ -173,9 +173,9 @@ function timeline(proj, id) {
 function board(now = Date.now()) {
   const out = [];
   for (const p of profiles()) {
-    const db = open(p.db); if (!db) continue;
-    let rows = []; try { rows = recent(db, now / 1000 - 12 * 3600, 40); } catch { continue; }
-    for (const s of rows) { try { out.push(boardRow(db, p, s, now)); } catch (e) { if (process.env.AGENT_STANDUP_DEBUG) console.error('hermes board', s.id, e.message); } }
+    const db = open(p.db); if (!db) { peers.problem('Hermes ' + p.name, 'its database could not be opened (is node:sqlite available?)'); continue; }
+    let rows = []; try { rows = recent(db, now / 1000 - 12 * 3600, 40); } catch (e) { peers.problem('Hermes ' + p.name, e); continue; } peers.problem('Hermes ' + p.name, null);
+    for (const s of rows) { try { out.push(boardRow(db, p, s, now)); } catch (e) { peers.problem('Hermes ' + p.name, e); } }
   }
   return out;
 }
@@ -213,7 +213,7 @@ function addressMap() {
   if (Date.now() - addrMemo.at < 30000) return addrMemo.map;
   const map = new Map();
   for (const p of profiles()) {
-    const db = open(p.db); if (!db) continue; let rows = []; try { rows = recent(db, Date.now() / 1000 - 30 * 86400, 80); } catch { continue; }
+    const db = open(p.db); if (!db) { peers.problem('Hermes ' + p.name, 'its database could not be opened (is node:sqlite available?)'); continue; } let rows = []; try { rows = recent(db, Date.now() / 1000 - 30 * 86400, 80); } catch { continue; }
     for (const s of rows) { let rs = []; try { rs = q(db, "select content from messages where session_id=? and role='tool' and tool_name='send_peer'", s.id); } catch {} for (const r of rs) { const m = /hermes-([0-9a-f]{32})\.sock/.exec(r.content || ''); if (m) map.set('hermes-' + m[1], { source: 'hermes', proj: p.proj, id: s.id, name: 'hermes:' + p.name + ':' + s.id.slice(-8), cwd: projectOf(s), group: groupOf(p, s) }); } }
   }
   addrMemo = { at: Date.now(), map }; return map;

@@ -4,6 +4,7 @@
 // Nothing here reads your real sessions: the Sessions board is fed with made-up rows through a request interception.
 const fs = require('fs'), path = require('path'), os = require('os'), { execFileSync } = require('child_process');
 let puppeteer; try { puppeteer = require('puppeteer-core'); } catch { puppeteer = require(path.join(process.env.PUPPETEER_DIR || '/tmp/as/pp', 'node_modules/puppeteer-core')); }
+process.env.AGENT_STANDUP_PREFS = process.env.AGENT_STANDUP_PREFS || path.join(require('os').tmpdir(), 'agent-standup-capture-prefs.json');   // a capture must not rewrite the person's own settings
 const root = path.join(__dirname, '..'), out = path.join(root, 'docs/media'), PORT = 4795;
 const LANG = process.env.CAPTURE_LANG === 'fr' ? 'fr' : 'en', SUF = LANG === 'fr' ? '-fr' : '';
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';

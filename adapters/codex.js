@@ -33,20 +33,21 @@ function metaOf(file) {
         agentPath: p.agent_path || sp.agent_path || '', nickname: p.agent_nickname || sp.agent_nickname || '', role: p.agent_role || sp.agent_role || '', cwd: p.cwd || '', start: Date.parse(p.timestamp) || Date.parse(r.timestamp) || 0, histStart: p.subagent_history_start_ordinal || 0, originator: p.originator || '' };
     }
   } catch {}
-  if (m) metaCache.set(file, m); return m;
+  if (m) { metaCache.set(file, m); peers.capped(metaCache, 4000); } return m;
 }
 let idx = { at: 0, byId: new Map(), stats: new Map() };
 function scan() {
   if (Date.now() - idx.at < 2000) return idx;
-  const root = SESS(), byId = new Map(), stats = new Map(), now = new Date();
+  const root = SESS(), byId = new Map(), stats = new Map(), now = new Date(); let files = 0;
   for (let d = 0; d <= DAYS; d++) {
     const t = new Date(now.getTime() - d * 864e5), dir = path.join(root, String(t.getFullYear()), pad(t.getMonth() + 1), pad(t.getDate()));
     let names; try { names = fs.readdirSync(dir); } catch { continue; }
     for (const n of names) {
       if (!FILE.test(n)) continue; const f = path.join(dir, n); let st; try { st = fs.statSync(f); } catch { continue; }
-      const m = metaOf(f); if (!m) continue; byId.set(m.id, m); stats.set(m.id, { mtime: st.mtimeMs, size: st.size });
+      files++; const m = metaOf(f); if (!m) continue; byId.set(m.id, m); stats.set(m.id, { mtime: st.mtimeMs, size: st.size });
     }
   }
+  peers.problem('Codex rollouts', files && !byId.size ? 'none of the ' + files + ' rollouts in ' + root + ' could be read (a format change?)' : null);   // every file refused: the format changed, not the days
   idx = { at: Date.now(), byId, stats }; return idx;
 }
 const fileMemo = new Map();   // id → { file|null, at }: the parent of a recent child can be older than the listed days
@@ -57,7 +58,7 @@ function fileOf(id) {
   const hit = fileMemo.get(id); if (hit && (hit.file || Date.now() - hit.at < 10000)) return hit.file;
   let found = null; const root = SESS();
   for (const y of safeDir(root)) for (const mo of safeDir(path.join(root, y))) for (const d of safeDir(path.join(root, y, mo))) { for (const n of safeDir(path.join(root, y, mo, d))) if (n.endsWith('-' + id + '.jsonl')) { found = path.join(root, y, mo, d, n); break; } if (found) break; }
-  fileMemo.set(id, { file: found, at: Date.now() }); return found;
+  fileMemo.set(id, { file: found, at: Date.now() }); peers.capped(fileMemo, 2000); return found;
 }
 const metaById = (id) => scan().byId.get(id) || (fileOf(id) ? metaOf(fileOf(id)) : null);
 const statOf = (m) => { const s = scan().stats.get(m.id); if (s) return s; try { const st = fs.statSync(m.file); return { mtime: st.mtimeMs, size: st.size }; } catch { return null; } };
@@ -109,7 +110,7 @@ function titleOf(m) {
       if (t) { title = tidyTitle(t); break; }
     }
   } catch {}
-  titleCache.set(m.file, { size: (statOf(m) || {}).size, title }); return title || fallbackTitle(m);
+  titleCache.set(m.file, { size: (statOf(m) || {}).size, title }); peers.capped(titleCache, 4000); return title || fallbackTitle(m);
 }
 const fallbackTitle = (m) => (m.agentPath ? human(m.agentPath.split('/').pop()) : threadName(m.id) || 'Codex session from ' + (m.start ? new Date(m.start).toTimeString().slice(0, 5) : m.id.slice(-4)) + ', no prompt yet');
 // Functional names: the thread name the person gave (session_index.jsonl), and for a sub-agent the last segment of its agent path, as words.
@@ -267,7 +268,7 @@ function timeline(proj, id) {
 }
 // Codex encrypts what agents send each other, but the plain text around a message says what it was: a sub-agent's own brief and report are in its rollout.
 // Each edge gets the best summary available (the brief as the child received it, the child's last words, or the verb, target and count) and a note that the body itself is not readable.
-const NOTE = 'body not readable (Codex encrypts it)', line1 = (s, n = 180) => clip(String(s || '').split('\n').find((l) => l.trim()) || '', n);
+const NOTE = 'body not readable, Codex encrypts it', line1 = (s, n = 180) => clip(String(s || '').split('\n').find((l) => l.trim()) || '', n);
 function readable(tl, states, agents) {
   const by = new Map(states.map((st) => [st.agent, st])), counts = {};
   const near = (list, ts, after, span = 180000) => (list || []).find((x) => (after ? x.ts >= ts && x.ts - ts <= span : x.ts <= ts && ts - x.ts <= span));
@@ -314,8 +315,8 @@ function board(now = Date.now()) {
       else if (t.lastTask === 'complete' || t.lastTask === 'aborted') state = isOpen(meta.id) ? 'turn' : 'idle';
       else { state = age < 10 * 60e3 ? 'working' : 'idle'; if (state === 'working' && t.last) { tool = t.last.name; arg = t.last.arg || ''; } }   // between two calls: the last thing it ran
     }
-    let subActive = 0; for (const m of all.slice(1)) { const s = statOf(m); if (s && now - s.mtime < 90e3) subActive++; }
-    return { proj: '_codex', id: meta.id, title: titleOf(meta), mtime, state, tool, arg, ageMs, subActive, subTotal: all.length - 1, source: 'codex', project: meta.cwd, group: project.groupOf(meta.cwd), ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(t.peers, now)), oneshot: meta.originator === 'codex_exec' && all.length === 1 };   // a `codex exec` run with no agents of its own: a one-shot job
+    let subActive = 0; const active = []; for (const m of all.slice(1)) { const s = statOf(m); if (s && now - s.mtime < 90e3) { subActive++; if (active.length < 4) active.push(peers.label(human(String(m.agentPath || '').split('/').pop() || m.nickname || 'sub-agent').replace(/ (?:ultra|max|xhigh)$/i, ''), 32)); } }
+    return { proj: '_codex', id: meta.id, title: titleOf(meta), mtime, state, tool, arg, ageMs, subActive, active, subTotal: all.length - 1, source: 'codex', project: meta.cwd, group: project.groupOf(meta.cwd), ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(t.peers, now)), oneshot: meta.originator === 'codex_exec' && all.length === 1 };   // a `codex exec` run with no agents of its own: a one-shot job
   });
 }
 const exists = (proj, id) => !!fileOf(id);

@@ -56,10 +56,10 @@ test('codex: rollouts become sessions, a board and a timeline with sub-agents, c
   const native = tl.events.filter((e) => e.kind === 'msg' && e.native); assert.ok(native.length >= 2); assert.ok(native.every((e) => e.to === CHILD || e.agent === CHILD || e.to === 'x_oom_controls'));   // the second agent's rollout is not in the fixture, so it is a placeholder
   assert.ok(native.some((e) => e.to === CHILD) && native.some((e) => e.agent === CHILD && e.to === 'main')); assert.equal(tl.agents.find((a) => a.id === 'x_oom_controls').type, 'peer');
   // the bodies are encrypted: every edge still gets a readable summary (the verb, target and count, or the child's own words) and a note, never the ciphertext
-  assert.ok(native.every((e) => e.text && e.note === 'body not readable (Codex encrypts it)' && !/gAAAAA/.test(e.text)));
+  assert.ok(native.every((e) => e.text && e.note === 'body not readable, Codex encrypts it' && !/gAAAAA/.test(e.text)));
   assert.match(native.find((e) => e.to === CHILD).text, /^message to oom timeline \(#1\)$/); assert.match(native.find((e) => e.to === 'x_oom_controls').text, /^message to oom_controls \(#1\)$/);
   const fromChild = native.find((e) => e.agent === CHILD && e.to === 'main'); assert.ok(/^(Journal evidence|message to Codex)/.test(fromChild.text), fromChild.text);   // its report, when the message is its last word
-  assert.deepEqual([order.text, order.note], ['task "oom_timeline" (default)', 'body not readable (Codex encrypts it)']);
+  assert.deepEqual([order.text, order.note], ['task "oom_timeline" (default)', 'body not readable, Codex encrypts it']);
   const { assemble } = require('../adapters/timeline.js');   // a nested agent's relative target resolves against its own path; an agent outside the files still gets an edge
   const deep = assemble({ id: 'x', proj: '_codex', agents: { main: { id: 'main', role: 'Lead', type: 'main' }, k: { id: 'k', role: '/root/kitchen', type: 'worker' }, p: { id: 'p', role: '/root/kitchen/pizza', type: 'worker' } }, childByPath: { '/root': 'main', '/root/kitchen': 'k', '/root/kitchen/pizza': 'p' }, pathOf: { main: '/root', k: '/root/kitchen', p: '/root/kitchen/pizza' },
     states: [{ agent: 'k', raw: [{ ts: 1, agent: 'k', kind: 'msg', native: true, target: 'pizza', text: '' }, { ts: 2, agent: 'k', kind: 'msg', native: true, target: '/root', text: '' }, { ts: 3, agent: 'k', kind: 'msg', native: true, target: 'ghost', text: '' }] }, { agent: 'p', raw: [{ ts: 4, agent: 'p', kind: 'msg', native: true, target: 'kitchen', text: '' }] }] });
@@ -156,7 +156,7 @@ test('talks to: only recent exchanges; a tip asked long ago is history, not a cu
   const now = Date.parse('2026-10-11T15:00:00Z'), at = (iso) => `{"timestamp":"${iso}","type":"assistant","message":{"content":[{"type":"tool_use","name":"SendMessage","input":{"to":"uds:/run/user/1000/cc-socks/20178.sock","message":"x"}}]}}`;
   const t = peers.tailPeers([at('2026-10-11T09:00:00Z'), at('2026-10-11T14:52:00Z')].join('\n'));
   assert.equal(t.hits.length, 2);
-  assert.deepEqual(peers.talksNow(t, now), { n: 1, names: ['Claude Code 20178'] });   // 8 min ago counts, 6 h ago does not
+  assert.deepEqual(peers.talksNow(t, now), { n: 1, names: ['Claude session (ended)'] });   // a pid means nothing to a person; 8 min ago counts, 6 h ago does not
   assert.deepEqual(peers.talksNow(t, now + 9 * 60e3), { n: 0, names: [] });          // and it expires
 });
 
@@ -203,4 +203,41 @@ test('a sub-agent finished by silence whose completion record was not read is do
   const agents = { main: { id: 'main', name: 'Codex' }, kid: { id: 'kid', name: 'stair artist', mtime: old } };
   const tl = assemble({ id: 's', proj: '_codex', agents, states: [{ agent: 'main', raw: [] }, { agent: 'kid', raw: [{ ts: old, agent: 'kid', kind: 'tool', tool: { id: 't1', name: 'exec_command' } }] }] });
   assert.ok(tl.events.some((e) => e.kind === 'finish' && e.agent === 'kid'));
+});
+
+test('round 5: the first frame wins (L7), a Hermes tool_call batch counts its sends (M10), a dead pid is remembered or found by message id (M9)', () => {
+  const quoted = '<peer_message from="standup-fable" reply_to="uds:/run/user/1000/cc-socks/codex-9f73ec26c5009ae5.sock" id="m-7">\nsee: <cross-session-message from="uds:/run/user/1000/cc-socks/4242.sock" from-name="x">\nbody\n</cross-session-message>\n</peer_message>';
+  const inc = peers.incoming(quoted); assert.deepEqual([inc.name, inc.msgId, inc.addr], ['standup-fable', 'm-7', 'uds:/run/user/1000/cc-socks/codex-9f73ec26c5009ae5.sock']);   // L7: not the quoted frame inside
+  const batch = JSON.stringify({ role: 'assistant', tool_calls: JSON.stringify([{ function: { name: 'tool_call', arguments: JSON.stringify({ calls: [{ name: 'send_peer', arguments: { to: 'uds:/run/user/1000/cc-socks/1234.sock', message: 'hi' } }, { name: 'send_peer', arguments: { to: 'uds:/run/user/1000/cc-socks/5678.sock', message: 'yo' } }] }) } }]) });
+  assert.equal(peers.tailPeers(batch).hits.length, 2);   // M10: two sends in one escaped batch
+  assert.equal(peers.tailPeers('{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__agent-peers__list_peers","input":{"to":"uds:/x/1.sock"}}]}}').hits.length, 0);   // a listing is still no send
+  // M9: a pid seen alive is remembered after its registry file is gone; a message id found on a Claude tail names the session
+  const sess = path.join(tmp, 'claude', 'sessions'); fs.mkdirSync(sess, { recursive: true });
+  fs.mkdirSync(path.join(tmp, 'claude', 'projects', '-home-user-live'), { recursive: true }); fs.writeFileSync(path.join(tmp, 'claude', 'projects', '-home-user-live', 'sess-live.jsonl'), '');
+  fs.writeFileSync(path.join(sess, '31337.json'), JSON.stringify({ sessionId: 'sess-live', name: 'standup-live', cwd: '/home/user' })); peers.rememberLive(); fs.unlinkSync(path.join(sess, '31337.json'));
+  const dead = peers.peerAgent('uds:/run/user/1000/cc-socks/31337.sock'); assert.deepEqual([dead.name, dead.link], ['standup-live', { proj: '-home-user-live', id: 'sess-live' }]);
+  peers.indexMessages(['b3b3b3b3-0000-4000-8000-000000000001'], { proj: '-home-user-other', id: 'sess-other', cwd: '/home/user' });
+  const viaMsg = peers.peerAgent('uds:/run/user/1000/cc-socks/777001.sock', '', null, { msgId: 'b3b3b3b3-0000-4000-8000-000000000001', not: { proj: '_hermes-gaming', id: 'h1' } });
+  assert.deepEqual(viaMsg.link, { proj: '-home-user-other', id: 'sess-other' });
+  const self = peers.peerAgent('uds:/run/user/1000/cc-socks/777002.sock', '', null, { msgId: 'b3b3b3b3-0000-4000-8000-000000000001', not: { proj: '-home-user-other', id: 'sess-other' } });
+  assert.equal(self.link, null);   // never the session being viewed
+});
+
+test('round 5: a failed send to a name nobody answers to is an edge to a placeholder, not a guest (L8); a name is bare (L9); maps are capped (L10)', () => {
+  const { assemble } = require('../adapters/timeline.js');
+  const raw = [{ ts: 1, agent: 'main', kind: 'msg', dir: 'out', to: 'gladiator-fight', text: 'hello?', state: 'failed', detail: 'No agent named gladiator-fight is reachable' },
+    { ts: 2, agent: 'main', kind: 'msg', dir: 'in', from: 'uds:/run/user/1000/cc-socks/codex-9f73ec26c5009ae5.sock', name: '', text: 'a' },
+    { ts: 3, agent: 'main', kind: 'msg', dir: 'in', from: 'uds:/run/user/1000/cc-socks/codex-9f73ec26c5009ae5.sock', name: 'claude:standup-finish', text: 'b' }];
+  const tl = assemble({ id: 's', proj: '_codex', agents: { main: { id: 'main', name: 'Codex' } }, states: [{ agent: 'main', raw }], own: () => '' });
+  const ghost = tl.agents.find((a) => a.name === 'gladiator-fight'); assert.deepEqual([ghost.role, ghost.absent, ghost.link, ghost.group], ['not reachable', true, null, null]);
+  assert.ok(tl.agents.some((a) => a.name === 'standup-finish') && !tl.agents.some((a) => /^claude:/.test(a.name)));
+  const m = new Map(); for (let i = 0; i < 20; i++) { m.set(i, i); peers.capped(m, 5); } assert.deepEqual([...m.keys()], [15, 16, 17, 18, 19]);
+});
+
+test('round 5: an adapter that fails or cannot read its store is reported, once, and clears when it recovers (M7); the card names who is active (M8)', () => {
+  const err = console.error, seen = []; console.error = (...a) => seen.push(a.join(' '));
+  try { peers.problem('Hermes gaming', new Error('database is locked')); peers.problem('Hermes gaming', new Error('database is locked')); } finally { console.error = err; }
+  assert.equal(seen.length, 1); assert.deepEqual(peers.problems(), { 'Hermes gaming': 'database is locked' });
+  peers.problem('Hermes gaming', null); assert.deepEqual(peers.problems(), {});
+  const b = codex.board(Date.parse(LAST_TS) + 60e3); assert.deepEqual(b[0].active, ['oom timeline']);   // the active sub-agent by its functional name
 });

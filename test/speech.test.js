@@ -17,7 +17,7 @@ test('speechOf: the content of a line and nothing else; labels are shown, not re
   assert.equal(speechOf({ kind: 'order', to: 'a1', text: 'Review the plan and report back.' }), 'Review the plan and report back.');   // no "Socrates, " prefix
   assert.equal(speechOf({ kind: 'report', to: 'main', text: 'Found 12 record types.' }), 'Found 12 record types.');   // no "Done." prefix
   assert.equal(speechOf({ kind: 'msg', to: 'p_x', text: 'Scope update from Tom.', state: 'received' }), 'Scope update from Tom.');   // no sender name, no delivery state
-  assert.equal(speechOf({ kind: 'msg', to: 'a1', text: 'message to Socrates (#1)', label: true, note: 'body not readable (Codex encrypts it)' }), '');   // a routing label only: silence
+  assert.equal(speechOf({ kind: 'msg', to: 'a1', text: 'message to Socrates (#1)', label: true, note: 'body not readable, Codex encrypts it' }), '');   // a routing label only: silence
   assert.equal(speechOf({ kind: 'order', to: 'a1', text: 'task "oom_timeline" (default)', label: true }), '');
   assert.equal(speechOf({ kind: 'msg', to: 'a1', text: '', native: true }), '');
   assert.equal(speechOf({ kind: 'tools', agent: 'main', tools: [] }), ''); assert.equal(speechOf({ kind: 'finish', agent: 'a1', to: 'main' }), ''); assert.equal(speechOf(null), '');
@@ -121,4 +121,16 @@ test('calls rail: "Follow: everything" goes to a session that needs Tom; followi
   assert.equal(followTarget(rows, 'all').id, 'b');                                     // the one that needs Tom, wherever it is
   assert.equal(followTarget(rows.filter((r) => r.id !== 'b'), 'all'), null);           // nobody needs Tom: the server's most active session
   assert.equal(followTarget(rows, 'g:/w/MarketSimulator').id, 'a');                     // in a project: working before your turn before idle
+});
+
+// the page's own label helpers (round 5: L1 "(#2)" stays "(#2)", L2 a shell script or a JS wrapper is not a label)
+const plain = new Function(grab(/const plain = \(t\) =>[^\n]*/) + '\nreturn plain;')();
+const cmdLabel = new Function(grab(/function cmdLabel\(text\) \{[\s\S]*?\n\}/) + '\nreturn cmdLabel;')();
+test('plain keeps "(#2)" and drops markdown headers; cmdLabel says what a command is', () => {
+  assert.equal(plain('message to integration recovery (#2) and ## Heading\n# Title'), 'message to integration recovery (#2) and Heading Title');
+  assert.equal(cmdLabel("set -e;\ncd /home/user/work && npm test"), 'npm test');
+  assert.equal(cmdLabel("python3 - <<'PY'\nfrom pathlib import Path"), 'python3 script');
+  assert.equal(cmdLabel('const names=ALL_TOOLS.map((t) => t.name);'), '');   // a Codex exec script's JS wrapper is nothing to read out
+  assert.equal(cmdLabel('text("TR-89-01 source", await tools.exec_command({ cmd: "ls" }))'), '');
+  assert.equal(cmdLabel('git status --short'), 'git status --short');
 });

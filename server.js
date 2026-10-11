@@ -17,7 +17,7 @@ const PUBLIC = path.join(__dirname, 'public');
 // Other agent tools: one small adapter each, turning its own store into the same sessions, board rows and timeline (see adapters/). The
 // proj value the page already passes around picks the source: "_codex" and "_hermes[-profile]" are reserved like "_demo"; anything else is Claude Code.
 const codex = require('./adapters/codex.js'), hermes = require('./adapters/hermes.js'), peers = require('./adapters/peers.js'), project = require('./adapters/project.js');
-const SOURCES = [codex, hermes], sourceOf = (proj) => (proj === '_codex' ? codex : /^_hermes(-|$)/.test(proj) ? hermes : null);
+const SOURCES = [codex, hermes], SRC_NAME = new Map([[codex, 'Codex'], [hermes, 'Hermes']]), sourceOf = (proj) => (proj === '_codex' ? codex : /^_hermes(-|$)/.test(proj) ? hermes : null);
 
 const blocks = (rec) => {
   const c = rec.message && rec.message.content;
@@ -104,7 +104,7 @@ function listSessions0() {
       rows.push({ proj, id, mtime: st.mtimeMs, size: st.size, agents });
     }
   }
-  for (const src of SOURCES) { try { rows.push(...src.list()); } catch {} }   // Codex and Hermes sessions, titles included
+  for (const src of SOURCES) { try { rows.push(...src.list()); peers.problem(SRC_NAME.get(src) + ' list', null); } catch (e) { peers.problem(SRC_NAME.get(src) + ' list', e); } }   // Codex and Hermes sessions, titles included
   rows.sort((a, b) => b.mtime - a.mtime);
   const top = rows.slice(0, 60);
   for (const r of top) {   // titles come from the cached tail read (custom title, then AI title, then first prompt): no whole-file reads
@@ -177,7 +177,7 @@ function parseTail(file, st) {
     if (!title) { const u = readHead(file, 64 * 1024).match(/"role":"user","content":"((?:[^"\\]|\\.)*)"/); if (u) { try { title = JSON.parse('"' + u[1] + '"').replace(/\s+/g, ' ').slice(0, 90); } catch {} } }
   }
   const cwd = (hit && hit.cwd) || ((/"cwd":"((?:[^"\\]|\\.)*)"/.exec(text) || [])[1] || '');   // the folder the session runs in: its project
-  const out = { sig, title: title || null, tried: true, lastType, lastTool, lastTs, pending: [...pend.values()], lastCall, talks: peers.tailPeers(text), cwd };   // talks: the peers messaged in this tail
+  const out = { sig, title: title || null, tried: true, lastType, lastTool, lastTs, pending: [...pend.values()], lastCall, talks: peers.tailPeers(text), cwd, msgIds: [...new Set([...text.matchAll(/\\*"msg_id\\*":\s*\\*"([0-9a-f-]{36})/g)].map((m) => m[1]))] };   // talks: the peers messaged in this tail
   boardCache.set(file, out); if (boardCache.size > 200) boardCache.delete(boardCache.keys().next().value); return out;
 }
 function boardRows() {
@@ -191,7 +191,8 @@ function boardRows0() {
     for (const f of files) { try { const st = fs.statSync(path.join(dir, f)); if (now - st.mtimeMs < 12 * 3600e3) rows.push({ proj, id: f.slice(0, -6), st }); } catch {} }
   }
   rows.sort((a, b) => b.st.mtimeMs - a.st.mtimeMs);
-  const others = []; for (const src of SOURCES) { try { others.push(...src.board(now)); } catch {} }
+  const others = []; for (const src of SOURCES) { try { others.push(...src.board(now)); peers.problem(SRC_NAME.get(src) + ' board', null); } catch (e) { peers.problem(SRC_NAME.get(src) + ' board', e); } }   // an adapter that fails says so on the board
+  peers.rememberLive();
   return others.concat(rows.slice(0, 80).map(({ proj, id, st }) => {
     const file = path.join(ROOT, proj, id + '.jsonl'); let p; try { p = parseTail(file, st); } catch { p = { pending: [] }; }
     const age = now - st.mtimeMs, lp = (p.pending || [])[(p.pending || []).length - 1]; let state = 'idle', tool = '', ageMs = age;
@@ -201,16 +202,17 @@ function boardRows0() {
       else if (p.lastType === 'assistant' && !p.lastTool) state = 'turn';
       else { state = age < 10 * 60e3 ? 'working' : 'idle'; if (state === 'working' && p.lastCall) tool = p.lastCall.name; }   // between two calls: the last thing it ran
     }
-    let subActive = 0, subTotal = 0; const sd = path.join(ROOT, proj, id, 'subagents');
-    try { for (const x of fs.readdirSync(sd)) if (x.endsWith('.jsonl')) { subTotal++; if (now - fs.statSync(path.join(sd, x)).mtimeMs < 90e3) subActive++; } } catch {}
-    return { proj, id, title: p.title || id, mtime: st.mtimeMs, state, tool, arg: lp ? lp.arg || '' : tool && p.lastCall ? p.lastCall.arg || '' : '', ageMs, subActive, subTotal, source: 'claude', ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(p.talks)), group: project.groupOf(p.cwd) };
+    let subActive = 0, subTotal = 0; const sd = path.join(ROOT, proj, id, 'subagents'), active = [];
+    try { for (const x of fs.readdirSync(sd)) if (x.endsWith('.jsonl')) { subTotal++; if (now - fs.statSync(path.join(sd, x)).mtimeMs < 90e3) { subActive++; if (active.length < 4) { const d = readMeta(path.join(sd, x.replace(/\.jsonl$/, '.meta.json'))).description; if (d) active.push(peers.label(d, 32)); } } } } catch {}
+    const group = project.groupOf(p.cwd); if (p.msgIds && p.msgIds.length) peers.indexMessages(p.msgIds, { proj, id, cwd: p.cwd, group });   // so a message id in another runtime's log finds this session even after its pid is gone
+    return { proj, id, title: p.title || id, mtime: st.mtimeMs, state, tool, arg: lp ? lp.arg || '' : tool && p.lastCall ? p.lastCall.arg || '' : '', ageMs, subActive, subTotal, active, source: 'claude', ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(p.talks)), group };
   })).map((r) => (r.oneshot && r.state === 'turn' ? { ...r, state: 'done' } : r)).sort((a, b) => boardRank(a) - boardRank(b) || b.mtime - a.mtime).slice(0, BOARD_MAX);   // a one-shot that answered is done, not "your turn": nobody is waiting for the human there
 }
 // The board with its placement check: every row derives its project from its own log (a git root from the cwd, a Hermes thread); a session the
 // server could not place has no group. `npm run check:placement` fails when a busy one is unplaced.
 function placement() {
   const rows = boardRows(), unplacedRows = rows.filter((r) => !r.group), busy = unplacedRows.filter((r) => /^(working|waiting|blocked)$/.test(r.state));
-  return { rows, unplaced: unplacedRows.length, busyUnplaced: busy.map((r) => ({ source: r.source, proj: r.proj, id: r.id, state: r.state, title: r.title })), groups: new Set(rows.filter((r) => r.group && !r.group.other).map((r) => r.group.key)).size };
+  return { rows, unplaced: unplacedRows.length, busyUnplaced: busy.map((r) => ({ source: r.source, proj: r.proj, id: r.id, state: r.state, title: r.title })), groups: new Set(rows.filter((r) => r.group && !r.group.other).map((r) => r.group.key)).size, errors: peers.problems() };
 }
 // What the board keeps when there are more sessions than rows: whoever needs the human, then whoever is busy, then finished turns, then idle;
 // a scheduled job (Hermes cron) or a finished one-shot run ranks behind a conversation in the same state, so they never crowd out the live ones.
@@ -327,7 +329,7 @@ function parseRecord(st, r) {
 }
 const metaCache = new Map();   // meta file path → { mtime, value }
 function readMeta(f) {
-  try { const mt = fs.statSync(f).mtimeMs, c = metaCache.get(f); if (c && c.mtime === mt) return c.value; const v = JSON.parse(fs.readFileSync(f, 'utf8')); metaCache.set(f, { mtime: mt, value: v }); return v; } catch { return {}; }
+  try { const mt = fs.statSync(f).mtimeMs, c = metaCache.get(f); if (c && c.mtime === mt) return c.value; const v = JSON.parse(fs.readFileSync(f, 'utf8')); metaCache.set(f, { mtime: mt, value: v }); peers.capped(metaCache, 4000); return v; } catch { return {}; }
 }
 
 function buildTimeline(proj, id) {
@@ -362,7 +364,8 @@ function buildTimeline(proj, id) {
       else if (e.kind === 'msg' && e.dir === 'out' && agents[e.to]) events.push({ ts: e.ts, agent: e.agent, kind: 'msg', to: e.to, text: e.text, state: e.state, native: true });   // to one of this session's own agents (a background sub-agent, or "main" from one)
       else if (e.kind === 'msg' && e.dir === 'in' && agents[e.from]) events.push({ ts: e.ts, agent: e.from, kind: 'msg', to: e.agent, text: e.text, state: 'received', native: true });   // from one of them (a background sub-agent handing its result back)
       else if (e.kind === 'msg') {   // a message to or from another session: the peer joins the call as its own participant, linked to its session when the address resolves
-        const pa = peers.peerAgent(e.dir === 'out' ? e.to : e.from, e.name, book); if (!agents[pa.id]) agents[pa.id] = pa; else if (e.name && !agents[pa.id].named) { agents[pa.id].name = e.name; agents[pa.id].named = true; }
+        const gone = e.dir === 'out' && e.state === 'failed' && !peers.parseAddress(e.to) && !book.has(peers.cleanName(e.to)) && !/^codex:/.test(peers.cleanName(e.to));   // a name that answers to nobody: a failed edge to a placeholder, not a peer of this call
+        const lost = e.dir === 'out' && /^a[0-9a-f]{16}$/.test(e.to) && !agents[e.to], pa = lost ? peers.ghost(e.to, 'not in view') : gone ? peers.ghost(e.to) : peers.peerAgent(e.dir === 'out' ? e.to : e.from, e.name, book, { msgId: e.msgId, not: { proj, id } }); if (!agents[pa.id]) agents[pa.id] = pa; else if (e.name && !agents[pa.id].named) { agents[pa.id].name = peers.cleanName(e.name); agents[pa.id].named = true; }
         events.push(e.dir === 'out' ? { ts: e.ts, agent: e.agent, kind: 'msg', to: pa.id, text: e.text, state: e.state, msgId: e.msgId, detail: e.detail } : { ts: e.ts, agent: pa.id, kind: 'msg', to: e.agent, text: e.text, state: 'received', msgId: e.msgId });
       }
       else if (i === lastSay) events.push({ ...e, kind: 'report', to: null });   // `to` filled below, once every order is known
@@ -388,7 +391,8 @@ function buildTimeline(proj, id) {
 
 // Ask the local `claude` CLI (uses the user's existing login) to map a JSON array of strings to another array. Cached.
 const { spawn } = require('child_process');
-const cache = new Map();
+const cache = new Map();   // translations: capped, the oldest goes first
+const cacheSet = (k, v) => { cache.set(k, v); peers.capped(cache, 5000); };
 // Find a usable `claude` binary: explicit setting → PATH → usual install spots → the one bundled with the VS Code Claude Code extension.
 let lastTrError = '', claudeCache = null;
 const exists = (f) => { try { return fs.statSync(f).isFile(); } catch { return false; } };
@@ -434,7 +438,7 @@ function claudeMap(kind, instruction, texts) {
   const done = (ok) => ({ texts: texts.map((t) => cache.get(kind + '|' + t) || t), ok });
   if (!need.length) return Promise.resolve(done(true));
   const prompt = instruction + ' Output ONLY a JSON array of strings, same length and order, no markdown.\n' + JSON.stringify(need);
-  return apiMap(prompt, need).then((arr) => { need.forEach((t, i) => cache.set(kind + '|' + t, String(arr[i]))); return done(true); }).catch(() => schedule(() => new Promise((resolve) => {
+  return apiMap(prompt, need).then((arr) => { need.forEach((t, i) => cacheSet(kind + '|' + t, String(arr[i]))); return done(true); }).catch(() => schedule(() => new Promise((resolve) => {
     const p = spawnClaude(['-p', '--model', 'haiku', '--no-session-persistence', '--tools', ''], { cwd: os.tmpdir() }); if (!p) return resolve(done(false));
     let out = ''; const timer = setTimeout(() => p.kill(), 60000);
     p.stdout.on('data', (d) => (out += d));
@@ -444,7 +448,7 @@ function claudeMap(kind, instruction, texts) {
       let ok = false;
       try {
         const arr = JSON.parse(out.slice(out.indexOf('['), out.lastIndexOf(']') + 1));
-        if (arr.length === need.length) { need.forEach((t, i) => cache.set(kind + '|' + t, String(arr[i]))); ok = true; }
+        if (arr.length === need.length) { need.forEach((t, i) => cacheSet(kind + '|' + t, String(arr[i]))); ok = true; }
       } catch {}
       resolve(done(ok));
     });
@@ -523,7 +527,7 @@ const pickWorker = () => trWorkers.reduce((a, b) => (a.q.length + a.busy <= b.q.
 async function translateFast(texts) {
   const need = [...new Set(texts.filter((t) => !cache.has('fr|' + t)))];
   if (need.length && need.length <= 3 && !process.env.ANTHROPIC_API_KEY) {   // a few lines: warm workers in parallel; many lines: one batched call
-    await Promise.all(need.map(async (t) => { const r = await pickWorker().ask(t); if (r) cache.set('fr|' + t, r); }));
+    await Promise.all(need.map(async (t) => { const r = await pickWorker().ask(t); if (r) cacheSet('fr|' + t, r); }));
     return { texts: texts.map((t) => cache.get('fr|' + t) || t), ok: texts.every((t) => cache.has('fr|' + t)) };
   }
   return claudeMap('fr', TR_INSTR, texts);
@@ -657,7 +661,7 @@ function start(port = PORT) {
     if (url.pathname === '/api/quips' && req.method === 'POST') return readBody(async (body) => { try { const b = JSON.parse(body); json(await quips(textList(b.texts), b.lang === 'fr' ? 'fr' : 'en')); } catch (e) { json({ error: String(e) }, 400); } });
     if (url.pathname === '/api/sessions') return json(listSessions());
     if (url.pathname === '/api/projects') {   // projects (working folders) ordered by latest activity — lets the live view follow one of them
-      const m = new Map(); for (const r of listSessions()) { const p = m.get(r.proj) || { proj: r.proj, mtime: 0, sessions: 0 }; p.mtime = Math.max(p.mtime, r.mtime); p.sessions++; m.set(r.proj, p); }
+      const m = new Map(); for (const r of listSessions()) { const p = m.get(r.proj) || { proj: r.proj, mtime: 0, sessions: 0, name: r.group && !r.group.other ? r.group.name : '' }; p.mtime = Math.max(p.mtime, r.mtime); p.sessions++; m.set(r.proj, p); }
       return json([...m.values()].sort((a, b) => b.mtime - a.mtime));
     }
     if (url.pathname === '/api/audio') {   // only one window at a time plays sound: the last one that claimed it (expires if that window stops answering)

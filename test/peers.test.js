@@ -50,8 +50,37 @@ test('peer messages of a Claude Code session: edges in and out, states, peers as
     assert.equal(tl.agents.filter((a) => a.type === 'peer').length, 3);
     const after = await get(port, '/api/session?proj=-home-user-proj&id=s1&after=' + (tl.events.length - 1)); assert.equal(after.rev, 1); assert.equal(after.events.length, 1);
     const rows = await get(port, '/api/sessions'); assert.deepEqual(rows.map((r) => [r.source, r.id]), [['claude', 's1']]);
-    const board = await get(port, '/api/board'); assert.equal(board.length, 1); assert.equal(board[0].source, 'claude'); assert.equal(board[0].msgs, 4); assert.deepEqual(board[0].peers, ['hermes:gaming:cb050161', 'codex-9f73ec26c5009ae5', 'Claude Code 999999']);   // messages with other sessions, from the tail of the transcript; a dead pid is named by its runtime
+    const board = await get(port, '/api/board'); assert.equal(board.length, 1); assert.equal(board[0].source, 'claude'); assert.equal(board[0].msgs, 4); assert.deepEqual(board[0].peers, ['hermes:gaming:cb050161', 'codex-9f73ec26c5009ae5', 'Claude session (ended)']);   // messages with other sessions, from the tail of the transcript; a dead pid is named by its runtime
     assert.equal((await get(port, '/api/session?proj=_codex&id=01a129a4-0000-7000-8000-000000000000')).error, 'session not found');
     assert.equal((await get(port, '/api/session?proj=_hermes-gaming&id=x')).error, 'session not found');
+  } finally { srv.close(); require('../server.js').shutdown(); }
+});
+
+test('round 5: a send to a name or agent id nobody answers to is an edge to a placeholder, never a guest, and a dead pid is found by message id', async () => {
+  const dir2 = path.join(tmp, 'projects', '-home-user-proj2'); fs.mkdirSync(dir2, { recursive: true });
+  const MID = 'c4c4c4c4-0000-4000-8000-0000000000aa', HM = 'uds:/run/user/1000/cc-socks/hermes-d84d104eebf44fa0aafc6e7cbaa85e5e.sock';
+  fs.writeFileSync(path.join(dir2, 's2.jsonl'), [
+    rec({ type: 'user', timestamp: t('00:00.000'), message: { role: 'user', content: 'Check the other crews' } }),
+    rec({ type: 'assistant', timestamp: t('01:00.000'), message: { id: 'a1', content: [{ type: 'tool_use', id: 'toolu_x1', name: 'SendMessage', input: { to: 'gladiator-fight', message: 'status?' } }] } }),
+    rec({ type: 'user', timestamp: t('01:01.000'), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_x1', is_error: true, content: 'No agent named "gladiator-fight" is reachable' }] } }),
+    rec({ type: 'assistant', timestamp: t('02:00.000'), message: { id: 'a2', content: [{ type: 'tool_use', id: 'toolu_x2', name: 'SendMessage', input: { to: 'a93572cf6481710ba', message: 'go on' } }] } }),
+    rec({ type: 'user', timestamp: t('02:01.000'), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_x2', content: JSON.stringify({ success: true, message: 'queued' }) }] } }),
+    // a message from a Hermes inbox whose Claude session (a pid long gone) is known only by the wire id carried on both sides
+    rec({ type: 'assistant', timestamp: t('03:00.000'), message: { id: 'a3', content: [{ type: 'tool_use', id: 'toolu_x3', name: 'SendMessage', input: { to: HM, message: 'result is in' } }] } }),
+    rec({ type: 'user', timestamp: t('03:01.000'), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_x3', content: JSON.stringify({ success: true, msg_id: MID, message: 'delivered' }) }] } }),
+  ].join(''));
+  const peersMod = require('../adapters/peers.js');
+  const srv = require('../server.js').start(0); await new Promise((r) => srv.once('listening', r)); const port = srv.address().port;
+  try {
+    const tl = await get(port, '/api/session?proj=-home-user-proj2&id=s2');
+    const names = Object.fromEntries(tl.agents.filter((a) => a.type === 'peer').map((a) => [a.name, a]));
+    assert.deepEqual([names['gladiator-fight'].role, names['gladiator-fight'].absent, names['gladiator-fight'].link], ['not reachable', true, null]);   // a failed send to a name: not a peer of this call
+    assert.deepEqual([names['agent 10ba'].role], ['not in view']);   // an agent id with no file here: a placeholder, not "unknown peer"
+    assert.ok(!tl.agents.some((a) => a.name === 'unknown peer'));
+    // the board's tails index the wire ids: another runtime's log naming this session's dead pid then resolves
+    await new Promise((r) => setTimeout(r, 1300));   // the board is memoised for 1.2 s
+    const rows = await get(port, '/api/board'); assert.ok(rows.some((r) => r.id === 's2'));
+    const link = peersMod.peerAgent('uds:/run/user/1000/cc-socks/424242.sock', '', null, { msgId: MID, not: { proj: '_hermes-gaming', id: 'h' } }).link;
+    assert.deepEqual(link, { proj: '-home-user-proj2', id: 's2' });
   } finally { srv.close(); require('../server.js').shutdown(); }
 });

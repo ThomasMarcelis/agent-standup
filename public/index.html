@@ -112,7 +112,9 @@
   .prop.cheer { animation:cheer 1.1s ease-out both } @keyframes cheer { 0% { transform:scale(.3) translateY(10px); opacity:0 } 40% { transform:scale(1.25); opacity:1 } 100% { transform:translateY(-14px); opacity:0 } }
   /* ---------- screen sharing (presentation mode) ---------- */
   #present { display:none; flex:0 1 auto; min-height:96px; overflow:hidden; position:relative; height:clamp(190px,46vh,430px); background:radial-gradient(ellipse at 50% 0,#1b2033,#0b0d14); border-bottom:1px solid var(--line); padding:12px 16px; justify-content:center }
+  #present.idle { opacity:.62 } #present.idle .cursor { display:none }
   #present.on { display:flex; animation:fadein .3s } #present.pic { height:clamp(220px,60vh,640px) }
+  body:not(.narrow) #present.on { flex:1 1 0; height:auto; min-height:220px } body:not(.narrow) #present.on ~ #stage { flex:0 1 auto; max-height:36% }   /* a shared screen fills the room the tiles do not need */
   .pwin { flex:0 1 900px; display:flex; flex-direction:column; border-radius:10px; overflow:hidden; background:#0d1117; box-shadow:0 18px 50px rgba(0,0,0,.6), 0 0 0 2px rgba(240,160,32,.55) }
   .pbar { display:flex; align-items:center; gap:6px; padding:7px 10px; background:#1c1f2b; font-size:11.5px; color:#9aa0b4 } .pbar i { width:10px; height:10px; border-radius:50%; display:inline-block }
   .pbar .r { background:#ff5f57 } .pbar .y { background:#febc2e } .pbar .g { background:#28c840 } #ptitle { margin:0 0 0 14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0 }
@@ -139,7 +141,7 @@
   #gantt { display:none; flex:none; width:100%; background:#0f1118; border-top:1px solid var(--line); cursor:pointer }
   body.replay #gantt { display:block }
   aside { display:none; width:320px; flex:none; border-left:1px solid var(--line); background:var(--panel); flex-direction:column; min-height:0 }
-  body.log aside { display:flex }
+  body.log aside { display:flex } body.board aside { display:none }   /* the board is about all sessions: no transcript of the one followed behind it */
   aside h2 { margin:0; padding:11px 14px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); border-bottom:1px solid var(--line) }
   #log { flex:1; overflow:auto }
   .row { padding:7px 14px; border-bottom:1px solid var(--line); font-size:12.5px }
@@ -550,7 +552,7 @@ const nameOf = (id) => (S.agents[id] || {}).name || id;
 const pjTag = (id) => { const p = S.agents[id]; return p && p.type === 'peer' && p.group ? ` <span class="pj">${esc(p.group.name)}</span>` : ''; };   // a peer's project next to its name: an edge reads project to project
 
 // ---------- text prep ----------
-const plain = (t) => String(t).replace(/```[\s\S]*?```/g, ' ').replace(/`([^`]*)`/g, '$1').replace(/https?:\/\/\S+/g, 'link').replace(/[#*_>|~\[\]]/g, ' ').replace(/\s+/g, ' ').trim();
+const plain = (t) => String(t).replace(/```[\s\S]*?```/g, ' ').replace(/`([^`]*)`/g, '$1').replace(/https?:\/\/\S+/g, 'link').replace(/(^|\s)#{1,6}\s+/g, '$1').replace(/[*_>|~\[\]]/g, ' ').replace(/\s+/g, ' ').trim();
 function short(t, max = 230) {
   const s = plain(t); if (s.length <= max) return s;
   const cut = s.slice(0, max), end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
@@ -938,17 +940,11 @@ function flashGuest(id) { renderGuests(); const c = $(`#guests [data-g="${id}"]`
 $('#guests').onclick = (e) => { const c = e.target.closest('.gchip'); if (!c) return; const p = S.agents[c.dataset.g]; if (p && p.link) openSession(p.link.proj, p.link.id); else openDetail(c.dataset.g); };
 function buildStage() { $('#stage').innerHTML = ''; Object.values(S.agents).forEach(addTile); }
 const layout = () => {
-  const st = $('#stage'), w = st.clientWidth - 28 || 600, nar = $('#center').clientWidth < 480, cols = nar ? (w >= 300 ? 2 : 1) : Math.max(1, Math.floor((w + 12) / 212)), colw = (w - 12 * (cols - 1)) / cols;
-  const rh = Math.round(colw * (nar ? 0.66 : 0.74)); st.style.setProperty('--cols', cols); st.style.setProperty('--rh', rh + 'px'); // Spotlight size: the biggest block (k columns × fr rows) that stays close to 3:2 and leaves room beside it for the others.
+  const st = $('#stage'), w = st.clientWidth - 28 || 600, nar = $('#center').clientWidth < 480, cols = nar ? (w >= 300 ? 2 : 1) : Math.max(1, Math.floor((w + 12) / 180)), colw = (w - 12 * (cols - 1)) / cols;   // compact tiles: the roster, the shared screen and the transcript get the room
+  const rh = nar ? Math.round(colw * 0.66) : Math.max(92, Math.min(128, Math.round(colw * 0.52))); st.style.setProperty('--cols', cols); st.style.setProperty('--rh', rh + 'px'); // Spotlight size: the biggest block (k columns × fr rows) that stays close to 3:2 and leaves room beside it for the others.
   const maxRows = Math.max(cols > 1 ? 2 : 1, Math.floor((st.clientHeight * 0.7 + 12) / (rh + 12)));   // the stage scrolls, so the spotlight may be a bit taller than the free space
-  let k = 1, fr = 1, best = -1;
-  for (let kk = 1; kk <= cols; kk++) for (let rr = 1; rr <= Math.min(4, maxRows); rr++) {
-    const fw = kk * colw + (kk - 1) * 12, fh = rr * rh + (rr - 1) * 12, ratio = fw / fh, area = fw * fh;
-    if ((cols > 2 && kk === cols) || ratio < 1.15 || ratio > 1.95) continue;
-    if (area > best) { best = area; k = kk; fr = rr; }
-  }
+  let k = Math.min(2, cols), fr = Math.min(2, maxRows);   // the spotlight (whoever speaks) is two tiles by two at most: it carries the bubble, not the page
   if (nar) { k = cols; fr = cols > 1 ? 2 : 1; }   // side panel: small tiles, a banner-sized spotlight
-  else if (best < 0) { k = Math.min(2, cols); fr = Math.min(2, maxRows); }
   st.style.setProperty('--fcols', k); st.style.setProperty('--fr', fr); st.classList.toggle('one', cols === 1);
   document.body.classList.toggle('narrow', $('#center').clientWidth < 480); document.body.classList.toggle('compact', $('#center').clientWidth < 300); drawGantt();
 };
@@ -1149,13 +1145,19 @@ setInterval(() => { if (!S.agents || !S.live) return; renderBadges(); updateTitl
 const base = (f) => String(f || '').split('/').pop();
 const fmtDur = (ms) => (ms < 950 ? `${Math.max(1, Math.round(ms))} ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.floor(ms / 60000)} min ${Math.round((ms % 60000) / 1000)} s`);
 const quiet = (e) => e.kind === 'tools' || e.kind === 'results' || e.kind === 'usage' || e.kind === 'finish' || e.kind === 'compact';
+// The command a shell tool runs, as a person would say it: without "set -e;" or "cd dir &&", a heredoc as "python3 script", and a JS wrapper (a Codex exec script) as nothing.
+function cmdLabel(text) {
+  let a = String(text || '').split('\n').map((l) => l.trim()).find((l) => l && !/^(?:set -[a-z]+;?|#.*)$/.test(l)) || '';
+  a = a.replace(/^(?:set -[a-z]+;\s*)+/, '').replace(/^cd \S+\s*(?:&&|;)\s*/, '').replace(/\s+-?\s*<<-?\s*['"]?\w+['"]?\s*$/, ' script');
+  return /\bawait\b|=>|\bconst\b|\blet\b|\bvar\b|Promise\.|^\w+\(['"`]|^[{}\/]/.test(a) ? '' : a;
+}
 function activityLabel(t) {   // the short "what is on their screen" tag
   const d = t.d || {}, f = base(d.file || t.arg);
   switch (d.kind) {
     case 'read': return L('Lit ', 'Reading ') + f;
     case 'edit': return L('Modifie ', 'Editing ') + f;
     case 'write': return L('Crée ', 'Writing ') + f;
-    case 'cmd': { const n = (d.note || '').trim(); if (n) return n.slice(0, 36); return L('Exécute ', 'Running ') + d.text.trim().split(/\s+/).filter((w) => w !== '-' && !w.startsWith('<<')).slice(0, 2).join(' ').slice(0, 26); }
+    case 'cmd': { const n = (d.note || '').trim(); if (n) return n.slice(0, 36); return L('Exécute ', 'Running ') + (cmdLabel(d.text).split(/\s+/).filter((w) => w !== '-').slice(0, 2).join(' ').slice(0, 26) || L('un script', 'a script')); }
     case 'grep': return L('Cherche « ', 'Searching “') + String(d.pattern || '').slice(0, 22) + L(' »', '”');
     case 'glob': return L('Liste ', 'Listing ') + String(d.pattern || '').slice(0, 24);
     case 'todo': return L('Met à jour sa todo', 'Updating todo list');
@@ -1254,11 +1256,16 @@ function armPresent() {   // stays up while a command is still running, then ~4 
 }
 function showPresent(id) {
   if (S.boost > 1 || (S.speakers.size && !S.speakers.has(id))) return;   // catching up, or someone else has the floor
-  const first = S.present !== id; S.present = id; $('#present').classList.add('on'); document.body.classList.add('presenting'); renderPresent(); if (first) { layout(); AUD.tone(880, .12, 'sine', .05); }
+  const first = S.present !== id; S.present = id; $('#present').classList.remove('idle'); $('#present').classList.add('on'); document.body.classList.add('presenting'); renderPresent(); if (first) { layout(); AUD.tone(880, .12, 'sine', .05); }
   armPresent();
 }
-function hidePresent() {
-  clearTimeout(presentTimer); if (!S.present) return; S.present = null; $('#present').classList.remove('on'); document.body.classList.remove('presenting'); $('#pcap').textContent = ''; layout();
+function hidePresent(full) {   // wide: the last shared screen stays up, dimmed and labelled, so the room under the tiles is the work and not a void
+  clearTimeout(presentTimer); if (!S.present && !full) return;
+  const id = S.present, keep = !full && id && !document.body.classList.contains('narrow') && !!$('#pbody').firstChild;
+  S.present = null; document.body.classList.remove('presenting'); $('#pcap').textContent = '';
+  if (keep) { $('#present').classList.add('idle'); $('#pbadge').textContent = `🖥 ${nameOf(id)}, ${L('dernier écran partagé', 'last shared screen')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`; }
+  else $('#present').classList.remove('on', 'idle');
+  layout();
 }
 // the speaker always gets the spotlight (and keeps it until someone else talks)
 function setFocus(id) {
@@ -1379,7 +1386,9 @@ function renderDetail() {
   const u = S.usage[id], tokHtml = u && tokTotal(u) ? `<h3>${L('Jetons', 'Tokens')} ⚡ ${fmtTok(tokTotal(u))}</h3><div class="dim">${L('entrée', 'input')} ${fmtTok(u.i)}, ${L('sortie', 'output')} ${fmtTok(u.o)}, ${L('écriture cache', 'cache write')} ${fmtTok(u.w)}, ${L('lecture cache', 'cache read')} ${fmtTok(u.r)}</div>` : '';
   const p = S.agents[id], msgs = evs.filter((e) => e.kind === 'msg'), fmtT = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   const peerHtml = p.type === 'peer' ? `<div class="dim">${esc(p.addr || '')}${p.cwd ? '<br>' + esc(p.cwd) : ''}</div>${p.link ? `<p><button class="btn" id="dopen">↗ ${L('Ouvrir cette session', 'Open this session')}</button></p>` : `<div class="dim">${L('Session introuvable sur cette machine (terminée, ou boîte Hermes privée)', 'Session not found on this machine (gone, or a private Hermes inbox)')}</div>`}` : '';
-  const msgHtml = msgs.length ? `<h3>${L('Messages', 'Messages')} (${msgs.length})</h3>` + msgs.slice(-40).reverse().map((e) => `<details><summary>${MSG_STATE(e.state)} ${esc(nameOf(e.agent))} → ${esc(nameOf(e.to))} <span class="dim">${fmtT(e.ts)}${e.msgId ? ', ' + esc(e.msgId.slice(0, 8)) : ''}${e.state === 'failed' && e.detail ? ', ' + esc(e.detail) : ''}</span></summary><pre>${esc(spoken(e))}</pre></details>`).join('') : '';
+  const folded = {}; msgs.filter((e) => e.label).forEach((e) => { const o = e.agent === id ? e.to : e.agent; folded[o] = (folded[o] || 0) + 1; });   // a message with no readable body is a count per counterpart, not a row each
+  const foldHtml = Object.keys(folded).length ? `<div class="dim">${L('Sans texte lisible', 'No readable text')}: ${Object.entries(folded).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([o, n]) => `${esc(nameOf(o))} ×${n}`).join(', ')}</div>` : '';
+  const msgHtml = msgs.length ? `<h3>${L('Messages', 'Messages')} (${msgs.length})</h3>` + foldHtml + msgs.filter((e) => !e.label).slice(-40).reverse().map((e) => `<details><summary>${MSG_STATE(e.state)} ${esc(nameOf(e.agent))} → ${esc(nameOf(e.to))} <span class="dim">${fmtT(e.ts)}${e.msgId ? ', ' + esc(e.msgId.slice(0, 8)) : ''}${e.state === 'failed' && e.detail ? ', ' + esc(e.detail) : ''}</span></summary><pre>${esc(spoken(e))}</pre></details>`).join('') : '';
   const cutHtml = p.truncated ? `<div class="dim">${L('Historique ancien non chargé (transcription très volumineuse)', 'Older history not loaded (very large transcript)')}</div>` : '';
   $('#dbody').innerHTML = cutHtml + peerHtml + tokHtml + (order ? `<h3>${L('Consigne de', 'Prompt from')} ${esc(nameOf(order.agent))}</h3><pre>${esc(order.text)}</pre>` : '') + msgHtml +
     `<h3>${L('Outils', 'Tools')} (${tools.length})</h3><div>${Object.entries(counts).map(([n, c]) => `${esc(n)} ×${c}`).join(', ') || '—'}</div>` +
@@ -1831,6 +1840,7 @@ async function loadSession(proj, id, gentle = false) {
   pause(); const mine = (S.loadN = (S.loadN || 0) + 1);
   const data = await (await fetch(`/api/session?proj=${encodeURIComponent(proj)}&id=${id}`)).json();
   if (mine !== S.loadN || data.error) return false;
+  if (!S.cur || S.cur.proj !== proj || S.cur.id !== id) { $('#pbody').innerHTML = ''; hidePresent(true); }   // another session: its screen, not the last one's
   S.term = {}; S.camFor = null; S.focus = null; S.agents = {}; for (const k in nameBook) delete nameBook[k]; S.group = data.group || null; [{ id: 'user' }, ...data.agents].forEach((a) => (S.agents[a.id] = persona(a)));
   S.events = data.events; S.rev = data.rev; S.group = data.group || null; S.joinAt = Date.now(); S.idx = 0; S.status = {}; S.tc = {}; S.cur = { proj, id }; S.logTo = 0; S.detail = null; $('#detail').classList.remove('on');
   const opt = $('#sessions').selectedOptions[0]; S.title = [S.group && !S.group.other ? (S.group.hermes ? S.group.name.split(', ')[0] : S.group.name) : niceProj(proj), S.live ? (data.title || '') : (opt && opt.dataset.title) || data.title || ''].filter(Boolean).join(', ');   // a Hermes thread's group name is its title: said once   // project, session: so it is clear where this call belongs
@@ -1843,11 +1853,13 @@ function paintSubtitle() {   // in a call the header names the project in its co
   b.textContent = inCall ? team.short : 'Agent Standup'; b.style.color = inCall ? GCOL(team.key) : ''; document.documentElement.style.setProperty('--proj', inCall ? GCOL(team.key) : 'var(--line)');
   const s = $('#subtitle'); s.textContent = (S.live && S.pin ? '📌 ' : '') + (S.title || '').replace(inCall ? team.short + ', ' : '\u0000', ''); s.title = S.live && S.pin ? L('Épinglé. Cliquer pour suivre à nouveau la dernière activité', 'Pinned. Click to follow the latest activity again') : ''; s.style.cursor = S.live && S.pin ? 'pointer' : ''; }
 $('#subtitle').onclick = () => { if (!(S.live && S.pin)) return; S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; savePrefs(); S.cur = null; followCurrent(); };
-const niceProj = (p) => (p === '_demo' ? '' : p === '_codex' ? 'Codex' : /^_hermes/.test(p) ? 'Hermes' + (p.length > 7 ? ' ' + p.slice(8) : '') : String(p).replace(/^-+/, '').replace(/-/g, '/').split('/').slice(-2).join('/'));
+const PNAME = {};   // a project folder's own name (the git root), from the rows the server sent: "agent-standup", not "agent/standup"
+const noteNames = (rows) => { for (const r of rows || []) { const n = r.name || (r.group && !r.group.other && r.group.name); if (n && r.proj && !/^_/.test(r.proj)) PNAME[r.proj] = n; } };
+const niceProj = (p) => (PNAME[p] ? PNAME[p] : p === '_demo' ? '' : p === '_codex' ? 'Codex' : /^_hermes/.test(p) ? 'Hermes' + (p.length > 7 ? ' ' + p.slice(8) : '') : String(p).replace(/^-+/, '').replace(/-/g, '/').split('/').slice(-2).join('/'));
 // where a session runs: its folder for Claude Code; the tool and its folder or chat for Codex and Hermes
 const projLabel = (r) => { const other = r.source && r.source !== 'claude', p = other && r.project ? (r.project.startsWith('/') ? r.project.split('/').filter(Boolean).slice(-2).join('/') : r.project) : ''; return [other ? niceProj(r.proj) : '', p || (other ? '' : niceProj(r.proj))].filter(Boolean).join(', '); };
 async function fillProjects() {   // live view: follow the latest activity anywhere, or pin one project
-  const sel = $('#liveProj'); let rows = []; try { rows = await (await fetch('/api/projects')).json(); } catch {}
+  const sel = $('#liveProj'); let rows = []; try { rows = await (await fetch('/api/projects')).json(); } catch {} noteNames(rows);
   sel.innerHTML = `<option value="">${L('Tous les projets (le plus récent)', 'All projects (most recent)')}</option>` + rows.map((r) => `<option value="${esc(r.proj)}">${esc(niceProj(r.proj))}</option>`).join('');
   sel.value = prefs.proj && rows.some((r) => r.proj === prefs.proj) ? prefs.proj : ''; sel.style.display = rows.length > 1 ? '' : 'none';
 }
@@ -1914,8 +1926,7 @@ const boardOpen = new Set();
 // What a card says a session is doing: a shell command by its first line (no "cd …;" prefix), an MCP tool by its name in words, no raw tool-call JSON.
 function boardTool(tool, arg) {
   const t = String(tool), shell = /^(Bash|exec_command|shell|terminal)$/.test(t), name = t.replace(/^mcp__.+?__(?=[^_])/, '').replace(/_/g, ' ');
-  let a = String(arg || '').split('\n').find((l) => l.trim()) || ''; a = a.replace(/^\s*cd \S+\s*(?:&&|;)\s*/, '').replace(/\s+-?\s*<<-?\s*['"]?\w+['"]?\s*$/, ' script');   // "python3 - <<'PY'" is a python3 script
-  if (/await tools\.|\bawait\b|=>|\bconst\b|Promise\./.test(a) || t === 'write_stdin') a = '';   // a Codex exec script's JS wrapper is not what it does
+  const a = t === 'write_stdin' ? '' : cmdLabel(arg);   // "python3 - <<'PY'" is a python3 script; a Codex exec script's JS wrapper is not what it does
   return t === 'write_stdin' ? L('attend une commande', 'waiting on a command') : ((shell ? '' : name + ' ') + a.slice(0, 60)).trim() || name;
 }
 const GCOL = (key) => (key && key !== '_other' ? PAL[hash(String(key)) % PAL.length] : '#6b7089');   // one colour per project, the same everywhere
@@ -1924,10 +1935,10 @@ let boardBusy = false;
 async function renderBoardView() {
   if (!document.body.classList.contains('board') || boardBusy) return; boardBusy = true;
   try {
-    const data = await (await fetch('/api/board?meta=1')).json(), rows = (data.rows || []).sort((a, b) => BORDER.indexOf(a.state) - BORDER.indexOf(b.state) || b.mtime - a.mtime), now = Date.now();
+    const data = await (await fetch('/api/board?meta=1')).json(); noteNames(data.rows); const rows = (data.rows || []).sort((a, b) => BORDER.indexOf(a.state) - BORDER.indexOf(b.state) || b.mtime - a.mtime), now = Date.now();
     if (!document.body.classList.contains('board')) return;
     const cnt = {}; rows.forEach((r) => (cnt[r.state] = (cnt[r.state] || 0) + 1));
-    const sum = BORDER.filter((k) => cnt[k]).map((k) => `<span class="stc ${k}">${BSTATE[k][0]} ${cnt[k]} ${L(BSTATE[k][2], BSTATE[k][1])}</span>`).join('') + (data.unplaced ? `<span class="stc idle" title="${esc(L('Sessions dont le projet est inconnu', 'Sessions whose project is unknown'))}">? ${data.unplaced} ${L('sans projet', 'unplaced')}</span>` : '');
+    const sum = BORDER.filter((k) => cnt[k]).map((k) => `<span class="stc ${k}">${BSTATE[k][0]} ${cnt[k]} ${L(BSTATE[k][2], BSTATE[k][1])}</span>`).join('') + Object.entries(data.errors || {}).map(([k, m]) => `<span class="stc blocked" title="${esc(m)}">⚠ ${esc(k)} ${L('illisible', 'unreadable')}: ${esc(String(m).slice(0, 80))}</span>`).join('') + (data.unplaced ? `<span class="stc idle" title="${esc(L('Sessions dont le projet est inconnu', 'Sessions whose project is unknown'))}">? ${data.unplaced} ${L('sans projet', 'unplaced')}</span>` : '');
     // one group per project (a git repo, a Hermes thread); the one-off runs (cron, codex exec without agents) and the sessions outside any repo share the last group
     const groups = new Map(), gkey = boardKey;
     for (const r of rows) { const k = gkey(r); if (!groups.has(k)) groups.set(k, { key: k, name: k === '_other' ? L('Autres / isolées', 'Other / single') : r.group.name, rows: [], best: BORDER.indexOf(r.state), mtime: r.mtime }); const g = groups.get(k); g.rows.push(r); g.best = Math.min(g.best, BORDER.indexOf(r.state)); g.mtime = Math.max(g.mtime, r.mtime); }
@@ -1935,7 +1946,7 @@ async function renderBoardView() {
     const card = (r) => {
       const [ic, en, fr] = BSTATE[r.state], what = r.tool ? `<span class="sx">${esc(boardTool(r.tool, r.arg))}</span>` : '';   // what it is doing right now, and for how long
       const extra = r.state === 'blocked' || r.state === 'working' || r.state === 'waiting' ? `${what}<span class="sx">${agoStr(r.ageMs)}</span>` : `<span class="sx">${agoStr(now - r.mtime)}</span>`;
-      return `<div class="bcard ${r.state}" tabindex="0" role="button" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" style="--pc:${GCOL(gkey(r))}"><div><span class="stc ${r.state}">${ic} ${L(fr, en)}${extra}</span></div><div class="bt">${esc(/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(r.title) ? L('Session sans titre', 'Untitled session') : r.title)}</div><div class="bp">${r.source === 'hermes' ? esc(niceProj(r.proj)) : (r.source && r.source !== 'claude' ? `<span class="src">${esc(niceProj(r.proj))}</span>` : '') + esc(r.group ? r.group.name : projLabel(r))}</div>${r.subActive ? `<div class="bm">👥 ${r.subActive}/${r.subTotal} ${L('sous-agents actifs', 'sub-agents active')}</div>` : ''}${r.peers && r.peers.length ? `<div class="bm">↔ ${esc(r.peers.join(', '))}${r.msgs ? `<span class="sx">✉ ${r.msgs}</span>` : ''}</div>` : ''}</div>`; };
+      return `<div class="bcard ${r.state}" tabindex="0" role="button" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" style="--pc:${GCOL(gkey(r))}"><div><span class="stc ${r.state}">${ic} ${L(fr, en)}${extra}</span></div><div class="bt">${esc(/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(r.title) ? L('Session sans titre', 'Untitled session') : r.title)}</div><div class="bp">${r.source === 'hermes' ? esc(niceProj(r.proj)) : (r.source && r.source !== 'claude' ? `<span class="src">${esc(niceProj(r.proj))}</span>` : '') + esc(r.group ? r.group.name : projLabel(r))}</div>${r.subActive ? `<div class="bm">👥 ${r.subActive}/${r.subTotal} ${L('sous-agents actifs', 'sub-agents active')}${r.active && r.active.length ? ': ' + esc(r.active.join(', ')) + (r.subActive > r.active.length ? '…' : '') : ''}</div>` : ''}${r.peers && r.peers.length ? `<div class="bm">↔ ${esc(r.peers.join(', '))}${r.msgs ? `<span class="sx">✉ ${r.msgs}</span>` : ''}</div>` : ''}</div>`; };
     $('#boardv').innerHTML = `<div class="bsum">${sum || `<span>${L('Aucune session récente', 'No recent session')}</span>`}</div>` + list.map((g) => { const c = {}; g.rows.forEach((r) => (c[r.state] = (c[r.state] || 0) + 1));
       const sp = splitGroup(g.rows, boardOpen.has(g.key)), fold = sp.quiet.length ? `<button class="bquiet" data-g="${esc(g.key)}">＋ ${BORDER.filter((k) => sp.quiet.some((r) => r.state === k)).map((k) => `${sp.quiet.filter((r) => r.state === k).length} ${L(BSTATE[k][2], BSTATE[k][1])}`).join(', ')}</button>` : '';
       return `<div class="bgroup${sp.cards.length ? '' : ' quiet'}" style="--pc:${GCOL(g.key)}"><h3 class="bgh"><span class="gdot"></span>${esc(g.name)} <span class="dim">${g.rows.length}${BORDER.filter((k) => c[k] && k !== 'idle' && k !== 'done').map((k) => `<span class="sx">${BSTATE[k][0]} ${c[k]}</span>`).join('')}</span>${sp.cards.length ? '' : fold}</h3>${sp.cards.length ? `<div class="bgrid">${sp.cards.map(card).join('')}${fold}</div>` : ''}</div>`; }).join('');   // a group with nothing going on is one line
@@ -1991,7 +2002,7 @@ $('#boardv').onclick = (e) => { const q = e.target.closest('.bquiet'); if (q) { 
 async function openSwitcher() {
   let sw = $('#switcher'); if (sw) { closeSwitcher(); return; }
   sw = document.createElement('div'); sw.id = 'switcher'; sw.innerHTML = `<div class="sbox"><input id="swq" type="search" aria-label="${esc(L('Chercher une session', 'Find a session'))}" placeholder="${esc(L('Chercher une session…', 'Find a session…'))}"><div id="swl" role="listbox"></div></div>`; document.body.appendChild(sw);
-  let rows = []; try { rows = (await (await fetch('/api/board')).json()).sort((a, b) => BORDER.indexOf(a.state) - BORDER.indexOf(b.state) || b.mtime - a.mtime); } catch {}
+  let rows = []; try { rows = (await (await fetch('/api/board')).json()); noteNames(rows); rows = rows.sort((a, b) => BORDER.indexOf(a.state) - BORDER.indexOf(b.state) || b.mtime - a.mtime); } catch {}
   let sel = 0, shown = [];
   const draw = () => {
     const q = $('#swq').value.trim().toLowerCase(), now = Date.now(); shown = rows.filter((r) => !q || (r.title + ' ' + niceProj(r.proj)).toLowerCase().includes(q)).slice(0, 12); sel = Math.min(sel, Math.max(0, shown.length - 1));
@@ -2196,7 +2207,8 @@ $('#musicVol').oninput = (e) => { prefs.musicVol = +e.target.value; savePrefs();
 $('#tok').onclick = () => openRecap();
 $('#bMenu').onclick = (e) => { e.stopPropagation(); $('#menu').classList.toggle('on'); };
 document.addEventListener('click', (e) => { if (!e.target.closest('#menu') && !e.target.closest('#bMenu')) $('#menu').classList.remove('on'); });
-$('#bLog').onclick = () => { document.body.classList.toggle('log'); $('#bLog').classList.toggle('on'); };
+$('#bLog').onclick = () => { document.body.classList.toggle('log'); $('#bLog').classList.toggle('on'); prefs.log = document.body.classList.contains('log'); savePrefs(); };
+if (prefs.log == null ? innerWidth >= 1280 : prefs.log) { document.body.classList.add('log'); $('#bLog').classList.add('on'); }   // wide: the transcript has its place from the start
 $('#bMute').onclick = toggleMute;
 $('#bPlay').onclick = togglePlay;
 $('#mRecap').onclick = () => { $('#menu').classList.remove('on'); openRecap(); };
