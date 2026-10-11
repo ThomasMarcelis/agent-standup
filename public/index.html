@@ -549,7 +549,9 @@ function prefetchTr(i) {
 const MSG_STATE = (s) => ({ accepted: '📨', received: '📥', held: '✋', failed: '✗' })[s] || '';
 // What the voice reads: the content of a line and nothing else. No names, no "task"/"report"/"message to" framing, no routing or delivery state;
 // a line that is only a label (a message whose body is not readable) is shown in the bubble and the transcript, not read aloud.
-function speechOf(ev) { if (!ev || ev.label || (ev.kind === 'msg' && !ev.text) || !['say', 'report', 'order', 'user', 'msg'].includes(ev.kind)) return ''; let t = baseText(ev); if (FR() && trMem.has(t)) t = trMem.get(t); return speakable(t); }
+// Agents open their messages with who it is from or for ("From Hermes, for Tom:", "To X:", "Hi X,"): kept on screen, not read.
+const ATTR = /^(?:\s*(?:(?:from|to)\s+(?:\([^)]*\)|[^\s.:()\n]+)(?:\s+(?:\([^)]*\)|[^\s.:()\n]+)){0,5}\s*[.:—-]|(?:hi|hello|hey|dear)\s+[^\s.:,()\n]+(?:\s+[^\s.:,()\n]+)?\s*[,.:—-]|[\w:-]+ here(?:\s*\([^)]*\))?\s*[.:,—-])\s*)+/i;
+function speechOf(ev) { if (!ev || ev.label || (ev.kind === 'msg' && !ev.text) || !['say', 'report', 'order', 'user', 'msg'].includes(ev.kind)) return ''; let t = baseText(ev); if (FR() && trMem.has(t)) t = trMem.get(t); return speakable(String(t).replace(ATTR, '')); }
 function spoken(ev) {
   if (ev.kind === 'msg' && !ev.text) return ev.native ? L('(message sans texte lisible)', '(message without readable text)') : L('(message vide)', '(empty message)');
   let t = baseText(ev); if (FR() && trMem.has(t)) t = trMem.get(t);
@@ -1309,7 +1311,7 @@ $('#tree').onclick = (e) => {
 };
 
 // ---------- agent detail ----------
-function openDetail(id) { const p = S.agents[id]; if (!p) return; S.detail = id; $('#dname').textContent = `${p.name} · ${p.role}`; renderDetail(); $('#detail').classList.add('on'); }
+function openDetail(id) { const p = S.agents[id]; if (!p) return; S.detail = id; $('#dname').textContent = `${p.name} · ${p.role}${p.nick ? ' · ' + p.nick : ''}`; renderDetail(); $('#detail').classList.add('on'); }
 function renderDetail() {
   if (!S.detail) return; const id = S.detail, evs = S.events.slice(0, S.idx + 1).filter((e) => e.agent === id || e.to === id);
   const order = evs.find((e) => e.kind === 'order' && e.to === id), tools = evs.filter((e) => e.agent === id && e.kind === 'tools').flatMap((e) => e.tools);

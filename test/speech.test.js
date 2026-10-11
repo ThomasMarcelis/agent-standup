@@ -2,7 +2,7 @@
 const test = require('node:test'), assert = require('node:assert'), fs = require('fs'), path = require('path');
 const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
 const grab = (re) => { const m = re.exec(html); if (!m) throw new Error('function not found in index.html: ' + re); return m[0]; };
-const src = grab(/const speakable = \(t\) =>[\s\S]*?\.trim\(\);/) + '\n' + grab(/function speechOf\(ev\) \{[^\n]*\}/);
+const src = grab(/const speakable = \(t\) =>[\s\S]*?\.trim\(\);/) + '\n' + grab(/const ATTR = [^\n]*/) + '\n' + grab(/function speechOf\(ev\) \{[^\n]*\}/);
 const { speakable, speechOf } = new Function('baseText', 'FR', 'trMem', src + '\nreturn { speakable, speechOf };')((ev) => ev.text, () => false, new Map());
 
 test('speakable: words only', () => {
@@ -22,4 +22,18 @@ test('speechOf: the content of a line and nothing else; labels are shown, not re
   assert.equal(speechOf({ kind: 'msg', to: 'a1', text: '', native: true }), '');
   assert.equal(speechOf({ kind: 'tools', agent: 'main', tools: [] }), ''); assert.equal(speechOf({ kind: 'finish', agent: 'a1', to: 'main' }), ''); assert.equal(speechOf(null), '');
   assert.equal(speechOf({ kind: 'say', text: 'Merged `main`: tests 6/6 ✅' }), 'Merged main: tests 6 6');
+});
+
+test('speechOf: who a message is from or for is not read (real openers from this machine)', () => {
+  const say = (text) => speechOf({ kind: 'msg', to: 'p', text });
+  assert.equal(say('From Hermes (record keeper, Discord thread with Tom + co-designer). New answers to your campaign-shape questions.'), 'New answers to your campaign-shape questions.');
+  assert.equal(say("From Hermes, on Tom's instruction: align with Hermes on the league format."), "align with Hermes on the league format.");
+  assert.equal(say('From the game director, for Tom: the half-hour duels, cause and proposal.'), 'the half-hour duels, cause and proposal.');
+  assert.equal(say('From Tom via Hermes: just let it finish and merge.'), 'just let it finish and merge.');
+  assert.equal(say('From Hermes. Tom, verbatim: the current voice is really ununderstandable.'), 'Tom, verbatim: the current voice is really ununderstandable.');
+  assert.equal(say('To standup-fable: your diff is ready for review.'), 'your diff is ready for review.');
+  assert.equal(say('Hi Astra, two follow-ups on your review.'), 'two follow-ups on your review.');
+  assert.equal(say('Fable here (reply to uds:/run/user/1000/cc-socks/773260.sock). Plan + findings; please challenge.'), 'Plan + findings; please challenge.');
+  assert.equal(say('From the logs, the OOM kill happened at 08:25 and the service restarted.'), 'From the logs, the OOM kill happened at 08:25 and the service restarted.');   // a sentence that starts with "From" is content
+  assert.equal(say('Recorded your relayed league decisions in the gladiator-game repo.'), 'Recorded your relayed league decisions in the gladiator-game repo.');
 });

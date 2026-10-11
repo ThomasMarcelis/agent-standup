@@ -84,6 +84,7 @@ const delegated = (p) => (p.type === 'function_call_output' && !p.call_id && p.n
 const readHead = (file, bytes) => { const fd = fs.openSync(file, 'r'); try { const n = Math.min(bytes, fs.fstatSync(fd).size), buf = Buffer.alloc(n); fs.readSync(fd, buf, 0, n, 0); return buf.toString('utf8'); } finally { fs.closeSync(fd); } };
 const titleCache = new Map();   // file → { size, title }
 function titleOf(m) {
+  const named = m.agentPath ? '' : threadName(m.id); if (named) return named;   // the name the person gave the thread beats its first prompt
   const hit = titleCache.get(m.file); if (hit && (hit.title || hit.size === (statOf(m) || {}).size)) return hit.title || fallbackTitle(m);
   let title = null;
   try {
@@ -96,7 +97,16 @@ function titleOf(m) {
   } catch {}
   titleCache.set(m.file, { size: (statOf(m) || {}).size, title }); return title || fallbackTitle(m);
 }
-const fallbackTitle = (m) => (m.nickname ? m.nickname + ' · ' : '') + (m.agentPath || m.id);
+const fallbackTitle = (m) => (m.agentPath ? human(m.agentPath.split('/').pop()) : threadName(m.id) || m.id);
+// Functional names: the thread name the person gave (session_index.jsonl), and for a sub-agent the last segment of its agent path, as words.
+const human = (seg) => String(seg || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+let names = { at: 0, sig: '', map: new Map() };
+function threadName(id) {
+  const f = path.join(HOME(), 'session_index.jsonl'); let st; try { st = fs.statSync(f); } catch { return ''; }
+  const sig = st.mtimeMs + ':' + st.size;
+  if (sig !== names.sig) { const map = new Map(); try { for (const l of fs.readFileSync(f, 'utf8').split('\n')) { if (!l) continue; try { const r = JSON.parse(l); if (r && typeof r.id === 'string' && typeof r.thread_name === 'string' && r.thread_name.trim()) map.set(r.id, r.thread_name.trim()); } catch {} } } catch {} names = { at: Date.now(), sig, map }; }   // last line per id wins (renames append)
+  return names.map.get(id) || '';
+}
 function list(limit = 60) { return sessionRows().slice(0, limit).map(({ meta, all, mtime, size }) => ({ proj: '_codex', id: meta.id, mtime, size, agents: all.length - 1, title: titleOf(meta), project: meta.cwd, group: project.groupOf(meta.cwd), source: 'codex' })); }
 
 // ---- the transcript: each rollout is parsed once, then only the bytes appended since (same incremental reader as the Claude Code path)
@@ -221,7 +231,11 @@ function timeline(proj, id) {
   const agents = { main: { id: 'main', role: 'Lead', type: 'main', name: 'Codex' } }, states = [], childByTool = {}, childByPath = { '/root': 'main' }, pathOf = { main: '/root' };
   for (const m of all) {
     const aid = m === root ? 'main' : m.id;
-    if (aid !== 'main') { agents[aid] = { id: aid, name: m.nickname || (m.agentPath || '').split('/').pop() || '', role: m.agentPath || 'sub-agent', type: m.role || 'agent', mtime: (statOf(m) || {}).mtime }; if (m.agentPath) { childByPath[m.agentPath] = aid; pathOf[aid] = m.agentPath; } }   // the agent's own name (Codex gives each one), its path as the role
+    if (aid !== 'main') {   // the functional name: the last segment of its path as words; the parent path as the role; the nickname Codex invented only as a dim extra
+      const segs = (m.agentPath || '').split('/').filter(Boolean), leaf = segs.pop() || '';
+      agents[aid] = { id: aid, name: clip(human(leaf) || m.nickname || 'sub-agent', 34), role: segs.length ? '/' + segs.join('/') : 'sub-agent', nick: m.nickname || '', type: m.role || 'agent', mtime: (statOf(m) || {}).mtime };
+      if (m.agentPath) { childByPath[m.agentPath] = aid; pathOf[aid] = m.agentPath; }
+    }
     const st = readNew(m.file, aid, m); if (!st) continue; states.push(st); Object.assign(childByTool, st.childByCall);
   }
   const tl = assemble({ id, proj, agents, states, childByTool, childByPath, pathOf });

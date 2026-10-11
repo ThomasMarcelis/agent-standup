@@ -36,7 +36,7 @@ test('codex: rollouts become sessions, a board and a timeline with sub-agents, c
   assert.ok(codex.stamp('_codex', PARENT) > 0 && codex.mtime('_codex', PARENT) > 0);
   const tl = codex.timeline('_codex', PARENT), kinds = {}; for (const e of tl.events) kinds[e.kind] = (kinds[e.kind] || 0) + 1;
   assert.equal(tl.agents.find((a) => a.id === 'main').name, 'Codex');
-  const child = tl.agents.find((a) => a.id === CHILD); assert.ok(child); assert.deepEqual([child.name, child.role], ['Socrates', '/root/oom_timeline']);   // the real agent name, its path as the role
+  const child = tl.agents.find((a) => a.id === CHILD); assert.ok(child); assert.deepEqual([child.name, child.role, child.nick], ['oom timeline', '/root', 'Socrates']);   // its path segment as its name, the parent path as the role, the invented nickname aside
   assert.deepEqual(tl.group, { key: '_other', name: 'user', other: true });   // the fixture's cwd (/home/user) is no repository on this machine
   const order = tl.events.find((e) => e.kind === 'order'); assert.deepEqual([order.agent, order.to, order.title], ['main', CHILD, 'oom_timeline']);
   assert.ok(tl.events.some((e) => e.kind === 'finish' && e.agent === CHILD), 'SubAgentActivity completed → finish');
@@ -49,7 +49,7 @@ test('codex: rollouts become sessions, a board and a timeline with sub-agents, c
   assert.ok(native.some((e) => e.to === CHILD) && native.some((e) => e.agent === CHILD && e.to === 'main')); assert.equal(tl.agents.find((a) => a.id === 'x_oom_controls').type, 'peer');
   // the bodies are encrypted: every edge still gets a readable summary (the verb, target and count, or the child's own words) and a note, never the ciphertext
   assert.ok(native.every((e) => e.text && e.note === 'body not readable (Codex encrypts it)' && !/gAAAAA/.test(e.text)));
-  assert.match(native.find((e) => e.to === CHILD).text, /^message to Socrates \(#1\)$/); assert.match(native.find((e) => e.to === 'x_oom_controls').text, /^message to oom_controls \(#1\)$/);
+  assert.match(native.find((e) => e.to === CHILD).text, /^message to oom timeline \(#1\)$/); assert.match(native.find((e) => e.to === 'x_oom_controls').text, /^message to oom_controls \(#1\)$/);
   const fromChild = native.find((e) => e.agent === CHILD && e.to === 'main'); assert.ok(/^(Journal evidence|message to Codex)/.test(fromChild.text), fromChild.text);   // its report, when the message is its last word
   assert.deepEqual([order.text, order.note], ['task "oom_timeline" (default)', 'body not readable (Codex encrypts it)']);
   const { assemble } = require('../adapters/timeline.js');   // a nested agent's relative target resolves against its own path; an agent outside the files still gets an edge
@@ -95,7 +95,7 @@ test('hermes: the SQLite store becomes sessions, a board and a timeline with del
   const tl = hermes.timeline('_hermes-gaming', MAIN);
   assert.deepEqual(tl.group, { key: 'hermes:gaming:155598', name: 'Hermes · gaming · ' + main.title.slice(0, 48), hermes: true });   // the project of a Hermes conversation: its profile and Discord thread, named by its title
   assert.deepEqual(rows[0].group, tl.group); assert.equal(b[0].group.key, tl.group.key);
-  assert.ok(tl.agents.some((a) => a.id === K && a.type === 'subagent' && /^Research what real wounds/.test(a.role)));   // a child's task is its first user row, under its parent's thread
+  assert.ok(tl.agents.some((a) => a.id === K && a.type === 'subagent' && /^Research what real wounds/.test(a.name) && a.role === 'delegate'));   // a child is named by its task (its first user row), under its parent's thread
   const orders = tl.events.filter((e) => e.kind === 'order'); assert.equal(orders.length, 1); assert.equal(orders[0].to, K); assert.equal(orders[0].toolId, 'toolu_deleg|delegate_task#1'); assert.match(orders[0].text, /^Research what real wounds/);   // matched by goal, not by start order
   assert.ok(tl.events.some((e) => e.kind === 'finish' && e.agent === K) && tl.events.some((e) => e.kind === 'results' && e.items.some((it) => /#1 completed: done A/.test(it.out))));
   const tools = tl.events.filter((e) => e.kind === 'tools').flatMap((e) => e.tools), term = tools.find((t) => t.id.startsWith('toolu_t|')), patch = tools.find((t) => t.id.startsWith('toolu_p|'));

@@ -160,7 +160,7 @@ function timeline(proj, id) {
   const p = profileOf(proj), agents = { main: { id: 'main', role: 'Lead', type: 'main', name: 'Hermes' } }, states = [], kids = children(db, id);
   const st = parseSession(db, s, 'main', kids); states.push(st);
   for (const k of kids) {
-    agents[k.id] = { id: k.id, role: clip(titleOf(db, k), 60), type: 'subagent', mtime: mtimeOf(k) };
+    agents[k.id] = { id: k.id, name: clip(titleOf(db, k), 34), role: 'delegate', type: 'subagent', mtime: mtimeOf(k) };   // named by its task
     const ks = parseSession(db, k, k.id, []); states.push(ks);
     if (k.ended_at) st.raw.push({ ts: mtimeOf(k), agent: 'main', kind: 'agentdone', child: k.id });
   }

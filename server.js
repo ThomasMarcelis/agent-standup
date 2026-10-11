@@ -327,7 +327,7 @@ function buildTimeline(proj, id) {
   if (fs.existsSync(subDir)) {
     for (const f of fs.readdirSync(subDir).filter((x) => x.endsWith('.jsonl'))) {
       const aid = f.replace(/^agent-/, '').replace(/\.jsonl$/, '').replace(/[^\w.-]/g, '_'), m = readMeta(path.join(subDir, f.replace(/\.jsonl$/, '.meta.json')));
-      agents[aid] = { id: aid, role: m.description || m.agentType || 'Agent', type: m.agentType || 'agent', toolUseId: m.toolUseId };
+      agents[aid] = { id: aid, name: m.description ? clip(m.description, 34) : '', role: m.agentType || 'Agent', type: m.agentType || 'agent', toolUseId: m.toolUseId };   // the task it was given is its name; a nameless one gets an invented one on the page
       try { agents[aid].mtime = fs.statSync(path.join(subDir, f)).mtimeMs; } catch {}
       const st = readNew(path.join(subDir, f), aid); if (st) states.push(st);
     }
