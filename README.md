@@ -111,7 +111,7 @@ Every tile carries one status: **working** (with what it is doing), **waiting on
 
 ## Voices
 Six styles in ⚙ (default: **Cartoon voices**, so everything stays understandable):
-- **ElevenLabs voices** — your own ElevenLabs account, server-side only: set `ELEVENLABS_API_KEY` in the server's environment (a Hermes profile's `.env` is read as a fallback) and pick the style in ⚙. The cheapest model, `eleven_flash_v2_5` (0.5 credit per character; `ELEVENLABS_MODEL` overrides it), one stock voice per agent, every line cached on disk by voice and text so it is paid for once, nothing synthesised while muted, system voices as the fallback. The key never reaches the page.
+- **ElevenLabs voices** (the default) — set up exactly like Hermes, server-side only: the key is `ELEVENLABS_API_KEY` in the Hermes profile's `.env`, the model and the lead's voice are `tts.elevenlabs.model_id` / `voice_id` in its `config.yaml` (`HERMES_HOME` names the profile folder, `~/.hermes/profiles/gaming` otherwise). One stock voice per agent, every line cached on disk by voice and text so it is paid for once, nothing synthesised while muted, plain system voices if the key is missing. The key never reaches the page. Only words are read out: links, hashes, ids and emoji are dropped, a path becomes its file name.
 - **Animal Crossing** — every agent "talks" in gibberish, one blip per letter, with a sentence melody (up for questions, down for statements) and a register of its own.
 - **Simlish** — the same idea with flowing syllables, vowels and little consonant noises.
 - **Cartoon voices** — the real words read by your system voice, with a character per agent (chipmunk, deep, robot, wobbly, radio, monster, squeaky).
@@ -269,7 +269,7 @@ MIT
 Agent Standup is free and MIT licensed, made by [Atoll92](https://github.com/Atoll92); this fork adds Codex CLI, Hermes and agent-peers support. I'm also available for work around AI agents and developer tooling: reach me through my GitHub profile, [Atoll92](https://github.com/Atoll92).
 
 ## Settings menu and shortcuts
-⚙ has sections that fold (and remember it), a search box, and a Display section. “Notify me when the agents finish” is on by default (change it in ⚙ → Sound). The **?** help also explains what each status means.
+⚙ has sections that fold (and remember it), a search box, and a Display section. The notification sound means one thing: an agent needs you (an approval, a question), once per new need; finished work and context compaction only change the title and badges (⚙ → Sound to turn the sound off). The **?** help also explains what each status means.
 
 Press **?** in the app for the full list. Highlights: **Space** pause, **M** mute, **T** tree view, **J / K** next agent that needs you, **Cmd/Ctrl+K** go to a session, and in replay **← / →** step, **N** next highlight.
 

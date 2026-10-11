@@ -515,33 +515,34 @@ function synthesize(voice, wpm, text, out) {
     p.on('error', reject); p.on('close', (code) => (code === 0 && fs.existsSync(out) ? resolve() : reject(new Error('tts failed'))));
   });
 }
-// ---- ElevenLabs voices (optional): the key stays on this machine (ELEVENLABS_API_KEY, or a .env file next to the Hermes profile), never in the page or the logs.
-// Flash v2.5 is the cheapest model (0.5 credit per character); the audio is cached on disk by voice and text, so a line is paid for once.
-const ELEVEN_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_flash_v2_5', ELEVEN_MAX = 600;   // characters per line: a spoken line is short, and this bounds the cost of any one request
+// ---- ElevenLabs voices, set up exactly like Hermes: the key is ELEVENLABS_API_KEY in the Hermes profile's .env, the model and the lead's voice are
+// tts.elevenlabs.model_id / voice_id in its config.yaml (HERMES_HOME names the profile folder; the gaming profile otherwise). The key never leaves this process.
+// The audio is cached on disk by voice and text, so a line is paid for once.
+const HERMES_PROFILE = () => process.env.HERMES_HOME || path.join(os.homedir(), '.hermes', 'profiles', 'gaming'), ELEVEN_MAX = 600;   // characters per line: a spoken line is short, and this bounds the cost of any one request
 function envFileValue(file, name) { try { const m = new RegExp('^\\s*(?:export\\s+)?' + name + '\\s*=\\s*(.*?)\\s*$', 'm').exec(fs.readFileSync(file, 'utf8')); return m ? m[1].replace(/^(["'])(.*)\1$/, '$2') : ''; } catch { return ''; } }
-function elevenKey() {
-  if (process.env.ELEVENLABS_API_KEY) return process.env.ELEVENLABS_API_KEY;
-  for (const f of [process.env.AGENT_STANDUP_ENV_FILE, path.join(os.homedir(), '.hermes', 'profiles', 'gaming', '.env'), path.join(os.homedir(), '.hermes', '.env')].filter(Boolean)) { const v = envFileValue(f, 'ELEVENLABS_API_KEY'); if (v) return v; }
-  return '';
+const elevenKey = () => envFileValue(path.join(HERMES_PROFILE(), '.env'), 'ELEVENLABS_API_KEY');
+function elevenSetup() {   // model and lead voice from the Hermes config (tts: elevenlabs: model_id / voice_id)
+  let y = ''; try { y = fs.readFileSync(path.join(HERMES_PROFILE(), 'config.yaml'), 'utf8'); } catch {}
+  const tts = (/^tts:\n((?:[ \t]+[^\n]*\n?)*)/m.exec(y) || [])[1] || '', el = (/^[ \t]+elevenlabs:\n((?:[ \t]{3,}[^\n]*\n?)*)/m.exec(tts) || [])[1] || '', get = (k) => ((new RegExp('^[ \\t]+' + k + ':[ \\t]*["\']?([\\w.-]+)', 'm').exec(el) || [])[1] || '');
+  return { model: get('model_id') || 'eleven_flash_v2_5', lead: get('voice_id') || 'pNInz6obpgDQGcFmaJgB' };
 }
 let elevenVoices = { at: 0, list: [], error: '' }; const elevenStats = { requests: 0, chars: 0, hits: 0, failed: 0 };
-const ELEVEN_FIRST = 'pNInz6obpgDQGcFmaJgB';   // Adam, the voice Hermes already speaks with: the lead gets it when it is in the account
-async function listElevenVoices() {   // the account's stock voices, cached for an hour
-  const key = elevenKey(); if (!key) return { available: false, voices: [], model: ELEVEN_MODEL, error: 'no key' };
+async function listElevenVoices() {   // the account's voices, cached for an hour; the lead's voice first
+  const key = elevenKey(), setup = elevenSetup(); if (!key) return { available: false, voices: [], model: setup.model, error: 'no ELEVENLABS_API_KEY in ' + path.join(HERMES_PROFILE(), '.env') };
   if (Date.now() - elevenVoices.at > 3600e3) {
     try {
       const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } }); if (!r.ok) throw new Error('voices ' + r.status);
       const vs = ((await r.json()).voices || []).filter((v) => v && typeof v.voice_id === 'string' && /^[A-Za-z0-9]{10,40}$/.test(v.voice_id) && (!v.category || v.category === 'premade' || v.category === 'professional' || v.category === 'cloned'));
-      vs.sort((a, b) => (a.voice_id === ELEVEN_FIRST ? -1 : b.voice_id === ELEVEN_FIRST ? 1 : 0));
+      vs.sort((a, b) => (a.voice_id === setup.lead ? -1 : b.voice_id === setup.lead ? 1 : 0));
       elevenVoices = { at: Date.now(), list: vs.map((v) => ({ name: v.voice_id, label: String(v.name || v.voice_id).slice(0, 40), locale: 'xx' })), error: '' };
     } catch (e) { elevenVoices = { at: Date.now() - 3300e3, list: elevenVoices.list, error: String(e.message || e).slice(0, 80) }; }   // retry in 5 min, keep what we had
   }
-  return { available: elevenVoices.list.length > 0, voices: elevenVoices.list, model: ELEVEN_MODEL, error: elevenVoices.error, stats: elevenStats };
+  return { available: elevenVoices.list.length > 0, voices: elevenVoices.list, model: setup.model, lead: setup.lead, error: elevenVoices.error, stats: elevenStats };
 }
 async function elevenSynth(text, voice, out) {
   const key = elevenKey(), vs = await listElevenVoices(); if (!key || !vs.voices.some((v) => v.name === voice)) throw new Error('unknown voice');
   elevenStats.requests++; elevenStats.chars += text.length;
-  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_22050_32`, { method: 'POST', headers: { 'xi-api-key': key, 'content-type': 'application/json', accept: 'audio/mpeg' }, body: JSON.stringify({ text, model_id: ELEVEN_MODEL }) });
+  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_22050_32`, { method: 'POST', headers: { 'xi-api-key': key, 'content-type': 'application/json', accept: 'audio/mpeg' }, body: JSON.stringify({ text, model_id: vs.model }) });
   if (!r.ok) { elevenStats.failed++; throw new Error('elevenlabs ' + r.status); }
   fs.writeFileSync(out, Buffer.from(await r.arrayBuffer()));
 }
@@ -551,7 +552,7 @@ function tts(text, voice, rate, engine) {
   else if (el) { if (!/^[A-Za-z0-9]{10,40}$/.test(String(voice))) return Promise.reject(new Error('unknown voice')); }
   else { const vs = listVoices(); if (!vs.available || !vs.voices.some((v) => v.name === voice)) return Promise.reject(new Error('unknown voice')); }
   text = String(text).slice(0, kk ? 1500 : el ? ELEVEN_MAX : 700); rate = Math.max(90, Math.min(360, Math.round(+rate || 180)));
-  const ext = el ? '.mp3' : '.wav', key = crypto.createHash('sha1').update([kk ? 'kokoro' : el ? 'elevenlabs|' + ELEVEN_MODEL : 'system', voice, el ? '' : rate, text].join('|')).digest('hex'), file = path.join(ttsDir, key + ext);   // ElevenLabs: one file per line and voice whatever the pace, so a line is never paid twice
+  const ext = el ? '.mp3' : '.wav', key = crypto.createHash('sha1').update([kk ? 'kokoro' : el ? 'elevenlabs|' + elevenSetup().model : 'system', voice, el ? '' : rate, text].join('|')).digest('hex'), file = path.join(ttsDir, key + ext);   // ElevenLabs: one file per line and voice whatever the pace, so a line is never paid twice
   if (fs.existsSync(file)) { if (el) elevenStats.hits++; return Promise.resolve(file); }
   if (ttsJobs.has(key)) return ttsJobs.get(key);
   fs.mkdirSync(ttsDir, { recursive: true });
@@ -625,7 +626,7 @@ function start(port = PORT) {
         .then((f) => { res.writeHead(200, { 'content-type': f.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav', 'cache-control': 'max-age=86400' }); fs.createReadStream(f).pipe(res); })
         .catch((e) => json({ error: String(e.message) }, 400));
     }
-    if (url.pathname === '/api/prefs.js') { res.writeHead(200, { 'content-type': 'application/javascript', 'cache-control': 'no-store' }); return res.end('window.SAVED_PREFS = ' + JSON.stringify(readPrefs()).replace(/</g, '\\u003c') + ';'); }
+    if (url.pathname === '/api/prefs.js') { res.writeHead(200, { 'content-type': 'application/javascript', 'cache-control': 'no-store' }); return res.end('window.SAVED_PREFS = ' + JSON.stringify(readPrefs()).replace(/</g, '\\u003c') + ';window.SERVER_VOICES = ' + JSON.stringify({ elevenlabs: !!elevenKey() }) + ';'); }   // whether a key exists, never the key: the page picks its default voice from it
     if (url.pathname === '/api/prefs' && req.method === 'PUT') return readBody((body) => { try { const v = JSON.parse(body); if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('prefs must be an object'); writePrefs(v); json({ ok: true }); } catch (e) { json({ error: String(e.message || e) }, 400); } });
     if (url.pathname === '/api/prefs') return json(readPrefs() || {});
     if (url.pathname === '/api/current') return json(currentSession(url.searchParams.get('proj') || '', url.searchParams.get('id') || '', { proj: url.searchParams.get('sproj') || '', id: url.searchParams.get('sid') || '' }));

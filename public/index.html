@@ -258,7 +258,7 @@
   <button class="mi" data-t="voice"><span data-fr="Voix des agents" data-en="Agent voices">Voix des agents</span><i class="sw"></i></button>
   <button class="mi" data-t="office"><span data-fr="Ambiance de bureau (clavier, café…)" data-en="Office ambience (keys, coffee…)">Ambiance de bureau (clavier, café…)</span><i class="sw"></i></button>
   <div class="box" id="officeBox" style="display:none"><input id="officeVol" type="range" min="0.1" max="1" step="0.05" style="width:100%" aria-label="Ambience volume"></div>
-  <button class="mi" data-t="notify"><span data-fr="Me prévenir quand les agents ont fini" data-en="Notify me when agents finish">Me prévenir quand les agents ont fini</span><i class="sw"></i></button>
+  <button class="mi" data-t="notify"><span data-fr="Un son quand un agent a besoin de vous" data-en="Sound when an agent needs you">Un son quand un agent a besoin de vous</span><i class="sw"></i></button>
   <button class="mi" data-t="music"><span data-fr="Musique d’ambiance (radio FIP)" data-en="Office music (FIP radio)">Musique d’ambiance (radio FIP)</span><i class="sw"></i></button>
   <div class="box" id="musicBox" style="display:none"><select id="station"></select><input id="musicVol" type="range" min="0" max="1" step="0.05" style="width:100%" aria-label="Music volume"></div>
   <div class="box" id="vstyleBox"><select id="vstyle"></select></div>
@@ -323,11 +323,11 @@ const Q = new URLSearchParams(location.search);
 const EMBED = Q.get('embed') === '1' || window.parent !== window;
 if (Q.get('pin')) S.pin = Q.get('pin');
 
-let prefs = { lang: 'en', voice: true, roster: true, banter: true, reactions: false, office: false, officeVol: 0.8, vstyle: 'cartoon', notify: false, epi: false, vanish: true, music: false, station: 'fip', musicVol: 0.35, view: 'call', hideCode: false };
+let prefs = { lang: 'en', voice: true, roster: true, banter: true, reactions: false, office: false, officeVol: 0.8, vstyle: 'elevenlabs', notify: false, epi: false, vanish: true, music: false, station: 'fip', musicVol: 0.35, view: 'call', hideCode: false };
 { let loc = {}; try { loc = JSON.parse(localStorage.getItem('cc.prefs') || '{}') || {}; } catch {}   // the settings file (shared by every window) and this origin's copy: the more recent one wins
   const sv = window.SAVED_PREFS && typeof window.SAVED_PREFS === 'object' ? window.SAVED_PREFS : {}; Object.assign(prefs, (sv._t || 0) > (loc._t || 0) ? sv : loc); }
 if (prefs.vstyle === 'babble') prefs.vstyle = 'animal', prefs.vstyleChosen = true;
-if (!prefs.vstyleChosen && (prefs.vstyle === 'animal' || prefs.vstyle === 'sims')) prefs.vstyle = 'cartoon';   // the gibberish styles are opt-in: understandable voices by default
+if (!prefs.elevenOnce) { prefs.vstyle = 'elevenlabs'; prefs.elevenOnce = true; }   // ElevenLabs became the default (once: a style picked after that sticks); without a key on the server the plain system voices speak instead, never the cartoon effects or gibberish
 if (!prefs.notifyChosen) prefs.notify = true;   // “tell me when the agents are done” is on unless the person chose otherwise
 let prefsTimer = null;
 const savePrefs = () => { prefs._t = Date.now(); try { localStorage.setItem('cc.prefs', JSON.stringify(prefs)); } catch {} clearTimeout(prefsTimer); prefsTimer = setTimeout(() => { fetch('/api/prefs', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(prefs) }).catch(() => {}); }, 400); };
@@ -514,8 +514,10 @@ function short(t, max = 230) {
   return end > 80 ? cut.slice(0, end + 1) : cut.replace(/\s+\S*$/, '') + '…';
 }
 // make code-ish text pronounceable
-const speakable = (t) => t.replace(/(?:[\w.-]+\/)+([\w.-]+)/g, (m, f) => f.replace(/[._-]/g, ' ')).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_`*#<>{}\[\]|\\=~^]/g, ' ')
-  .replace(/\s*[—–]\s*/g, ', ').replace(/\(([^)]{0,40})\)/g, ', $1,').replace(/\s+/g, ' ').trim();
+// What a voice reads out: words only. Links, hashes, ids, long flags and emoji are dropped, a path becomes its file name, a short code span is read as words and a long one as "code".
+const speakable = (t) => String(t).replace(/https?:\/\/\S+/g, ' link ').replace(/`([^`\n]{1,50})`/g, '$1').replace(/`[^`]*`/g, ' code ')
+  .replace(/(?:[\w.-]+\/)+([\w.-]+)/g, (m, f) => f.replace(/[._-]/g, ' ')).replace(/\b(?=[0-9a-f]*\d)[0-9a-f]{7,}\b/gi, ' ').replace(/\S{25,}/g, ' ').replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}]/gu, ' ')
+  .replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_`*#<>{}\[\]|\\=~^$]/g, ' ').replace(/\s*[—–]\s*/g, ', ').replace(/\(([^)]{0,40})\)/g, ', $1,').replace(/\s+/g, ' ').trim();
 
 // ---------- translation (local claude CLI) ----------
 const trMem = new Map(), trPending = new Map();
@@ -801,7 +803,7 @@ async function speakServer(text, p, gain, token, fr = FR()) {
   const buf = await TTS.buf(speakable(text), voice, TTS.rate()); if (token !== S.token) return;
   const c = AUD.ctx, src = c.createBufferSource(); src.buffer = buf;
   const an = c.createAnalyser(); an.fftSize = 256; const g = c.createGain(); g.gain.value = gain; let stops = [];
-  if (prefs.vstyle === 'natural' || prefs.vstyle === 'kokoro' || prefs.vstyle === 'elevenlabs') src.connect(an); else { const ch = fxChain(c, src, fxFor(p)); stops = ch.stops; ch.node.connect(an); }
+  if (prefs.vstyle !== 'cartoon') src.connect(an); else { const ch = fxChain(c, src, fxFor(p)); stops = ch.stops; ch.node.connect(an); }   // only the cartoon style runs the voice through effects
   an.connect(g); g.connect(AUD.voice);
   const data = new Uint8Array(an.fftSize);
   S.level[p.id] = () => { an.getByteTimeDomainData(data); let s = 0; for (const v of data) { const x = (v - 128) / 128; s += x * x; } return Math.sqrt(s / data.length); };   // drives the mouth
@@ -969,7 +971,7 @@ const ctxInfo = (id) => { const c = S.ctx[id]; if (!c) return null; const w = ct
 function renderCtx() {   // "context N% full": per agent chip (from 50%), a header chip for the lead, and one warning before auto-compaction
   for (const id in S.agents) { const t = $('#t-' + id); if (!t) continue; const el = t.querySelector('.cx'), x = ctxInfo(id);
     if (el) { if (x && x.p >= 50) { el.textContent = `ctx ${x.p}%`; el.className = 'cx ' + x.lvl; el.title = `${L('Contexte', 'Context')}: ${fmtTok(x.c)} / ${fmtTok(x.w)}`; } else { el.textContent = ''; el.className = 'cx'; } }
-    if (x && x.p >= 85 && !S.ctxWarned[id] && S.live && S.playing) { S.ctxWarned[id] = 1; toast(`${nameOf(id)}: ${L('contexte plein à ', 'context ')}${x.p}%${L(' — compactage proche', ' full — compaction soon')} 🗜`); if (prefs.notify) AUD.alert(); }
+    if (x && x.p >= 85 && !S.ctxWarned[id] && S.live && S.playing) { S.ctxWarned[id] = 1; toast(`${nameOf(id)}: ${L('contexte plein à ', 'context ')}${x.p}%${L(' — compactage proche', ' full — compaction soon')} 🗜`); }   // a badge, no sound: nothing is asked of the person
     else if (x && x.p < 60) delete S.ctxWarned[id]; }
   const lead = ctxInfo('main'), cp = $('#ctxp'); if (lead) { cp.style.display = ''; cp.textContent = `ctx ${lead.p}%`; cp.className = 'ctxp ' + lead.lvl; cp.title = `${L('Contexte du chef', 'Lead context')}: ${fmtTok(lead.c)} / ${fmtTok(lead.w)}${S.compacts.main ? ' · ' + S.compacts.main + '×🗜' : ''}`; } else cp.style.display = 'none';
 }
@@ -1052,7 +1054,7 @@ function watchDone(n) {   // live: the team was busy for a while and has now bee
   const now = Date.now(); if (n > 0) { S.busySince = S.busySince || now; S.idleAt = 0; return; } if (!S.busySince) return;
   S.idleAt = S.idleAt || now; if (now - S.idleAt < 6000) return;
   const long = S.idleAt - S.busySince >= 20000; S.busySince = S.idleAt = 0; if (!long || !prefs.notify) return;
-  const msg = L('Les agents ont fini 🎉', 'Your agents are done 🎉'); S.doneUntil = now + 60000; AUD.alert();
+  const msg = L('Les agents ont fini 🎉', 'Your agents are done 🎉'); S.doneUntil = now + 60000;   // title and desktop notice only: the sound is kept for "needs you"
   if (EMBED) window.parent.postMessage({ agentStandup: 'notify', text: msg }, '*');
   else { try { if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Agent Standup', { body: msg }); } catch {} }
 }
@@ -1062,8 +1064,15 @@ function setFav(color) {
   if (!color) { l.href = FAV0; return; }
   const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d'); g.font = '26px serif'; g.fillText('🎥', 0, 26); g.fillStyle = color; g.beginPath(); g.arc(24, 8, 8, 0, 7); g.fill(); g.strokeStyle = '#12131a'; g.lineWidth = 2; g.stroke(); l.href = c.toDataURL();
 }
+const NEEDED = new Set();   // session/agent pairs already announced: the sound means "someone needs you now", once per new need, never again while it lasts
+function needsYouNow() {
+  const cur = S.cur ? S.cur.proj + '/' + S.cur.id + '/' : '', now = new Set((S.attn || []).map((id) => cur + id)); let fresh = false;
+  for (const k of [...NEEDED]) if (k.startsWith(cur) && !now.has(k)) NEEDED.delete(k);
+  for (const k of now) if (!NEEDED.has(k)) { NEEDED.add(k); fresh = true; }
+  return fresh;
+}
 function updateTitle() {
-  paintStates(); if (S.live && S.nBlocked && !S.wasBlocked && prefs.notify) { AUD.alert(); const msg = L('Un agent attend peut-être votre feu vert ✋', 'An agent may be waiting for you ✋'); if (EMBED) window.parent.postMessage({ agentStandup: 'notify', text: msg }, '*'); else { try { if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Agent Standup', { body: msg }); } catch {} } } S.wasBlocked = S.nBlocked > 0;
+  paintStates(); if (needsYouNow() && S.live && prefs.notify) { AUD.alert(); const msg = L('Un agent attend peut-être votre feu vert ✋', 'An agent may be waiting for you ✋'); if (EMBED) window.parent.postMessage({ agentStandup: 'notify', text: msg }, '*'); else { try { if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Agent Standup', { body: msg }); } catch {} } } S.wasBlocked = S.nBlocked > 0;
   let n = 0; for (const id in S.status) if (S.status[id] === 'working' && !S.gone.has(id)) n++;
   watchDone(n); setFav(S.live && S.nBlocked ? '#ff4d4d' : null);
   document.title = S.live && S.nBlocked ? `✋ ${S.nBlocked} ${L('à voir', 'need you')} · Agent Standup` : S.doneUntil > Date.now() && !n ? '✓ ' + L('Terminé', 'Done') + ' · Agent Standup' : S.live && S.playing && n ? `● ${n} ${L('au travail', 'working')} · Agent Standup` : 'Agent Standup';
@@ -1941,7 +1950,7 @@ async function kokoroUI() {
   const box = $('#kokoroBox'), on = prefs.vstyle === 'kokoro'; box.style.display = on || prefs.vstyle === 'elevenlabs' ? '' : 'none';
   if (prefs.vstyle === 'elevenlabs') {   // nothing to install: either the server has a key, or the system voices speak instead
     clearInterval(kokoroTimer); kokoroTimer = null; $('#kokoroInstall').style.display = 'none'; const e = TTS.eleven || {};
-    $('#kokoroHint').textContent = e.available ? `${L('Voix ElevenLabs prêtes', 'ElevenLabs voices ready')} · ${e.model || ''} · ${(e.voices || []).length} ${L('voix', 'voices')}` : L('Pas de clé ElevenLabs sur le serveur (ELEVENLABS_API_KEY) : les voix du système servent à la place.', 'No ElevenLabs key on the server (ELEVENLABS_API_KEY): system voices are used instead.');
+    $('#kokoroHint').textContent = e.available ? `${L('Voix ElevenLabs prêtes', 'ElevenLabs voices ready')} · ${e.model || ''} · ${(e.voices || []).length} ${L('voix', 'voices')}` : 'ElevenLabs: ' + (e.error || 'unavailable');
     return;
   }
   if (!on) { clearInterval(kokoroTimer); kokoroTimer = null; return; }
