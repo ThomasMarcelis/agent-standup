@@ -44,13 +44,17 @@ const live = new Function(grab(/const SPK = new Set[^\n]*/) + '\n' + grab(/const
 test('live speech: nothing stale is read; when behind, the freshest line comes next, the most important first', () => {
   const { freshPlan } = live, s = 1000, T = 1.79e12;
   const evs = [{ kind: 'say', ts: T + 0 * s }, { kind: 'tools', ts: T + 2 * s }, { kind: 'say', ts: T + 5 * s }, { kind: 'msg', ts: T + 25 * s }, { kind: 'report', ts: T + 26 * s }, { kind: 'say', ts: T + 27 * s }, { kind: 'tools', ts: T + 30 * s }];
-  assert.deepEqual(freshPlan(evs, 0), { at: 4, silent: false });   // 30 s behind: skip to the fresh lines, and the report (a result) beats the message and the chatter
-  assert.deepEqual(freshPlan(evs, 5), { at: 5, silent: false });   // 3 s old: read it
-  assert.deepEqual(freshPlan(evs, 1), { at: 1, silent: false });   // not a line: nothing to decide
+  const now = T + 31 * s;
+  assert.deepEqual(freshPlan(evs, 0, now), { at: 4, silent: false });   // 30 s behind: skip to the fresh lines, and the report (a result) beats the message and the chatter
+  assert.deepEqual(freshPlan(evs, 5, now), { at: 5, silent: false });   // 3 s old: read it
+  assert.deepEqual(freshPlan(evs, 1, now), { at: 1, silent: false });   // not a line: nothing to decide
   const old = [{ kind: 'say', ts: T }, { kind: 'tools', ts: T + 40 * s }];
-  assert.deepEqual(freshPlan(old, 0), { at: 0, silent: true });    // nothing fresher exists: shown, not read
+  assert.deepEqual(freshPlan(old, 0, T + 41 * s), { at: 0, silent: true });    // nothing fresher exists: shown, not read
   const tie = [{ kind: 'say', ts: T }, { kind: 'say', ts: T + 20 * s }, { kind: 'say', ts: T + 21 * s }, { kind: 'tools', ts: T + 22 * s }];
-  assert.equal(freshPlan(tie, 0).at, 1);                            // same importance: the earliest fresh line
+  assert.equal(freshPlan(tie, 0, T + 23 * s).at, 1);
+  const quiet = [{ kind: 'say', ts: T }, { kind: 'say', ts: T + 2 * s }];
+  assert.deepEqual(freshPlan(quiet, 1, T + 25 * s), { at: 1, silent: true });   // the newest line, but written 23 s ago by the clock: shown, not read
+  assert.deepEqual(freshPlan(quiet, 1, T + 10 * s), { at: 1, silent: false });                            // same importance: the earliest fresh line
 });
 
 test('live speech: a line is never cut mid-sentence', () => {
@@ -60,4 +64,34 @@ test('live speech: a line is never cut mid-sentence', () => {
   const long = 'Ball revision four prepared, exact source verified, native jobs queued, ' + 'and more words follow here '.repeat(10);
   assert.equal(clipSpeech(long, 60), 'Ball revision four prepared, exact source verified, native jobs queued.');   // a runaway sentence ends at a clause break, not mid-word
   assert.equal(clipSpeech('Short.', 0), 'Short.');
+});
+
+test('live speech: the voice gets the whole line, not the bubble\'s cut (a long one is summarised, not truncated)', () => {
+  const long = 'Seven of the nine window exports passed. ' + 'The two bay windows failed because their sill normals point inward, so they are being re-exported with flipped normals and validated again before the hand-back. '.repeat(2);
+  assert.equal(speechOf({ kind: 'say', text: long }).length, speakable(long).length);
+});
+
+// The live voice director's policy (triage by a small model, held to rules it cannot break), with the model's answer mocked
+const tri = new Function('speechOf', 'speakable', 'clipSpeech', grab(/const TRIAGE_WAIT = [\s\S]*?\/\/ ---- end triage policy/) + '\nreturn { triageItems, applyTriage, localPick, KEEP_MS, KEEP_LONG_MS };')((ev) => ev.text, speakable, live.clipSpeech);
+
+test('voice director: stale lines are never sent, needs-you is never dropped, a malformed answer falls back', () => {
+  const now = 1.79e12, s = 1000, ev = (agent, kind, ago, text) => ({ agent, kind, ts: now - ago * s, text });
+  const evs = [ev('a1', 'say', 300, 'Old news from five minutes ago.'), ev('a1', 'report', 100, 'Report: all 412 tests pass after the auth race fix.'), ev('a2', 'say', 60, 'Chatter a minute old.'), ev('a3', 'say', 30, 'Waiting for approval to push to production.'), ev('a2', 'tools', 5, ''), ev('main', 'msg', 3, 'Fresh message from another session.')];
+  const items = tri.triageItems(evs, new WeakSet(), now, new Set(['a3']));
+  assert.deepEqual(items.map((it) => [it.id, it.kind, it.age]), [[1, 'report', 100], [2, 'needs_you', 30], [3, 'message', 3]]);   // 5 min old and 1 min old chatter: never sent; a report keeps 2 min; tool beats are not lines
+  const done = new WeakSet(); items.forEach((it) => done.add(it.ev)); assert.equal(tri.triageItems(evs, done, now, new Set(['a3'])).length, 0);   // nothing is triaged twice
+  const ok = tri.applyTriage(items, { drop: [2, 3], say: [{ ids: [1], line: 'All 412 tests pass after the **auth race** fix.' }, { ids: [99], line: 'invented' }, { ids: [3], line: 'third line' }] });
+  assert.deepEqual(ok.map((o) => [o.line, o.items.map((it) => it.id)]), [['All 412 tests pass after the auth race fix.', [1]], ['third line', [3]], ['Waiting for approval to push to production.', [2]]]);   // unknown ids ignored, max 2 from the model, the dropped needs-you put back
+  assert.equal(tri.applyTriage(items, 'not json'), null); assert.equal(tri.applyTriage(items, { say: 'x' }), null); assert.equal(tri.applyTriage(items, null), null);
+  assert.deepEqual(tri.localPick(items).map((o) => o.items[0].id), [2]);   // fallback: what needs Tom first
+  assert.deepEqual(tri.localPick(items.filter((it) => it.kind !== 'needs_you')).map((o) => o.items[0].id), [1]);   // else the report before the message
+});
+
+test('guests: an agent of another session is on the line only while the exchange is current (10 min)', () => {
+  const { guestsAt } = new Function(grab(/const GUEST_MS = [\s\S]*?\n\}/) + '\nreturn { guestsAt };')();
+  const m = 60e3, T = 1.79e12, agents = { main: { type: 'main' }, p_tip: { type: 'peer' }, p_live: { type: 'peer' } };
+  const evs = [{ kind: 'msg', agent: 'main', to: 'p_tip', ts: T }, { kind: 'msg', agent: 'p_tip', to: 'main', ts: T + 1 * m }, { kind: 'say', agent: 'main', ts: T + 50 * m }, { kind: 'msg', agent: 'p_live', to: 'main', ts: T + 58 * m }];
+  assert.deepEqual(guestsAt(evs, 3, T + 60 * m, agents).map((g) => [g.id, g.n]), [['p_live', 1]]);   // the tip asked an hour ago is gone; the current exchange is there
+  assert.deepEqual(guestsAt(evs, 1, T + 2 * m, agents).map((g) => [g.id, g.n]), [['p_tip', 2]]);     // in a replay, at the time of the tip, it was on the line
+  assert.deepEqual(guestsAt(evs, 3, T + 69 * m, agents), []);                                          // and every exchange expires
 });

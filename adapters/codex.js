@@ -281,7 +281,7 @@ function readable(tl, states, agents) {
 // ---- board, liveness, cache keys
 const tailCache = new Map();   // file → { sig, pending, lastTask, lastTs, peers }
 function tail(file) {
-  let st; try { st = fs.statSync(file); } catch { return { pending: [], lastTask: '', lastTs: 0, peers: { n: 0, names: [] } }; }
+  let st; try { st = fs.statSync(file); } catch { return { pending: [], lastTask: '', lastTs: 0, peers: { hits: [] } }; }
   const sig = st.mtimeMs + ':' + st.size, hit = tailCache.get(file); if (hit && hit.sig === sig) return hit;
   const fd = fs.openSync(file, 'r'); let text;
   try { const n = Math.min(192 * 1024, st.size), buf = Buffer.alloc(n); fs.readSync(fd, buf, 0, n, st.size - n); text = buf.toString('utf8'); if (st.size > n) text = text.slice(text.indexOf('\n') + 1); } finally { fs.closeSync(fd); }
@@ -309,7 +309,7 @@ function board(now = Date.now()) {
       else { state = age < 10 * 60e3 ? 'working' : 'idle'; if (state === 'working' && t.last) { tool = t.last.name; arg = t.last.arg || ''; } }   // between two calls: the last thing it ran
     }
     let subActive = 0; for (const m of all.slice(1)) { const s = statOf(m); if (s && now - s.mtime < 90e3) subActive++; }
-    return { proj: '_codex', id: meta.id, title: titleOf(meta), mtime, state, tool, arg, ageMs, subActive, subTotal: all.length - 1, source: 'codex', project: meta.cwd, group: project.groupOf(meta.cwd), peers: t.peers.names, msgs: t.peers.n, oneshot: meta.originator === 'codex_exec' && all.length === 1 };   // a `codex exec` run with no agents of its own: a one-shot job
+    return { proj: '_codex', id: meta.id, title: titleOf(meta), mtime, state, tool, arg, ageMs, subActive, subTotal: all.length - 1, source: 'codex', project: meta.cwd, group: project.groupOf(meta.cwd), ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(t.peers, now)), oneshot: meta.originator === 'codex_exec' && all.length === 1 };   // a `codex exec` run with no agents of its own: a one-shot job
   });
 }
 const exists = (proj, id) => !!fileOf(id);

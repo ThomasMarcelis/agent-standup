@@ -75,19 +75,24 @@ function peerAgent(addrOrName, nameHint, book) {
 }
 // Who a session talked to, from the tail of its transcript (any runtime's wording): a short list for the board.
 const NAME = /^[\w:.-]{1,80}$/;
-function tailPeers(text) {
-  const names = new Set(), byAddr = new Map(); let n = 0;
-  for (const m of String(text).matchAll(/<(?:cross-session-message|peer_message) from=\\*"([^"\\]+)\\*"(?: (?:from-name|reply_to)=\\*"([^"\\]+)\\*")?/g)) {   // arrivals: a name, and the address it writes from
-    n++; const a = parseAddress(m[1]) || parseAddress(m[2] || ''), nm = (parseAddress(m[1]) ? m[2] || '' : m[1]).replace(/^claude:/, '');
-    const name = NAME.test(nm) ? nm : a ? peerAgent(a.addr).name : ''; if (!name) continue; names.add(name); if (a) byAddr.set(a.key, name);
+function tailPeers(text) {   // every message in the tail, with its time when the record has one: { hits: [{ name, ts }] }
+  const lines = String(text).split('\n'), byAddr = new Map(), hits = [], tsOf = (l) => Date.parse((/"timestamp":"([^"]+)"/.exec(l) || [])[1] || '') || 0;
+  for (const line of lines) {   // arrivals: a name, and the address it writes from; one per record (a message queued while busy is also in the queue's own records: skipped)
+    const m = line.includes('"type":"queue-operation"') ? null : /<(?:cross-session-message|peer_message) from=\\*"([^"\\]+)\\*"(?: (?:from-name|reply_to)=\\*"([^"\\]+)\\*")?/.exec(line); if (!m) continue;
+    const a = parseAddress(m[1]) || parseAddress(m[2] || ''), nm = (parseAddress(m[1]) ? m[2] || '' : m[1]).replace(/^claude:/, '');
+    const name = NAME.test(nm) ? nm : a ? peerAgent(a.addr).name : ''; if (!name) continue; hits.push({ name, ts: tsOf(line) }); if (a) byAddr.set(a.key, name);
   }
   // sends: Claude's SendMessage input and Codex's send_peer arguments are plain JSON, Hermes's arguments are a JSON string inside JSON (a list_peers listing is neither)
   // one record is one send at most (a Codex send_peer echoes its target in the result), and a list_peers listing names targets nobody was sent anything
-  for (const line of String(text).split('\n')) {
-    if (line.includes('list_peers') || line.includes('bridge: send_peer')) continue;
+  for (const line of lines) {
+    if (/"tool":"list_peers"|"name":"(?:mcp__agent-peers__)?list_peers"/.test(line) || /^\s*bridge: send_peer \{/.test(line)) continue;   // the listing record itself, or a line of a listing; a message that only talks about list_peers still counts
     const m = /"to":"(uds:[^"]+)"|\\"arguments\\":\{\\"to\\":\\"(uds:[^"\\]+)/.exec(line), a = m && parseAddress(m[1] || m[2]); if (!a) continue;
-    n++; names.add(byAddr.get(a.key) || peerAgent(a.addr).name);
+    hits.push({ name: byAddr.get(a.key) || peerAgent(a.addr).name, ts: tsOf(line) });
   }
-  return { n, names: [...names].slice(0, 4) };
+  return { hits };
 }
-module.exports = { parseAddress, peerId, incoming, sendState, resolve, register, peerAgent, nameBook, tailPeers, clip, label };
+// Who a session is talking to now: the messages of the last TALK_MS (a record without a time counts as recent: its caller only passes recent rows). A tip
+// asked hours ago is not "talking to"; the transcript and the detail panel keep the history.
+const TALK_MS = 10 * 60e3;
+function talksNow(t, now = Date.now()) { const h = ((t && t.hits) || []).filter((x) => !x.ts || now - x.ts <= TALK_MS); return { n: h.length, names: [...new Set(h.map((x) => x.name))].slice(0, 4) }; }
+module.exports = { parseAddress, peerId, incoming, sendState, resolve, register, peerAgent, nameBook, tailPeers, talksNow, TALK_MS, clip, label };

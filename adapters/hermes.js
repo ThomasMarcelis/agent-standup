@@ -181,7 +181,7 @@ function boardRow(db, p, s, now) {
   let kids = []; try { kids = children(db, s.id); } catch {}
   let tail = []; try { tail = q(db, `select ${ROWS} from messages where session_id=? order by id desc limit 24`, s.id).reverse(); } catch {}
   const last = tail[tail.length - 1], mtime = Math.max(mtimeOf(s), last ? Math.round(last.timestamp * 1000) : 0), age = now - mtime;
-  let state = 'idle', tool = '', arg = '', ageMs = age; const seen = peers.tailPeers(tail.map((r) => (r.content || '') + ' ' + (r.tool_calls || '')).join('\n'));
+  let state = 'idle', tool = '', arg = '', ageMs = age; const seen = peers.talksNow(peers.tailPeers(tail.filter((r) => now - r.timestamp * 1000 <= peers.TALK_MS).map((r) => (r.content || '') + ' ' + (r.tool_calls || '')).join('\n')), now);   // recent rows only: Hermes rows carry their time outside the text
   if (age < 30 * 60e3 && !s.ended_at) {
     const pend = new Map(); let lastCall = null;
     for (const r of tail) { if (r.role === 'assistant') for (const c of calls(r)) pend.set(c.key, (lastCall = { name: c.name, ts: r.timestamp * 1000, arg: label(c.name, c.args, 0, '').arg })); else if (r.role === 'tool') { pend.delete(r.tool_call_id + '|' + (r.tool_name || '')); for (const k of [...pend.keys()]) if (k.startsWith(r.tool_call_id + '|') && !r.tool_name) pend.delete(k); } }

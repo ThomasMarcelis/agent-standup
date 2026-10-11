@@ -4,7 +4,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'as-adapters-'));
 process.env.CODEX_HOME = path.join(tmp, 'codex'); process.env.AGENT_STANDUP_HERMES = path.join(tmp, 'hermes'); process.env.AGENT_PEERS_HOME = path.join(tmp, 'peers'); process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude'); process.env.AGENT_STANDUP_PROJECTS = path.join(tmp, 'claude', 'projects');
 const peers = require('../adapters/peers.js'), codex = require('../adapters/codex.js'), hermes = require('../adapters/hermes.js');
 const fix = (f) => path.join(__dirname, 'fixtures', f), pad = (n) => String(n).padStart(2, '0');
-const PARENT = '01a129a4-2285-7570-bb72-7ee60fd76f49', CHILD = '01a129a4-a0dd-7271-a213-51d0e57eeeff';
+const PARENT = '01a129a4-2285-7570-bb72-7ee60fd76f49', CHILD = '01a129a4-a0dd-7271-a213-51d0e57eeeff', LAST_TS = '2026-10-11T07:42:50.740Z';   // the parent fixture's last record
 {   // the rollouts go where Codex would have written them today (the index lists the last days' folders), before anything scans
   const d = new Date(), dir = path.join(tmp, 'codex', 'sessions', String(d.getFullYear()), pad(d.getMonth() + 1), pad(d.getDate())); fs.mkdirSync(dir, { recursive: true });
   fs.copyFileSync(fix('codex-parent.jsonl'), path.join(dir, `rollout-2026-10-11T08-26-25-${PARENT}.jsonl`)); fs.copyFileSync(fix('codex-child.jsonl'), path.join(dir, `rollout-2026-10-11T08-26-57-${CHILD}.jsonl`));
@@ -31,7 +31,7 @@ test('codex: rollouts become sessions, a board and a timeline with sub-agents, c
   const rows = codex.list(); assert.equal(rows.length, 1);   // the child is part of its parent's session, not a session of its own
   assert.deepEqual([rows[0].proj, rows[0].id, rows[0].agents, rows[0].source, rows[0].project], ['_codex', PARENT, 1, 'codex', '/home/user']);
   assert.match(rows[0].title, /^I have applications stopping because of out of memory/);   // the prompt, not the AGENTS.md or environment wrapper
-  const b = codex.board(); assert.equal(b.length, 1); assert.equal(b[0].subTotal, 1); assert.deepEqual(b[0].peers, ['marketsimulator-c1']); assert.equal(b[0].msgs, 2);
+  const b = codex.board(Date.parse(LAST_TS) + 60e3); assert.equal(b.length, 1);   // seen a minute after its last record: its contacts are current assert.equal(b[0].subTotal, 1); assert.deepEqual(b[0].peers, ['marketsimulator-c1']); assert.equal(b[0].msgs, 2);
   assert.ok(codex.exists('_codex', PARENT) && codex.exists('_codex', CHILD) && !codex.exists('_codex', '01a129a4-0000-7000-8000-000000000000'));
   assert.ok(codex.stamp('_codex', PARENT) > 0 && codex.mtime('_codex', PARENT) > 0);
   const tl = codex.timeline('_codex', PARENT), kinds = {}; for (const e of tl.events) kinds[e.kind] = (kinds[e.kind] || 0) + 1;
@@ -129,8 +129,9 @@ test('talks to: a list_peers listing is not a message, a send_peer that echoes i
   const listing = '{"type":"event_msg","payload":{"type":"item_completed","item":{"type":"McpToolCall","server":"agent-peers","tool":"list_peers","arguments":{},"result":{"content":[{"type":"text","text":"claude:x  busy\\n  bridge: send_peer {\\"to\\":\\"uds:/run/user/1000/cc-socks/20178.sock\\"}"}],"structuredContent":{"peers":[{"to":"uds:/run/user/1000/cc-socks/20178.sock"}]}}}}}';
   const send = '{"type":"event_msg","payload":{"type":"item_completed","item":{"type":"McpToolCall","server":"agent-peers","tool":"send_peer","arguments":{"to":"uds:/run/user/1000/cc-socks/1095048.sock","message":"hi"},"result":{"structuredContent":{"message_id":"bf","to":"uds:/run/user/1000/cc-socks/1095048.sock","name":"claude:standup-finish"}}}}}';
   const hermesListing = 'You are hermes:gaming:cb050161.\nclaude:x  busy\n  bridge: send_peer {"to":"uds:/run/user/1000/cc-socks/20178.sock"}';
-  assert.equal(peers.tailPeers(listing + '\n' + hermesListing).n, 0);
-  assert.equal(peers.tailPeers(listing + '\n' + send).n, 1);
+  assert.equal(peers.talksNow(peers.tailPeers(listing + '\n' + hermesListing)).n, 0);
+  assert.equal(peers.talksNow(peers.tailPeers(listing + '\n' + send)).n, 1);
+  assert.equal(peers.talksNow(peers.tailPeers(send.replace('"message":"hi"', '"message":"your list_peers count is off; bridge: send_peer lines are listings"'))).n, 1);   // a message about list_peers is still a message
 });
 
 test('a send_peer between two agents of the same session stays inside it (not "another session")', () => {
@@ -141,4 +142,12 @@ test('a send_peer between two agents of the same session stays inside it (not "a
   const tl = assemble({ id: 's', proj: '_codex', agents, states, own });
   assert.deepEqual(tl.events.filter((e) => e.kind === 'msg').map((e) => [e.agent, e.to]), [['kid', 'main']]);
   assert.equal(tl.agents.filter((a) => a.type === 'peer').length, 0);
+});
+
+test('talks to: only recent exchanges; a tip asked long ago is history, not a current contact', () => {
+  const now = Date.parse('2026-10-11T15:00:00Z'), at = (iso) => `{"timestamp":"${iso}","type":"assistant","message":{"content":[{"type":"tool_use","name":"SendMessage","input":{"to":"uds:/run/user/1000/cc-socks/20178.sock","message":"x"}}]}}`;
+  const t = peers.tailPeers([at('2026-10-11T09:00:00Z'), at('2026-10-11T14:52:00Z')].join('\n'));
+  assert.equal(t.hits.length, 2);
+  assert.deepEqual(peers.talksNow(t, now), { n: 1, names: ['Claude Code 20178'] });   // 8 min ago counts, 6 h ago does not
+  assert.deepEqual(peers.talksNow(t, now + 9 * 60e3), { n: 0, names: [] });          // and it expires
 });

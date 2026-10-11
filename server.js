@@ -198,7 +198,7 @@ function boardRows0() {
     }
     let subActive = 0, subTotal = 0; const sd = path.join(ROOT, proj, id, 'subagents');
     try { for (const x of fs.readdirSync(sd)) if (x.endsWith('.jsonl')) { subTotal++; if (now - fs.statSync(path.join(sd, x)).mtimeMs < 90e3) subActive++; } } catch {}
-    return { proj, id, title: p.title || id, mtime: st.mtimeMs, state, tool, arg: lp ? lp.arg || '' : tool && p.lastCall ? p.lastCall.arg || '' : '', ageMs, subActive, subTotal, source: 'claude', peers: (p.talks || {}).names || [], msgs: (p.talks || {}).n || 0, group: project.groupOf(p.cwd) };
+    return { proj, id, title: p.title || id, mtime: st.mtimeMs, state, tool, arg: lp ? lp.arg || '' : tool && p.lastCall ? p.lastCall.arg || '' : '', ageMs, subActive, subTotal, source: 'claude', ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(p.talks)), group: project.groupOf(p.cwd) };
   })).map((r) => (r.oneshot && r.state === 'turn' ? { ...r, state: 'done' } : r)).sort((a, b) => boardRank(a) - boardRank(b) || b.mtime - a.mtime).slice(0, BOARD_MAX);   // a one-shot that answered is done, not "your turn": nobody is waiting for the human there
 }
 // The board with its placement check: every row derives its project from its own log (a git root from the cwd, a Hermes thread); a session the
@@ -276,12 +276,13 @@ function parseRecord(st, r) {
     if (id && status && status !== 'running') st.raw.push({ ts, agent, kind: 'agentdone', toolId: id });
     return;
   }
+  const arrival = (text, o) => {   // a message from another agent session (agent-peers), framed by Claude Code; once, however it was recorded
+    const inc = peers.incoming(text); if (!inc) return; const id = o.msg_id || inc.msgId || ''; st.seenMsg = st.seenMsg || new Set(); if (id && st.seenMsg.has(id)) return; if (id) st.seenMsg.add(id);
+    st.raw.push({ ts, agent, kind: 'msg', dir: 'in', from: o.from || inc.addr, name: o.name || inc.name, msgId: id, text: clip(inc.text, 2000) });
+  };
+  if (r.type === 'attachment' && r.attachment && r.attachment.type === 'queued_command' && typeof r.attachment.prompt === 'string') return arrival(r.attachment.prompt, r.attachment.origin || {});   // one that arrived while the session was busy
   if (r.type === 'user') {
-    if (r.isMeta && typeof (r.message && r.message.content) === 'string') {   // a message from another agent session (agent-peers), framed by Claude Code
-      const inc = peers.incoming(r.message.content), o = r.origin || {};
-      if (inc) st.raw.push({ ts, agent, kind: 'msg', dir: 'in', from: o.from || inc.addr, name: o.name || inc.name, msgId: o.msg_id || inc.msgId || '', text: clip(inc.text, 2000) });
-      return;
-    }
+    if (r.isMeta && typeof (r.message && r.message.content) === 'string') return arrival(r.message.content, r.origin || {});
     const items = [];   // tool results: the real output that appeared on the agent's screen
     for (const b of blocks(r)) if (b.type === 'tool_result' && st.toolName[b.tool_use_id] === 'SendMessage' && st.sends && st.sends[b.tool_use_id]) {   // the send's result says whether the inbox took it
       const s = st.sends[b.tool_use_id], txt = resultText(b.content); let j = null; try { j = JSON.parse(txt); } catch {}
@@ -472,6 +473,37 @@ class TrWorker {
   }
 }
 const trWorkers = [new TrWorker(), new TrWorker()];
+// Spoken summaries: a long line is read as one short sentence of what it says, written by a small fast model (gpt-6-luna) through the local codex-lb proxy.
+// Asked only for lines about to be spoken; cached by text; nothing comes back when the proxy is not there (the page then reads whole first sentences).
+const SUMMARY_URL = 'http://127.0.0.1:2455/backend-api/codex/responses', SUMMARY_MODEL = 'gpt-6-luna', LUNA_EFFORT = process.env.AGENT_STANDUP_LUNA_EFFORT || 'medium';   // pinned on every call (the model's own default may change); low gave Tom bad summaries
+const SUMMARY_SYS = 'Rewrite the message as one short spoken sentence of at most 22 words that keeps what matters: the result, the decision, the problem or the request. Same language as the message. Content only: no names, no greetings, no "the agent says", no labels, no markdown, no paths or ids. Write it as a neutral line about the work, never as the agent speaking: no I, we or you (\"Pushing to production is waiting for approval\", not \"May I push to production?\"). Reply with the sentence only.';
+// One call to the model through codex-lb (Responses API, streamed); the text it wrote, or JSON when a schema is given.
+async function luna(instructions, text, schema, ms = 15000) {
+  const body = { model: SUMMARY_MODEL, instructions, input: [{ role: 'user', content: [{ type: 'input_text', text }] }], stream: true, store: false, reasoning: { effort: LUNA_EFFORT } };
+  if (schema) body.text = { format: { type: 'json_schema', name: 'triage', strict: true, schema } };
+  const r = await fetch(SUMMARY_URL, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'text/event-stream' }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
+  if (!r.ok) throw new Error('luna ' + r.status);
+  let out = ''; for (const l of (await r.text()).split('\n')) if (l.startsWith('data: ')) { try { const j = JSON.parse(l.slice(6)); if (j.type === 'response.output_text.delta') out += j.delta; } catch {} }
+  return schema ? JSON.parse(out) : out.replace(/\s+/g, ' ').trim();
+}
+// Live speech triage: the lines waiting to be heard go in one batch, the model says which to drop and writes at most two short sentences to say
+// (it may merge related items). The page keeps the last word: it never drops a needs-you item, never sends a stale one, and has its own policy when this fails.
+const TRIAGE_SYS = 'You choose what Tom hears from a live feed of his AI agents at work. What matters to him, in order: anything that needs him (needs_you), results and reports, decisions and blockers, messages between agents; routine progress is low value, and the session he is viewing matters more than others. Each item has an id, its age in seconds, a kind (needs_you, report, message, order), its project, the agent (lead or sub-agent, and its role) and its text. You also get what was already said in the last minutes: do not repeat it. Return JSON: "drop" lists the ids not worth saying; "say" has at most 2 lines, most important first, each ONE short spoken sentence of at most 22 words in the language of the items, content only: no names, no greetings, no "the agent says", no labels, no markdown, no paths or ids. Write it as a neutral line about the work, never as the agent speaking: no I, we or you (\"Pushing to production is waiting for approval\", not \"May I push to production?\"). A line may merge related items: list all their ids. Never drop a needs_you item. Prefer results, decisions, problems and requests over progress chatter; prefer newer over older.';
+const TRIAGE_SCHEMA = { type: 'object', additionalProperties: false, required: ['drop', 'say'], properties: { drop: { type: 'array', items: { type: 'integer' } }, say: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['ids', 'line'], properties: { ids: { type: 'array', items: { type: 'integer' } }, line: { type: 'string' } } } } } };
+function triageInput({ items, said, viewing } = {}) {   // the text the model gets: what Tom is viewing, what was already said, the queue ('' when empty)
+  const one = (x, n) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, n);
+  const list = (Array.isArray(items) ? items : []).slice(0, 20).map((it) => `${+it.id || 0} (${Math.round(+it.age || 0)} s, ${one(it.kind, 12) || 'message'}, project ${one(it.project, 60) || '?'}, ${it.lead ? 'lead' : 'sub-agent'} ${one(it.role, 60)}): ${one(it.text, 1500)}`);
+  return list.length ? `Tom is viewing: ${one(viewing, 120) || '?'}\nAlready said (oldest first):\n${(Array.isArray(said) ? said : []).slice(-12).map((x) => '- ' + one(x, 200)).join('\n') || '- nothing yet'}\n\nQueue:\n` + list.join('\n') : '';
+}
+function triage(req) { const text = triageInput(req); return text ? luna(TRIAGE_SYS, text, TRIAGE_SCHEMA, 20000) : Promise.resolve({ drop: [], say: [] }); }
+const summaries = new Map();   // text → Promise<string>
+let sumActive = 0; const sumWait = [];   // at most 3 calls at once: a burst queues instead of firing dozens
+const sumSlot = () => (sumActive < 3 ? (sumActive++, Promise.resolve()) : new Promise((r) => sumWait.push(r))), sumFree = () => { const n = sumWait.shift(); if (n) n(); else sumActive--; };
+function summary(text) {
+  text = String(text).slice(0, 4000); if (summaries.has(text)) return summaries.get(text);
+  const job = (async () => { await sumSlot(); try { return await luna(SUMMARY_SYS, text); } finally { sumFree(); } })().catch(() => { summaries.delete(text); return ''; });   // a failure is not cached: the next time it is asked again
+  summaries.set(text, job); if (summaries.size > 2000) summaries.delete(summaries.keys().next().value); return job;
+}
 const shutdown = () => { trWorkers.forEach((w) => w.kill()); kokoro.shutdown(); };
 process.on('exit', shutdown);
 const pickWorker = () => trWorkers.reduce((a, b) => (a.q.length + a.busy <= b.q.length + b.busy ? a : b));
@@ -597,7 +629,7 @@ function start(port = PORT) {
   const json = (o, code = 200) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
   // Endpoints with side effects (they spawn programs or claim the sound), and the one that serves pictures from a session, refuse requests that a browser marks as coming from another site, e.g. an <img> on a web page.
   const sfs = req.headers['sec-fetch-site'];
-  if (sfs && sfs !== 'same-origin' && sfs !== 'none' && (req.method !== 'GET' || ['/api/translate', '/api/quips', '/api/warm', '/api/audio', '/api/tts', '/api/prefs', '/api/voices', '/api/kokoro', '/api/kokoro/install', '/api/media'].includes(url.pathname))) { res.writeHead(403); return res.end('forbidden'); }
+  if (sfs && sfs !== 'same-origin' && sfs !== 'none' && (req.method !== 'GET' || ['/api/translate', '/api/summary', '/api/triage', '/api/quips', '/api/warm', '/api/audio', '/api/tts', '/api/prefs', '/api/voices', '/api/kokoro', '/api/kokoro/install', '/api/media'].includes(url.pathname))) { res.writeHead(403); return res.end('forbidden'); }
   const readBody = (cb) => {   // request bodies are small JSON: stop reading beyond 256 KB and give up after 10 s
     const chunks = []; let size = 0, over = false; req.setTimeout(10000, () => req.destroy());
     if (+req.headers['content-length'] > 262144) { res.writeHead(413); res.end('too large'); return req.destroy(); }
@@ -607,6 +639,8 @@ function start(port = PORT) {
   const textList = (x) => (Array.isArray(x) ? x : []).slice(0, 200).map((t) => String(t).slice(0, 2000));
   try {
     if (url.pathname === '/api/translate' && req.method === 'POST') return readBody(async (body) => { try { json(await translate(textList(JSON.parse(body).texts))); } catch (e) { json({ error: String(e) }, 400); } });
+    if (url.pathname === '/api/triage' && req.method === 'POST') return readBody(async (body) => { try { json(await triage(JSON.parse(body))); } catch (e) { json({ error: String(e && e.message || e) }); } });
+    if (url.pathname === '/api/summary' && req.method === 'POST') return readBody(async (body) => { try { json({ summary: await summary(String(JSON.parse(body).text || '')) }); } catch (e) { json({ error: String(e) }, 400); } });
     if (url.pathname === '/api/quips' && req.method === 'POST') return readBody(async (body) => { try { const b = JSON.parse(body); json(await quips(textList(b.texts), b.lang === 'fr' ? 'fr' : 'en')); } catch (e) { json({ error: String(e) }, 400); } });
     if (url.pathname === '/api/sessions') return json(listSessions());
     if (url.pathname === '/api/projects') {   // projects (working folders) ordered by latest activity — lets the live view follow one of them
@@ -676,7 +710,7 @@ function start(port = PORT) {
   } catch (e) { if (res.headersSent) return res.destroy(); json({ error: String(e.message || e) }, 500); }
   }).listen(port, '127.0.0.1', function () { console.log(`Agent Standup → http://localhost:${this.address().port}`); });
 }
-module.exports = { start, currentSession, shutdown, findClaude, bundledClaude, boardRows, placement, charactersDir, listCharacters };
+module.exports = { start, currentSession, shutdown, findClaude, bundledClaude, boardRows, placement, charactersDir, listCharacters, triageInput, TRIAGE_SYS, TRIAGE_SCHEMA, SUMMARY_URL, SUMMARY_MODEL };   // the triage pieces: for the offline evaluation of thinking levels
 if (require.main === module) {
   start().on('error', (e) => {
     console.error(e.code === 'EADDRINUSE' ? `Port ${PORT} is already in use (maybe Agent Standup is already running, e.g. inside VS Code). Try: PORT=4790 node server.js` : String(e));
