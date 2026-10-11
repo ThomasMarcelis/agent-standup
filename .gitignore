@@ -11,3 +11,6 @@ desktop/node_modules/
 desktop/core/
 dist-release/
 dist-release-*/
+
+# generated browser QA snapshots
+.playwright-mcp/
