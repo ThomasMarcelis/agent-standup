@@ -40,6 +40,7 @@
   .seg button { padding:4px 11px; border-radius:6px; color:var(--dim); font-size:12.5px }
   .seg button.on { background:var(--panel2); color:var(--text) }
   .ic { width:32px; height:32px; border-radius:8px; display:grid; place-items:center; font-size:15px; color:var(--dim) }
+  .vnote { font-size:11.5px; color:#f0a020; max-width:260px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }   /* why the chosen voice is not speaking */
   .ic:hover { background:var(--panel2); color:var(--text) } .ic.on { color:var(--text); background:var(--panel2) }
 
   /* ---------- layout ---------- */
@@ -168,6 +169,7 @@
   .tag { position:absolute; left:6px; bottom:6px; right:6px; display:flex; gap:5px; pointer-events:none }
   .tag b, .tag span { background:rgba(14,15,24,.78); backdrop-filter:blur(6px); padding:2px 9px; border-radius:99px; font-size:11.5px; white-space:nowrap }
   .tag span { color:#e3e6f0; font-size:10.5px; overflow:hidden; text-overflow:ellipsis; min-width:0 }
+  .tile:not(.focus) .tag span:not(.tk):not(.cx) { display:none } .tile:not(.focus) .tag b { max-width:42%; overflow:hidden; text-overflow:ellipsis }   /* a small tile: the role is on the shirt, and the name leaves the shirt in view */
   .status { position:absolute; top:6px; right:6px; font-size:11.5px; font-weight:600; padding:2px 9px; border-radius:99px; background:rgba(14,15,24,.8); backdrop-filter:blur(6px) }
   .status.working { color:var(--gold) } .status.done { color:var(--ok) }
   .status.waiting { color:#8fd3ff } .status.blocked { color:#fff; background:#c0392b; font-weight:700 } .status.stalled { color:#1b1d27; background:#ffb347; font-weight:700 }
@@ -208,10 +210,9 @@
   .fly { position:fixed; left:0; top:0; font-size:28px; z-index:8; pointer-events:none; filter:drop-shadow(0 3px 4px rgba(0,0,0,.5)) }
 
   /* ---------- overlays ---------- */
-  #gate, #empty { position:absolute; inset:0; z-index:4; display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center; padding:24px; background:rgba(18,19,26,.82); backdrop-filter:blur(3px) }
-  #gate.on, #empty.on { display:flex } #empty { background:var(--bg) }
-  body.board #gate.on { display:none }   /* the board is read, not heard: no gate over it; the first click joins */
-  #gate h2, #empty h2 { margin:0; font:800 22px "Comic Sans MS","Chalkboard SE",system-ui,sans-serif } #gate p, #empty p { margin:0; color:var(--dim); max-width:380px }
+  #empty { position:absolute; inset:0; z-index:4; display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center; padding:24px; background:rgba(18,19,26,.82); backdrop-filter:blur(3px) }
+  #empty.on { display:flex } #empty { background:var(--bg) }
+  #empty h2 { margin:0; font:800 22px "Comic Sans MS","Chalkboard SE",system-ui,sans-serif } #empty p { margin:0; color:var(--dim); max-width:380px }
   .cta { background:var(--accent); color:#0b1020; font-weight:700; padding:10px 22px; border-radius:99px; font-size:14px } .cta:hover { filter:brightness(1.1) }
   .btn { background:var(--panel2); border:1px solid var(--line); padding:6px 12px; border-radius:8px } .btn:hover { border-color:var(--accent) }
   #menu { position:absolute; top:52px; right:10px; z-index:12; width:280px; background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:0 14px 40px rgba(0,0,0,.55); padding:6px; display:none; max-height:calc(100vh - 62px); max-height:calc(100dvh - 62px); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin }   /* never taller than the window: it scrolls instead of being cut off */
@@ -273,7 +274,7 @@
   <div class="seg" id="viewSeg"><button data-v="call" class="on" data-fr="Appel" data-en="Call">Appel</button><button data-v="tree" data-fr="Arbre" data-en="Tree">Arbre</button><button data-v="board" data-fr="Sessions" data-en="Sessions">Sessions</button></div>
   <button class="ic" id="bPlay" title="Pause / Lecture (espace)">⏸</button>
   <button class="ic" id="bLog" title="Transcript">☰</button>
-  <button class="ic" id="bMute" title="Son (M)">🔊</button>
+  <span id="vnote" class="vnote" role="status" style="display:none"></span><button class="ic" id="bMute" title="Son (M)">🔊</button>
   <button class="ic" id="bMenu" title="Réglages">⚙</button>
 </header>
 
@@ -325,7 +326,6 @@
     <canvas id="gantt" height="90"></canvas>
     <div id="toasts" role="status" aria-live="polite"></div>
     <div id="empty"><h2 id="eT"></h2><p id="eP"></p><button class="cta" id="eDemo"></button></div>
-    <div id="gate"><h2 id="gT"></h2><p id="gP"></p><button class="cta" id="gB"></button></div>
     <div id="detail"><div class="hd"><b id="dname"></b><button class="ic" id="dclose">✕</button></div><div id="dbody"></div></div>
   </section>
   <aside><h2 id="logH">Transcript</h2><input id="logQ" type="search" placeholder="Search…" aria-label="Search the transcript" style="margin:0 10px 8px;width:calc(100% - 20px)"><div id="log"></div></aside>
@@ -356,7 +356,7 @@ let prefs = { lang: 'en', voice: true, roster: true, banter: false, reactions: f
 if (prefs.vstyle === 'babble') prefs.vstyle = 'animal', prefs.vstyleChosen = true;
 if (!prefs.quietOnce) { prefs.banter = false; prefs.quietOnce = true; }   // no invented lines by default ("Sorry, I was on mute"): what is heard is what the agents wrote; ⚙ turns them back on
 if (!prefs.boardOnce) { prefs.view = 'board'; prefs.boardOnce = true; }   // the overview of every session became the first screen (once: a view picked after that sticks)
-if (!prefs.elevenOnce) { prefs.vstyle = 'elevenlabs'; prefs.elevenOnce = true; }   // ElevenLabs became the default (once: a style picked after that sticks); without a key on the server the plain system voices speak instead, never the cartoon effects or gibberish
+if (!prefs.elevenOnce) { prefs.vstyle = 'elevenlabs'; prefs.elevenOnce = true; }   // ElevenLabs became the default (once: a style picked after that sticks); without a key nothing is said and the voice button says why: the system voices speak only when chosen
 if (!prefs.notifyChosen) prefs.notify = true;   // “tell me when the agents are done” is on unless the person chose otherwise
 let prefsTimer = null;
 const savePrefs = () => { prefs._t = Date.now(); try { localStorage.setItem('cc.prefs', JSON.stringify(prefs)); } catch {} clearTimeout(prefsTimer); prefsTimer = setTimeout(() => { fetch('/api/prefs', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(prefs) }).catch(() => {}); }, 400); };
@@ -536,7 +536,7 @@ function avatarSVG(p, o, uid = '') {   // uid keeps SVG ids unique per instance:
 //  state
 // =====================================================================
 const S = { owner: null, errRun: {}, exQ: [], agents: {}, events: [], idx: 0, playing: false, token: 0, status: {}, tc: {}, cur: null, live: true, userPaused: false, boost: 1, stopAt: 0,
-            speakers: new Set(), say: {}, lastTool: {}, level: {}, detail: null, collapsed: new Set(), title: '', idle: false, locked: true, logTo: 0, trOk: true,
+            speakers: new Set(), say: {}, lastTool: {}, level: {}, detail: null, collapsed: new Set(), title: '', idle: false, logTo: 0, trOk: true,
             clock: 0, doneAt: {}, gone: new Set(), leaving: new Set(), demo: false, hold: false };
 if (Q.get('pin')) S.pin = Q.get('pin'); else if (prefs.pin && prefs.pinProj === prefs.proj) S.pin = prefs.pin;   // the pin survives a reload
 const VANISH_MS = 120000;   // a finished agent leaves the call after 2 minutes (playback time)
@@ -625,6 +625,7 @@ const AUD = {
   init() {
     if (this.ctx) { this.ctx.resume(); return; }
     let c; try { c = this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return; }
+    c.onstatechange = paintVnote; setTimeout(paintVnote, 1500);   // allowed already (no hint), or held back until a click (the hint)
     this.sfx = c.createGain(); this.amb = c.createGain(); this.amb.connect(this.sfx); this.voice = c.createGain(); this.music = c.createGain(); this.rec = c.createMediaStreamDestination();
     [this.sfx, this.voice].forEach((g) => { g.connect(c.destination); g.connect(this.rec); });
     this.music.gain.value = 0; this.music.connect(c.destination);   // radio music is for your ears only: it is never part of video exports
@@ -750,11 +751,20 @@ function rankVoices(list) {   // list of names → best distinct voices first
   [...list].sort((a, b) => voiceScore(b) - voiceScore(a)).forEach((n) => { const base = n.replace(/\s*\(.*$/, ''); if (voiceScore(n) > -100 && !seen.has(base)) { seen.add(base); out.push(n); } });
   return out.slice(0, 5);
 }
-const TTS_WAIT = 16000;   // past the server's own 12 s limit and its one retry: after that the line goes to the system voice
+const TTS_WAIT = 10000, TTS_RETRY = 30000;   // the server gives a whole line 8 s (its slot, a try, a 429 retry); a line that could not be made fails at once for 30 s instead of being waited for twice
+// Why ElevenLabs could not speak, in a word or two: "no key", "quota", "error 401", "busy (429)", "timeout".
+const soundHeld = () => !!AUD.ctx && AUD.ctx.state !== 'running';   // created before any gesture on the page: the browser keeps it silent until one
+function paintVnote() {   // by the voice button: the browser holding the sound back, else why ElevenLabs is not speaking; nothing when all is well
+  const n = $('#vnote'); if (!n) return; const t = S.live && prefs.voice && !AUD.off() && soundHeld() ? L('cliquez n’importe où pour le son', 'click anywhere for sound') : TTS.down ? 'ElevenLabs: ' + TTS.down : '';
+  n.textContent = t; n.title = t; n.style.display = t ? '' : 'none';
+}
+const elevenWhy = (m) => { m = m && typeof m === 'object' ? (m.name || '') + ' ' + (m.message || '') : String(m || ''); const code = (/\b([45]\d\d)\b/.exec(m) || [])[1]; return /no key|ELEVENLABS_API_KEY/i.test(m) ? L('pas de clé', 'no key') : /quota/i.test(m) ? 'quota' : code === '429' ? L('occupé', 'busy') + ' (429)' : /timeout|abort/i.test(m) ? L('délai dépassé', 'timeout') : L('erreur', 'error') + (code ? ' ' + code : ''); };
 const TTS = {
-  server: false, engine: 'system', platform: '', pool: { fr: [], en: [] }, cache: new Map(),
+  server: false, engine: 'system', platform: '', pool: { fr: [], en: [] }, cache: new Map(), down: '',
+  setDown(why) { this.down = why || ''; paintVnote(); },   // shown by the voice button
   async init() {
-    this.engine = 'system'; this.server = false; this.pool = { fr: [], en: [] }; this.cache.clear();
+    this.engine = 'system'; this.server = false; this.pool = { fr: [], en: [] }; this.cache.clear(); this.setDown('');
+    if (prefs.vstyle === 'elevenlabs') this.engine = 'elevenlabs';   // chosen: until it answers, and if it cannot, nobody else speaks
     try {
       if (prefs.vstyle === 'kokoro') {   // natural voices installed on demand; until they are, the system voices stay in use
         const k = await (await fetch('/api/voices?engine=kokoro')).json();
@@ -763,18 +773,19 @@ const TTS = {
       if (prefs.vstyle === 'elevenlabs') {   // the server's ElevenLabs key; the same stock voices speak every language, one per agent
         const e = await (await fetch('/api/voices?engine=elevenlabs')).json(); this.eleven = e;
         if (e.available) { this.server = true; this.engine = 'elevenlabs'; this.platform = e.platform || ''; for (const l of ['fr', 'en']) this.pool[l] = e.voices.map((v) => v.name); return; }
+        this.setDown(L('indisponible', 'unavailable') + ', ' + elevenWhy(e.error)); return;   // no key, or the account refuses: not the system voice instead
       }
       const d = await (await fetch('/api/voices')).json(); this.platform = d.platform || ''; if (!d.available) return; this.server = true;
-      for (const l of ['fr', 'en']) this.pool[l] = rankVoices(d.voices.filter((v) => v.locale.startsWith(l + '_')).map((v) => v.name)); } catch {}
+      for (const l of ['fr', 'en']) this.pool[l] = rankVoices(d.voices.filter((v) => v.locale.startsWith(l + '_')).map((v) => v.name)); } catch (e) { if (this.engine === 'elevenlabs') this.setDown(L('indisponible', 'unavailable') + ', ' + elevenWhy(e)); }
   },
   voiceFor(p, fr = FR()) { const pool = this.pool[fr ? 'fr' : 'en']; return pool.length ? (p.id === 'main' ? pool[0] : pool[(p.vi >>> 2) % pool.length]) : null; },
   rate() { return Math.round(Math.max(120, Math.min(330, 178 * (S.live ? 1.12 * lagFactor() : +$('#speed').value))) / 10) * 10; },
   buf(text, voice, rate) {
     const key = this.engine + '|' + voice + '|' + (this.engine === 'elevenlabs' ? 0 : rate) + '|' + text;   // ElevenLabs makes one file per line whatever the pace: a line warmed at one pace is a hit at another
     if (!this.cache.has(key)) {
-      this.cache.set(key, fetch(`/api/tts?engine=${this.engine}&voice=${encodeURIComponent(voice)}&rate=${rate}&text=${encodeURIComponent(text)}`, { signal: AbortSignal.timeout(TTS_WAIT) }).then((r) => { if (!r.ok) throw new Error('tts'); return r.arrayBuffer(); }).then((b) => AUD.ctx.decodeAudioData(b)));
+      this.cache.set(key, fetch(`/api/tts?v=2&engine=${this.engine}&voice=${encodeURIComponent(voice)}&rate=${rate}&text=${encodeURIComponent(text)}`, { signal: AbortSignal.timeout(TTS_WAIT) }).then((r) => { if (r.status === 204 || !r.ok) throw new Error(r.headers.get('x-tts-error') || 'tts ' + r.status); return r.arrayBuffer(); }).then((b) => AUD.ctx.decodeAudioData(b)));
       if (this.cache.size > 60) this.cache.delete(this.cache.keys().next().value);
-      this.cache.get(key).catch(() => this.cache.delete(key));
+      const pr = this.cache.get(key); pr.catch(() => setTimeout(() => { if (this.cache.get(key) === pr) this.cache.delete(key); }, TTS_RETRY));
     }
     return this.cache.get(key);
   },
@@ -862,7 +873,7 @@ async function speakServer(text, p, gain, token, fr = FR(), still) {
   S.level[p.id] = () => { an.getByteTimeDomainData(data); let s = 0; for (const v of data) { const x = (v - 128) / 128; s += x * x; } return Math.sqrt(s / data.length); };   // drives the mouth
   AUD.live.add(src);
   captionRun(p.id, text, buf.duration * 1000); await new Promise((res) => { src.onended = res; setTimeout(res, buf.duration * 1000 + 800); src.start(); });
-  AUD.live.delete(src); delete S.level[p.id]; stops.forEach((o) => { try { o.stop(); } catch {} });
+  AUD.live.delete(src); delete S.level[p.id]; stops.forEach((o) => { try { o.stop(); } catch {} }); return true;
 }
 function speakBrowser(text, p, token, fr = FR()) {   // fallback where no server voice exists (Windows/Linux)
   return new Promise((resolve) => {
@@ -905,11 +916,15 @@ function captionRun(id, text, totalMs) {
   for (let i = 1; i < ps.length; i++) { const x = ps[i], when = at; timers.push(setTimeout(() => setCaption(id, x), when)); at += totalMs * x.length / n; }
   capTimers.set(id, timers);
 }
-async function speakLine(text, p, primary, token, fr = FR(), still) {
+async function speakLine(text, p, primary, token, fr = FR(), still) {   // resolves to { skipped: why } when ElevenLabs is chosen and could not make the line
   captionRun(p.id, text, estMs(text));
   if (AUD.off() || !prefs.voice) { if (!AUD.off() && prefs.office) AUD.murmur(0.5 + (p.vi % 5) / 10, estMs(text) / 1000); return sleep(estMs(text)); }
   if (S.hurry) return sleep(estMs(text));
   if ((prefs.vstyle === 'animal' || prefs.vstyle === 'sims') && AUD.ctx) { try { await speakBabble(text, p, primary ? 1 : 0.5, token); return; } catch {} }
+  if (TTS.engine === 'elevenlabs') {   // chosen: a line it cannot make is skipped and marked, never said in another voice
+    if (!TTS.server || !AUD.ctx) return { skipped: TTS.down || L('indisponible', 'unavailable') };
+    try { if (await speakServer(text, p, primary ? 1 : 0.5, token, fr, still)) TTS.setDown(''); return; } catch (e) { const why = elevenWhy(e); TTS.setDown(L('ligne sautée', 'line skipped') + ', ' + why); return { skipped: why }; }
+  }
   if (TTS.server && AUD.ctx) { try { await speakServer(text, p, primary ? 1 : 0.5, token, fr, still); return; } catch {} }
   if (primary && synth && !EMBED && (await speakBrowser(text, p, token, fr))) return;
   AUD.murmur(0.5 + (p.vi % 5) / 10, estMs(text) / 1000); return sleep(estMs(text));
@@ -959,11 +974,15 @@ function renderLog(full) {
     if (S.events[i].kind === 'results' || S.events[i].kind === 'usage' || S.events[i].kind === 'finish' || S.events[i].kind === 'compact') continue;
     const e = S.events[i], arrow = e.to ? ` <span class="arrow">→</span> <span class="who">${esc(nameOf(e.to))}</span>${pjTag(e.to)}` : '';
     const body = e.kind === 'tools' ? e.tools.map((t) => t.name).join(', ') : spoken(e), k = { order: L('tâche', 'task'), report: L('rapport', 'report'), say: '', user: L('brief', 'brief'), tools: L('outils', 'tools'), msg: L('message', 'message') + ' ' + MSG_STATE(e.state) }[e.kind];
-    html.push(`<div class="row ${e.kind}" data-i="${i}"><span class="who">${esc(nameOf(e.agent))}</span>${pjTag(e.agent)}${arrow} <span class="k">${k}</span><div class="txt">${esc(body)}${e.note ? ` <span class="pj">(${esc(e.note)})</span>` : ''}</div></div>`);
+    html.push(`<div class="row ${e.kind}" data-i="${i}"><span class="who">${esc(nameOf(e.agent))}</span>${pjTag(e.agent)}${arrow} <span class="k">${k}</span><div class="txt">${esc(body)}${e.note ? ` <span class="pj">(${esc(e.note)})</span>` : ''}${e.unsaid ? unsaidTag(e.unsaid) : ''}</div></div>`);
   }
   log.insertAdjacentHTML('beforeend', html.join('')); S.logTo = S.events.length;
   if (S.live) while (log.children.length > 320) log.firstChild.remove();
   filterLog();
+}
+const unsaidTag = (why) => ` <span class="pj unsaid">🔇 ${esc(L('non lue à voix haute', 'not read aloud'))}: ${esc(why)}</span>`;
+function markUnsaid(evs, why) {   // the line was skipped (ElevenLabs could not make it): its transcript rows say so
+  for (const e of evs) { e.unsaid = why; const r = $(`#log .row[data-i="${S.events.indexOf(e)}"] .txt`); if (r && !r.querySelector('.unsaid')) r.insertAdjacentHTML('beforeend', unsaidTag(why)); }
 }
 function filterLog() { const q = $('#logQ').value.trim().toLowerCase(); for (const r of $('#log').children) r.style.display = !q || r.textContent.toLowerCase().includes(q) ? '' : 'none'; }
 $('#logQ').oninput = filterLog;
@@ -1002,7 +1021,7 @@ function syncUI() {
   $('#bPlay').textContent = S.playing ? '⏸' : '▶';
   const pill = $('#pill'); pill.className = '';
   if (S.offline) { pill.textContent = L('HORS LIGNE', 'OFFLINE'); }
-  else if (!S.live) { pill.textContent = 'REPLAY'; } else if (S.locked) { pill.textContent = L('PRÊT', 'READY'); } else if (!S.playing) { pill.textContent = L('PAUSE', 'PAUSED'); } else if (S.idle) { pill.textContent = L('EN ATTENTE', 'WAITING'); pill.className = 'wait'; } else { pill.textContent = 'LIVE'; pill.className = 'live'; }
+  else if (!S.live) { pill.textContent = 'REPLAY'; } else if (!S.playing) { pill.textContent = L('PAUSE', 'PAUSED'); } else if (S.idle) { pill.textContent = L('EN ATTENTE', 'WAITING'); pill.className = 'wait'; } else { pill.textContent = 'LIVE'; pill.className = 'live'; }
   document.body.classList.toggle('replay', !S.live);
 }
 
@@ -1149,7 +1168,7 @@ const quiet = (e) => e.kind === 'tools' || e.kind === 'results' || e.kind === 'u
 // The command a shell tool runs, as a person would say it: without "set -e;" or "cd dir &&", a heredoc as "python3 script", and a JS wrapper (a Codex exec script) as nothing.
 function cmdLabel(text) {
   let a = String(text || '').split('\n').map((l) => l.trim()).find((l) => l && !/^(?:set -[a-z]+;?|#.*)$/.test(l)) || '';
-  a = a.replace(/^(?:set -[a-z]+;\s*)+/, '').replace(/^cd \S+\s*(?:&&|;)\s*/, '').replace(/\s+-?\s*<<-?\s*['"]?\w+['"]?\s*$/, ' script');
+  a = a.replace(/^(?:set -[a-z]+;\s*)+/, '').replace(/^cd \S+\s*(?:&&|;)\s*/, '').replace(/\s*['"]?uds:\S+/g, '').replace(/\s+-?\s*<<-?\s*['"]?\w+['"]?\s*$/, ' script');
   return /\bawait\b|=>|\bconst\b|\blet\b|\bvar\b|Promise\.|^\w+\(['"`]|^[{}\/]/.test(a) ? '' : a;
 }
 function activityLabel(t) {   // the short "what is on their screen" tag
@@ -1728,7 +1747,7 @@ async function run(i) {
       if (g.kind === 'report') { AUD.ding(); setTimeout(() => { fly(g.agent, g.to, '✅'); popTile(g.agent); }, 30); }
       const k = S.events.indexOf(g), fresh = () => { if (!S.live || k < 0) return true; const fp = freshPlan(S.events, k); return !fp.silent && fp.at === k; };   // nothing out of date, and nothing the call would jump past
       return (async () => { let voice = !S.live && fresh() ? await voiceLine(g) : ''; if (voice && (token !== S.token || !fresh())) voice = '';   // replay reads each line; live, the voice director does (below)
-        await (voice ? speakLine(voice, S.agents[g.agent], true, token, FR() && trMem.has(baseText(g))) : sleep(700 / spd())); stopTalk(g.agent); })();
+        const r = await (voice ? speakLine(voice, S.agents[g.agent], true, token, FR() && trMem.has(baseText(g))) : sleep(700 / spd())); if (r && r.skipped) markUnsaid([g], r.skipped); stopTalk(g.agent); })();
     };
     let plays; if (S.live) { plays = []; let chain = Promise.resolve(); for (const g of group) { chain = chain.then(() => (token === S.token ? playOne(g) : null)); plays.push(chain); } } else plays = group.map(playOne);   // live: one voice at a time so each can be heard; replay keeps the overlapping chatter
     S.idx = j - 1; paintStatus(); await Promise.all(plays); if (token !== S.token) return;
@@ -1784,23 +1803,27 @@ function localPick(items) {   // without the model: everything that needs Tom, e
   return [...need, ...rest.slice(0, need.length ? 0 : 1)].map((it) => ({ line: clipSpeech(it.text, 200), items: [it] }));
 }
 // ---- end triage policy
-const D = { done: new WeakSet(), said: [], pending: null };
-// eleven_v4_turbo takes about 1 s per line (flash 0.25 s). Synthesis starts the moment a line is picked, and the next batch is picked, so made, while the
-// current line plays: a line is ready when its turn comes. A line is never played once it has gone stale, and one that would go stale while being made is not made.
-const synthMs = () => (TTS.engine === 'elevenlabs' ? 1200 : 400);
+const D = { done: new WeakSet(), said: [], pending: null, speaking: false };
+// eleven_v4_turbo takes about 1 s per line (flash 0.25 s), Luna about 3.5 s per batch, and neither waits for the other. The next batch is decided as soon as there is
+// something to decide, even while lines are being said; a line is made the moment it is picked, so it is usually ready when the voice is free. A line that would be
+// stale before it is made is not made (nor paid for), and one that is stale by the time its audio exists is not played.
+const SYNTH_MS = { elevenlabs: 1200 }, synthMs = () => SYNTH_MS[TTS.engine] || 400;   // a little over what making one line takes
+const freshIn = (ln, ahead) => ln.items.every((it) => Date.now() + ahead - it.ev.ts <= keepOf(it));   // a merged line says all of its items: one of them out of date makes it stale
 function warmLines(lines) {
+  const at = Date.now(); lines.forEach((ln) => (ln.at = at));
   if (!S.live || !prefs.voice || AUD.off() || !TTS.server || !AUD.ctx || prefs.vstyle === 'animal' || prefs.vstyle === 'sims') return lines;
-  for (const ln of lines) {
-    const p = S.agents[ln.items[0].agent] || S.agents.main, v = p && TTS.voiceFor(p);
-    if (v) ln.ready = TTS.buf(speakable(ln.line), v, TTS.rate()).catch(() => null);   // the same text and voice speakServer will ask for: a cache hit
-  }
-  return lines;
+  return lines.filter((ln) => {
+    const p = S.agents[ln.items[0].agent] || S.agents.main, v = p && TTS.voiceFor(p); if (!v) return true;
+    if (!freshIn(ln, synthMs())) return false;
+    ln.ready = TTS.buf(speakable(ln.line), v, TTS.rate()).catch(() => {}).then(() => { ln.made = true; });   // the same text and voice speakServer asks for: a cache hit
+    return true;
+  });
 }
 async function speakQueue(lines, io) {   // io: { synthMs, fresh(line, ahead), say(line) }
   for (const ln of lines) {
-    if (!io.fresh(ln, io.synthMs)) continue;   // would be stale before it could be heard
-    if (ln.ready) await ln.ready;              // made since it was picked: usually already
-    if (!io.fresh(ln, 0)) continue;            // stale by the time its audio exists
+    if (!io.fresh(ln, ln.ready && !ln.made ? Math.max(0, io.synthMs - (Date.now() - (ln.at || 0))) : 0)) continue;   // stale before what is left of its making is done
+    if (ln.ready) await ln.ready;
+    if (!io.fresh(ln, 0)) continue;   // stale by the time its audio exists
     await io.say(ln);
   }
 }
@@ -1813,18 +1836,25 @@ async function decide(items) {
   return warmLines(localPick(items));
 }
 function collect() { const items = triageItems(S.events, D.done, Date.now(), new Set(S.needs || []), S.agents); items.forEach((it) => D.done.add(it.ev)); return items; }
-async function directorStep() {
-  if (!S.live || S.locked || !S.playing || !S.cur || !prefs.voice || AUD.off()) { D.pending = null; return; }
-  if (!D.pending) { const items = collect(); if (!items.length) return; D.pending = { cur: S.cur, p: decide(items) }; }
-  const { cur, p } = D.pending, lines = await p; D.pending = null; if (S.cur !== cur) return;   // another session meanwhile: its lines are not this one's
-  const next = collect(); if (next.length) D.pending = { cur, p: decide(next) };   // the next batch is decided while these lines are said
-  const fresh = (ln, ahead) => S.cur === cur && S.playing && ln.items.some((it) => Date.now() + ahead - it.ev.ts <= keepOf(it));   // gone stale while waiting: not said
-  await speakQueue(lines, { synthMs: synthMs(), fresh, say: async (ln) => {
-    const id = S.agents[ln.items[0].agent] ? ln.items[0].agent : 'main'; D.said.push({ at: Date.now(), line: ln.line }); if (D.said.length > 30) D.said.shift();
-    startTalk(id, ln.line, ''); await speakLine(ln.line, S.agents[id], true, S.token, FR(), () => fresh(ln, 0)); stopTalk(id);
-  } });
+function decideNext() { if (!D.pending) { const items = collect(); if (items.length) D.pending = { cur: S.cur, p: decide(items) }; } }
+async function directorStep() {   // called every 300 ms and not awaited: deciding goes on while a batch is said, one batch is said at a time
+  if (!S.live || !S.playing || !S.cur || !prefs.voice || AUD.off()) { D.pending = null; return; }
+  if (soundHeld()) { collect(); D.pending = null; return; }   // the browser holds the sound until a click: nothing is queued, so nothing old is said once it plays
+  decideNext(); if (D.speaking || !D.pending) return;
+  const { cur, p } = D.pending, tok = S.token; D.speaking = true;
+  try {
+    const lines = await p; if (D.pending && D.pending.p === p) D.pending = null; if (S.cur !== cur) return;   // another session meanwhile: its lines are not this one's
+    lines.forEach((ln) => { D.said.push({ at: Date.now(), line: ln.line }); if (D.said.length > 30) D.said.shift(); });   // what the next batch is told was said, these included
+    if (S.cur === cur) decideNext();   // the next batch is decided while these lines are said
+    const fresh = (ln, ahead) => S.cur === cur && S.playing && S.token === tok && freshIn(ln, ahead);   // stale, another session, or a switch waiting for the voice: not said
+    await speakQueue(lines, { synthMs: synthMs(), fresh, say: async (ln) => {
+      const id = S.agents[ln.items[0].agent] ? ln.items[0].agent : 'main';
+      startTalk(id, ln.line, ''); const r = await speakLine(ln.line, S.agents[id], true, S.token, FR(), () => fresh(ln, 0)); stopTalk(id);
+      if (r && r.skipped) markUnsaid(ln.items.map((it) => it.ev), r.skipped);   // skipped, not said by another voice
+    } });
+  } finally { D.speaking = false; }
 }
-(async () => { for (;;) { await sleep(300); try { await directorStep(); } catch {} } })();
+(async () => { for (;;) { await sleep(300); directorStep().catch(() => {}); } })();
 const SPEECH_MAX = 560;   // the server reads at most 600 characters of a line (ELEVEN_MAX): what is sent always ends before that, at a sentence or a clause
 function clipSpeech(t, cap) {   // the bubble keeps the full text; the voice reads the first sentence(s) up to cap characters
   cap = cap || 520;   // no cap (a replay) still ends at a sentence under the server's 600-character voice limit, never mid-word
@@ -1835,7 +1865,6 @@ function clipSpeech(t, cap) {   // the bubble keeps the full text; the voice rea
 }
 function pause() { S.playing = false; S.hurry = false; S.boost = 1; S.token++; synth && synth.cancel(); AUD.stopAll(); clearSpeaking(); $('#card').classList.remove('on'); syncUI(); }
 function togglePlay() {
-  if (S.locked) return;
   if (S.playing) { S.userPaused = true; pause(); } else { claimAudio(); S.userPaused = false; run(S.idx >= S.events.length - 1 && !S.live ? (recomputeStatus(0), 0) : S.idx); }
 }
 function seekTo(i) {
@@ -1855,17 +1884,19 @@ function showMoment(i) {
 // =====================================================================
 //  data: live follow + replay
 // =====================================================================
+const voiceBusy = () => S.speakers.size > 0 || AUD.live.size > 0 || !!(synth && synth.speaking);   // a voice is sounding: its audio, not only the speaking flag (a silent beat of the same agent clears that)
 async function loadSession(proj, id, gentle = false) {
-  if (gentle && S.playing) { const n0 = S.loadN; S.token++; for (let t = 0; t < 60 && S.speakers.size; t++) await sleep(150); if (S.loadN !== n0) return false; }   // a reload nobody asked for: no new line starts, the one being said is finished (up to 9 s), then the switch
+  if (gentle && S.playing) { const n0 = S.loadN; S.token++; for (let t = 0; t < 270 && voiceBusy(); t++) await sleep(150); if (S.loadN !== n0) return false; }   // a reload nobody asked for: no new line starts, the one being said is finished (up to 40 s, a long line in a natural voice), then the switch
   pause(); const mine = (S.loadN = (S.loadN || 0) + 1);
   const data = await (await fetch(`/api/session?proj=${encodeURIComponent(proj)}&id=${id}`)).json();
   if (mine !== S.loadN || data.error) return false;
-  if (!S.cur || S.cur.proj !== proj || S.cur.id !== id) { $('#pbody').innerHTML = ''; hidePresent(true); }   // another session: its screen, not the last one's
+  const again = [S.cur, S.last].some((c) => c && c.proj === proj && c.id === id), keepDetail = again && S.detail, joined = S.joinAt;   // the same session rebuilt (a live rewrite): the room stays as it was
+  if (!again) { $('#pbody').innerHTML = ''; hidePresent(true); }   // another session: its screen, not the last one's
   S.term = {}; S.camFor = null; S.focus = null; S.agents = {}; for (const k in nameBook) delete nameBook[k]; S.group = data.group || null; [{ id: 'user' }, ...data.agents].forEach((a) => (S.agents[a.id] = persona(a)));
-  S.events = data.events; S.rev = data.rev; S.group = data.group || null; S.joinAt = Date.now(); S.idx = 0; S.status = {}; S.tc = {}; S.cur = { proj, id }; S.logTo = 0; S.detail = null; $('#detail').classList.remove('on');
+  S.events = data.events; S.rev = data.rev; S.group = data.group || null; S.joinAt = again && joined ? joined : Date.now(); S.idx = 0; S.status = {}; S.tc = {}; S.cur = { proj, id }; S.logTo = 0; S.detail = null; $('#detail').classList.remove('on');
   const opt = $('#sessions').selectedOptions[0]; S.title = [S.group && !S.group.other ? (S.group.hermes ? S.group.name.split(', ')[0] : S.group.name) : niceProj(proj), S.live ? (data.title || '') : (opt && opt.dataset.title) || data.title || ''].filter(Boolean).join(', ');   // a Hermes thread's group name is its title: said once   // project, session: so it is clear where this call belongs
   if (proj === '_demo') S.events.forEach((e) => { if (e.fr) trMem.set(baseText(e), e.fr); });   // the demo ships its own French
-  paintSubtitle(); recomputeStatus(0); buildStage(); renderHighlights(); setFocus('main'); renderLog(true); computeGantt(); layout(); paintStatus(); prefetchTr(0); return true;
+  paintSubtitle(); recomputeStatus(0); buildStage(); renderHighlights(); setFocus('main'); renderLog(true); computeGantt(); layout(); paintStatus(); prefetchTr(0); if (keepDetail && S.agents[keepDetail]) openDetail(keepDetail); return true;
 }
 // the header line: 📌 while the live call is pinned to one session (click to unpin and follow the latest activity again)
 function paintSubtitle() {   // in a call the header names the project in its colour, with a stripe of it, so a jump to another project is obvious
@@ -1895,7 +1926,7 @@ async function followCurrent(gentle = false) {
   if (!(await loadSession(cur.proj, cur.id, gentle))) return false;
   let start = Math.max(0, S.events.length - 16); if (was) { const r = S.events.findIndex((e) => e.ts > was); start = r < 0 ? S.events.length : Math.max(start, r); }
   recomputeStatus(start); S.idx = start; trNew(start); paintStatus();
-  if (!S.locked && !S.userPaused) run(start); return true;
+  if (!S.userPaused) run(start); return true;
 }
 let polling = false;
 setInterval(async () => {
@@ -2041,7 +2072,7 @@ async function setMode(m) {
   if (m === 'demo') {   // a built-in fictional session: nothing to install, nothing private on screen
     pause(); S.live = false; S.demo = true; S.userPaused = false; S.cur = null; $('#empty').classList.remove('on');
     document.querySelectorAll('#modeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.m === 'demo')); $('#sessions').style.display = 'none';
-    if (await loadSession('_demo', 'demo')) { S.title = L('Démo — une équipe corrige un login lent', 'Demo — a team fixes a slow login'); $('#subtitle').textContent = S.title; S.locked = false; $('#gate').classList.remove('on'); syncUI(); }
+    if (await loadSession('_demo', 'demo')) { S.title = L('Démo — une équipe corrige un login lent', 'Demo — a team fixes a slow login'); $('#subtitle').textContent = S.title; syncUI(); }
     return;
   }
   S.demo = false;
@@ -2056,7 +2087,7 @@ async function setMode(m) {
   $('#empty').classList.remove('on'); const pick = rows.find((r) => r.id === Q.get('pin')) || rows.find((r) => r.agents) || rows[0]; if (!pick) { $('#empty').classList.add('on'); return; }
   $('#sessions').value = `${pick.proj}|${pick.id}`; await openSelected();
 }
-async function openSelected() { const [p, i] = $('#sessions').value.split('|'); if (await loadSession(p, i)) { S.locked = false; $('#gate').classList.remove('on'); const at = (prefs.pos || {})[p + '/' + i]; if (!S.live && at > 3 && at < S.events.length - 3) { seekTo(at); toast(L('Reprise là où vous vous étiez arrêté', 'Resumed where you left off')); } } }
+async function openSelected() { const [p, i] = $('#sessions').value.split('|'); if (await loadSession(p, i)) { const at = (prefs.pos || {})[p + '/' + i]; if (!S.live && at > 3 && at < S.events.length - 3) { seekTo(at); toast(L('Reprise là où vous vous étiez arrêté', 'Resumed where you left off')); } } }
 $('#sessions').onchange = openSelected;
 
 // =====================================================================
@@ -2151,7 +2182,6 @@ function applyLang() {
   document.querySelectorAll('[data-fr]').forEach((el) => (el.textContent = FR() ? el.dataset.fr : tr(el.dataset.en)));
   const sel = $('#langSel'); if (!sel.options.length) sel.innerHTML = LANGS.map(([c, n]) => `<option value="${c}">${n}</option>`).join(''); sel.value = prefs.lang;
   [['#bPlay', L('Pause / Lecture (espace)', 'Pause / Play (space)')], ['#bLog', 'Transcript'], ['#bMute', L('Son (touche M)', 'Sound (M key)')], ['#bMenu', L('Réglages', 'Settings')], ['#dclose', L('Fermer', 'Close')], ['#officeVol', L('Volume de l’ambiance', 'Ambience volume')], ['#musicVol', L('Volume de la musique', 'Music volume')], ['#liveProj', L('Projet à suivre', 'Project to follow')], ['#reactBar', L('Réactions', 'Reactions')], ['#logQ', L('Rechercher dans la transcription', 'Search the transcript')], ['#roster', L('Agents', 'Agents')]].forEach(([q, t]) => { const el = $(q); if (!el) return; el.title = t; el.setAttribute('aria-label', t); }); $('#logQ').placeholder = L('Rechercher…', 'Search…'); $('#menuQ').placeholder = L('Chercher un réglage…', 'Search settings…'); document.querySelectorAll('#reactBar button').forEach((b) => b.setAttribute('aria-label', b.dataset.e));
-  $('#gT').textContent = L('Rejoindre l’appel', 'Join the call'); $('#gP').textContent = L('Cliquez pour activer le son et suivre votre session Claude Code en direct.', 'Click to enable sound and follow your Claude Code session live.'); $('#gB').textContent = L('▶ Rejoindre', '▶ Join');
   $('#eDemo').textContent = L('▶ Voir la démo', '▶ Watch the demo'); $('#eT').textContent = L('En attente d’une session', 'Waiting for a session'); $('#eP').textContent = L('Lancez Claude Code dans ce dossier : l’appel démarrera tout seul.', 'Start Claude Code in this folder — the call will start by itself.');
   for (const id in S.agents) { const p = persona(S.agents[id]); Object.assign(S.agents[id], { name: p.name, role: p.role }); const t = $('#t-' + id); if (t) { t.querySelector('.tag span').textContent = p.role; t.querySelector('.tag b').textContent = p.name; if (id === 'main' || id === 'user') t.querySelector('.tag span').textContent = p.role; } }
   document.querySelectorAll('#menu .mi[data-t]').forEach((b) => b.querySelector('.sw').classList.toggle('on', !!prefs[b.dataset.t])); renderTokens(); updateHint(); renderLog(true); syncUI();
@@ -2203,7 +2233,7 @@ $('#vstyle').innerHTML = [['animal', 'Animal Crossing (babillage)', 'Animal Cros
 let kokoroTimer = null;
 async function kokoroUI() {
   const box = $('#kokoroBox'), on = prefs.vstyle === 'kokoro'; box.style.display = on || prefs.vstyle === 'elevenlabs' ? '' : 'none';
-  if (prefs.vstyle === 'elevenlabs') {   // nothing to install: either the server has a key, or the system voices speak instead
+  if (prefs.vstyle === 'elevenlabs') {   // nothing to install: either the server has a key, or nothing is said and the voice button says why
     clearInterval(kokoroTimer); kokoroTimer = null; $('#kokoroInstall').style.display = 'none'; const e = TTS.eleven || {};
     $('#kokoroHint').textContent = e.available ? `${L('Voix ElevenLabs prêtes', 'ElevenLabs voices ready')}: ${e.model || ''}, ${(e.voices || []).length} ${L('voix', 'voices')}` : 'ElevenLabs: ' + (e.error || 'unavailable');
     return;
@@ -2237,12 +2267,15 @@ $('#mClip').onclick = () => { $('#menu').classList.remove('on'); exportVideo(0, 
 $('#mBrowser').onclick = () => { $('#menu').classList.remove('on'); window.parent.postMessage({ agentStandup: 'openBrowser' }, '*'); };
 $('#seek').oninput = (e) => seekTo(+e.target.value);
 $('#eDemo').onclick = () => setMode('demo');
-addEventListener('pointerdown', () => { if (S.locked && S.live && document.body.classList.contains('board') && $('#gate').classList.contains('on')) $('#gB').click(); }, true);
-$('#gB').onclick = () => {
-  claimAudio(); AUD.init(); AUD.apply(); S.locked = false; $('#gate').classList.remove('on'); syncUI();
+// No gate: the call opens straight into the live call. The browser holds the sound back until a gesture on the page, so the first click, key or tap anywhere turns it on
+// and takes the sound for this window. Only while the sound is really held back does a small hint sit by the voice button.
+const GESTURES = ['pointerdown', 'keydown', 'touchstart'];
+function unlockAudio() {
+  GESTURES.forEach((t) => removeEventListener(t, unlockAudio, true));
+  claimAudio(); AUD.init(); AUD.apply(); if (AUD.ctx) AUD.ctx.resume().then(paintVnote, () => {});
   if (synth && !EMBED) { try { synth.speak(new SpeechSynthesisUtterance('')); } catch {} }   // unlock browser speech
-  if (S.live && S.events.length) run(S.idx);
-};
+}
+GESTURES.forEach((t) => addEventListener(t, unlockAudio, true));
 // J / K (or a click on the “need you” chip) jump to the agents that need you or are stalled, one after the other
 function jumpAttn(dir = 1) {
   const a = (S.attn || []).filter((id) => $('#t-' + id));
@@ -2302,7 +2335,7 @@ if (EMBED) $('#mBrowser').style.display = '';
     return;
   }
   S.live = Q.get('live') !== '0'; document.querySelectorAll('#modeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.m === (S.live ? 'live' : 'replay')));
-  if (S.live) { S.locked = true; $('#gate').classList.add('on'); S.cur = null; syncUI(); fillProjects(); await followCurrent(); } else { S.live = true; await setMode('replay'); if (Q.get('at') != null && S.events.length) seekTo(Math.max(0, Math.min(S.events.length - 1, +Q.get('at') || 0))); }
+  if (S.live) { S.cur = null; syncUI(); fillProjects(); await followCurrent(); } else { S.live = true; await setMode('replay'); if (Q.get('at') != null && S.events.length) seekTo(Math.max(0, Math.min(S.events.length - 1, +Q.get('at') || 0))); }
   syncUI();
 })();
 </script>

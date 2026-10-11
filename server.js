@@ -559,7 +559,8 @@ function listVoices() {
 const ttsDir = path.join(os.tmpdir(), 'agent-standup-tts-' + (process.getuid ? process.getuid() : 'user'));
 try { fs.mkdirSync(ttsDir, { recursive: true, mode: 0o700 }); } catch {}
 const ttsJobs = new Map();
-try { for (const f of fs.readdirSync(ttsDir)) { const p = path.join(ttsDir, f); if (Date.now() - fs.statSync(p).mtimeMs > 864e5) fs.unlinkSync(p); } } catch {}   // drop cached audio older than a day
+const isWav = (f) => { try { const fd = fs.openSync(f, 'r'), b = Buffer.alloc(4); fs.readSync(fd, b, 0, 4, 0); fs.closeSync(fd); return b.toString() === 'RIFF'; } catch { return false; } };
+try { for (const f of fs.readdirSync(ttsDir)) { const p = path.join(ttsDir, f); if (Date.now() - fs.statSync(p).mtimeMs > 864e5 || (f.endsWith('.mp3') && isWav(p))) fs.unlinkSync(p); } } catch {}   // drop cached audio older than a day, and a system voice an older version kept under an ElevenLabs name
 function synthesize(voice, wpm, text, out) {
   return new Promise((resolve, reject) => {
     let p;
@@ -583,18 +584,23 @@ function elevenSetup() {   // model and lead voice from the Hermes config (tts: 
   const tts = (/^tts:\n((?:[ \t]+[^\n]*\n?)*)/m.exec(y) || [])[1] || '', el = (/^[ \t]+elevenlabs:\n((?:[ \t]{3,}[^\n]*\n?)*)/m.exec(tts) || [])[1] || '', get = (k) => ((new RegExp('^[ \\t]+' + k + ':[ \\t]*["\']?([\\w.-]+)', 'm').exec(el) || [])[1] || '');
   return { model: get('model_id') || 'eleven_flash_v2_5', lead: get('voice_id') || 'pNInz6obpgDQGcFmaJgB' };
 }
-let elevenVoices = { at: 0, list: [], error: '' }; const elevenStats = { requests: 0, chars: 0, hits: 0, failed: 0, retried: 0, fallbacks: 0 };
+let elevenVoices = { at: 0, list: [], error: '' }; const elevenStats = { requests: 0, chars: 0, hits: 0, failed: 0, retried: 0, lastError: '' };
 // eleven_v4_turbo takes about 1 s per line (flash: 0.25 s). At most ELEVEN_PARALLEL requests are in flight (a plan's concurrency limit answers 429 beyond it), a request gives up after
-// ELEVEN_TIMEOUT, a 429 is retried once, and what still fails is made by a system voice (tts() below), so a line is late, never lost. No audio tags, no expressive settings: the text as it is.
-const ELEVEN_PARALLEL = 2, ELEVEN_TIMEOUT = () => +process.env.AGENT_STANDUP_ELEVEN_TIMEOUT_MS || 12000, ELEVEN_RETRY_MS = () => +process.env.AGENT_STANDUP_ELEVEN_RETRY_MS || 700;
+// ELEVEN_TIMEOUT (5 times a normal line), and a 429 is retried once. What still fails is not made by another voice: the error says why (no key, quota, 401, 429, timeout),
+// the page skips that line and says so. Tom would rather miss a line than hear it in the system voice he did not choose. No audio tags, no expressive settings: the text as it is.
+const ELEVEN_PARALLEL = 2, ELEVEN_TIMEOUT = () => +process.env.AGENT_STANDUP_ELEVEN_TIMEOUT_MS || 5000, ELEVEN_RETRY_MS = () => +process.env.AGENT_STANDUP_ELEVEN_RETRY_MS || 700;
+const ELEVEN_BUDGET = () => +process.env.AGENT_STANDUP_ELEVEN_BUDGET_MS || 8000;   // a whole line, its wait for a slot and a retry included: the page waits a little longer (TTS_WAIT)
 let elevenBusy = 0; const elevenWait = [];
-const elevenSlot = () => new Promise((go) => { if (elevenBusy < ELEVEN_PARALLEL) { elevenBusy++; go(); } else elevenWait.push(go); });
+const elevenSlot = (ms) => new Promise((go, no) => {   // a slot, or a timeout once the line's time is up (its place in the queue is given back)
+  if (elevenBusy < ELEVEN_PARALLEL) { elevenBusy++; return go(); }
+  const take = () => { clearTimeout(t); go(); }, t = setTimeout(() => { const i = elevenWait.indexOf(take); if (i >= 0) elevenWait.splice(i, 1); no(new Error('elevenlabs timeout')); }, Math.max(0, ms)); elevenWait.push(take);
+});
 const elevenFree = () => { const next = elevenWait.shift(); if (next) next(); else elevenBusy--; };
 async function listElevenVoices() {   // the account's voices, cached for an hour; the lead's voice first
   const key = elevenKey(), setup = elevenSetup(); if (!key) return { available: false, voices: [], model: setup.model, error: 'no ELEVENLABS_API_KEY in ' + path.join(HERMES_PROFILE(), '.env') };
   if (Date.now() - elevenVoices.at > 3600e3) {
     try {
-      const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } }); if (!r.ok) throw new Error('voices ' + r.status);
+      const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key }, signal: AbortSignal.timeout(5000) }); if (!r.ok) throw new Error('voices ' + r.status);
       const vs = ((await r.json()).voices || []).filter((v) => v && typeof v.voice_id === 'string' && /^[A-Za-z0-9]{10,40}$/.test(v.voice_id) && (!v.category || v.category === 'premade' || v.category === 'professional' || v.category === 'cloned'));
       vs.sort((a, b) => (a.voice_id === setup.lead ? -1 : b.voice_id === setup.lead ? 1 : 0));
       elevenVoices = { at: Date.now(), list: vs.map((v) => ({ name: v.voice_id, label: String(v.name || v.voice_id).slice(0, 40), locale: 'xx' })), error: '' };
@@ -603,17 +609,23 @@ async function listElevenVoices() {   // the account's voices, cached for an hou
   return { available: elevenVoices.list.length > 0, voices: elevenVoices.list, model: setup.model, lead: setup.lead, error: elevenVoices.error, stats: elevenStats };
 }
 async function elevenSynth(text, voice, out) {
-  const key = elevenKey(), vs = await listElevenVoices(); if (!key || !vs.voices.some((v) => v.name === voice)) throw new Error('unknown voice');
-  await elevenSlot();
+  const until = Date.now() + ELEVEN_BUDGET(), left = () => until - Date.now();
+  const key = elevenKey(); if (!key) throw new Error('elevenlabs no key');
+  const vs = await listElevenVoices(); if (!vs.voices.some((v) => v.name === voice)) throw new Error(vs.error ? 'elevenlabs ' + vs.error : 'unknown voice');
+  try { await elevenSlot(left()); } catch (e) { elevenStats.failed++; elevenStats.lastError = e.message; throw e; }
   try {
     for (let attempt = 0; ; attempt++) {
+      if (left() <= 0) throw new Error('elevenlabs timeout');
       elevenStats.requests++;
-      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_22050_32`, { method: 'POST', headers: { 'xi-api-key': key, 'content-type': 'application/json', accept: 'audio/mpeg' }, body: JSON.stringify({ text, model_id: vs.model }), signal: AbortSignal.timeout(ELEVEN_TIMEOUT()) });
-      if (r.status === 429 && attempt === 0) { elevenStats.retried++; await new Promise((ok) => setTimeout(ok, ELEVEN_RETRY_MS())); continue; }   // over the concurrency limit: once more, then the system voice
-      if (!r.ok) { elevenStats.failed++; throw new Error('elevenlabs ' + r.status); }
-      elevenStats.chars += text.length; fs.writeFileSync(out, Buffer.from(await r.arrayBuffer())); return;
+      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_22050_32`, { method: 'POST', headers: { 'xi-api-key': key, 'content-type': 'application/json', accept: 'audio/mpeg' }, body: JSON.stringify({ text, model_id: vs.model }), signal: AbortSignal.timeout(Math.min(ELEVEN_TIMEOUT(), left())) });
+      if (r.status === 429 && attempt === 0 && left() > ELEVEN_RETRY_MS() + 100) { elevenStats.retried++; await new Promise((ok) => setTimeout(ok, ELEVEN_RETRY_MS())); continue; }   // over the concurrency limit: once more if there is time, then the line is skipped
+      if (!r.ok) { let why = ''; try { const d = (await r.json()).detail; why = String((d && (d.status || (typeof d === 'string' && d))) || '').slice(0, 40); } catch {} throw new Error(`elevenlabs ${r.status}${why ? ' ' + why : ''}`); }   // "elevenlabs 401 quota_exceeded"
+      elevenStats.chars += text.length; fs.writeFileSync(out, Buffer.from(await r.arrayBuffer())); elevenStats.lastError = ''; return;
     }
-  } catch (e) { if (e && e.name !== 'Error') elevenStats.failed++; throw e; } finally { elevenFree(); }   // a timeout or a refused connection counts as a failure too
+  } catch (e) {
+    const err = e && (e.name === 'TimeoutError' || e.name === 'AbortError') ? new Error('elevenlabs timeout') : /^elevenlabs /.test(e && e.message) ? e : new Error('elevenlabs ' + String((e && e.message) || e).slice(0, 60));   // a refused connection too
+    elevenStats.failed++; elevenStats.lastError = err.message; throw err;
+  } finally { elevenFree(); }
 }
 function tts(text, voice, rate, engine) {
   const kk = engine === 'kokoro', el = engine === 'elevenlabs';
@@ -626,9 +638,9 @@ function tts(text, voice, rate, engine) {
   if (ttsJobs.has(key)) return ttsJobs.get(key);
   fs.mkdirSync(ttsDir, { recursive: true });
   const tmp = file + '.part' + ext;
-  const fallback = (e) => { const vs = listVoices(), v = vs.voices.find((x) => x.locale.startsWith((voice.startsWith('ff_') ? 'fr' : 'en') + '_')); if (!v) throw e; return synthesize(v.name, rate, text, tmp); };   // a line the engine cannot make goes to a system voice instead of being dropped
-  const job = (kk ? kokoro.synth(text, voice, kokoro.speedFor(rate), tmp).catch(fallback) : el ? elevenSynth(text, voice, tmp).catch((e) => { elevenStats.fallbacks++; return fallback(e); }) : synthesize(voice, rate, text, tmp))
-    .then(() => { fs.renameSync(tmp, file); return file; }).finally(() => ttsJobs.delete(key));
+  const fallback = (e) => { const vs = listVoices(), v = vs.voices.find((x) => x.locale.startsWith((voice.startsWith('ff_') ? 'fr' : 'en') + '_')); if (!v) throw e; return synthesize(v.name, rate, text, tmp); };   // Kokoro, installed on this machine: a line it cannot make goes to a system voice
+  const made = () => { fs.renameSync(tmp, file); return file; };
+  const job = (el ? elevenSynth(text, voice, tmp) : kk ? kokoro.synth(text, voice, kokoro.speedFor(rate), tmp).catch(fallback) : synthesize(voice, rate, text, tmp)).then(made).finally(() => ttsJobs.delete(key));   // ElevenLabs has no stand-in: a line it cannot make fails, and is asked again next time
   ttsJobs.set(key, job); return job;
 }
 
@@ -695,7 +707,7 @@ function start(port = PORT) {
     if (url.pathname === '/api/tts') {
       return tts(url.searchParams.get('text') || '', url.searchParams.get('voice'), url.searchParams.get('rate'), url.searchParams.get('engine'))
         .then((f) => { res.writeHead(200, { 'content-type': f.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav', 'cache-control': 'max-age=86400' }); fs.createReadStream(f).pipe(res); })
-        .catch((e) => json({ error: String(e.message) }, 400));
+        .catch((e) => { if (!/^elevenlabs /.test(e.message)) return json({ error: String(e.message) }, 400); res.writeHead(204, { 'x-tts-error': e.message.replace(/[^\x20-\x7e]/g, ''), 'cache-control': 'no-store' }); res.end(); });   // no audio, and why: the page skips the line and says so (a 204, so the console stays clean)
     }
     if (url.pathname === '/api/prefs.js') { res.writeHead(200, { 'content-type': 'application/javascript', 'cache-control': 'no-store' }); return res.end('window.SAVED_PREFS = ' + JSON.stringify(readPrefs()).replace(/</g, '\\u003c') + ';window.SERVER_VOICES = ' + JSON.stringify({ elevenlabs: !!elevenKey() }) + ';'); }   // whether a key exists, never the key: the page picks its default voice from it
     if (url.pathname === '/api/prefs' && req.method === 'PUT') return readBody((body) => { try { const v = JSON.parse(body); if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('prefs must be an object'); writePrefs(v); json({ ok: true }); } catch (e) { json({ error: String(e.message || e) }, 400); } });

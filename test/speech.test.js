@@ -133,4 +133,5 @@ test('plain keeps "(#2)" and drops markdown headers; cmdLabel says what a comman
   assert.equal(cmdLabel('const names=ALL_TOOLS.map((t) => t.name);'), '');   // a Codex exec script's JS wrapper is nothing to read out
   assert.equal(cmdLabel('text("TR-89-01 source", await tools.exec_command({ cmd: "ls" }))'), '');
   assert.equal(cmdLabel('git status --short'), 'git status --short');
+  assert.equal(cmdLabel('agent-peers send "uds:/run/user/1000/cc-socks/hermes-23420a452cbc448e92f373954024120c.sock" --file brief.md'), 'agent-peers send --file brief.md');   // an inbox address is no label
 });
