@@ -16,8 +16,8 @@ test('a folder maps to its git repository; a worktree to the main repository; ou
   assert.deepEqual(project.groupOf(plain), { key: '_other', name: 'notes', other: true });
   assert.equal(project.groupOf(''), null); assert.equal(project.groupOf(undefined), null);
   const scratch = '/home/u/.hermes/profiles/gaming/cache/scratch/claude-directsdk-cwd-1000';   // Hermes runs its Claude SDK sessions here: they belong to Hermes, not to a mystery project
-  assert.deepEqual(project.groupOf(scratch), { key: 'hermes:gaming', name: 'Hermes · gaming', hermes: true });
-  assert.deepEqual(project.groupOf('/home/u/.hermes/cache/scratch/claude-directsdk-cwd-1000/x'), { key: 'hermes:default', name: 'Hermes · default', hermes: true });
-  assert.deepEqual(project.hermesGroup('gaming', '155598', 'Plan gladiator roguelike autobattler'), { key: 'hermes:gaming:155598', name: 'Hermes · gaming · Plan gladiator roguelike autobattler', hermes: true });
-  assert.deepEqual(project.hermesGroup('gaming'), { key: 'hermes:gaming', name: 'Hermes · gaming', hermes: true });
+  assert.deepEqual(project.groupOf(scratch), { key: 'hermes:gaming', name: 'Hermes gaming', hermes: true });
+  assert.deepEqual(project.groupOf('/home/u/.hermes/cache/scratch/claude-directsdk-cwd-1000/x'), { key: 'hermes:default', name: 'Hermes default', hermes: true });
+  assert.deepEqual(project.hermesGroup('gaming', '155598', 'Plan gladiator roguelike autobattler'), { key: 'hermes:gaming:155598', name: 'Hermes gaming, Plan gladiator roguelike autobattler', hermes: true });
+  assert.deepEqual(project.hermesGroup('gaming'), { key: 'hermes:gaming', name: 'Hermes gaming', hermes: true });
 });

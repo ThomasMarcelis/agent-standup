@@ -21,7 +21,7 @@ Your Claude Code sessions as a live team call, without any editor. Free, MIT, an
 
 \`\`\`bash
 npx ${NAME}            # then open http://localhost:4747   (add --open to open it for you)
-npx ${NAME} status     # ⚙ 3 working · ✋ 1 needs you
+npx ${NAME} status     # ⚙ 3 working, ✋ 1 needs you
 \`\`\`
 
 Install once for status bars (faster than npx): \`npm i -g ${NAME}\`
@@ -30,7 +30,7 @@ Install once for status bars (faster than npx): \`npm i -g ${NAME}\`
 - **tmux**: \`set -g status-right '#(agent-standup status --here)'\`
 - **Anything else**: \`agent-standup status --json\`
 
-Full documentation, the VS Code extension, the desktop app and the demo: ${pkg.homepage} · ${String(pkg.repository.url).replace(/\\.git$/, '')}
+Full documentation, the VS Code extension, the desktop app and the demo: ${pkg.homepage} and ${String(pkg.repository.url).replace(/\\.git$/, '')}
 
 Unofficial: not affiliated with Anthropic.
 `);

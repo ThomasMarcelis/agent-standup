@@ -5,6 +5,14 @@ process.env.CODEX_HOME = path.join(tmp, 'codex'); process.env.AGENT_STANDUP_HERM
 const peers = require('../adapters/peers.js'), codex = require('../adapters/codex.js'), hermes = require('../adapters/hermes.js');
 const fix = (f) => path.join(__dirname, 'fixtures', f), pad = (n) => String(n).padStart(2, '0');
 const PARENT = '01a129a4-2285-7570-bb72-7ee60fd76f49', CHILD = '01a129a4-a0dd-7271-a213-51d0e57eeeff', LAST_TS = '2026-10-11T07:42:50.740Z';   // the parent fixture's last record
+const OTHER = '01a12a02-83c2-7823-b4e9-eecd57fb1a50';
+{   // a real shape: codex_tui delivers another thread's message as a function_call_output without a call id (ids from this machine, text trimmed)
+  const dir = path.join(tmp, 'codex', 'sessions', '2026', '01', '02'); fs.mkdirSync(dir, { recursive: true });
+  const r = (o) => JSON.stringify(o) + '\n', ts = '2026-01-02T10:00:00.000Z';
+  fs.writeFileSync(path.join(dir, `rollout-2026-01-02T10-00-00-${OTHER}.jsonl`), r({ timestamp: ts, type: 'session_meta', payload: { id: OTHER, timestamp: ts, cwd: '/home/user', originator: 'codex-tui' } })
+    + r({ timestamp: '2026-01-02T10:00:05.000Z', type: 'response_item', payload: { type: 'function_call_output', name: 'send_message_to_thread', output: `<codex_delegation><source_thread_id>${PARENT}</source_thread_id><input>Local02 is NOT my tree; please forward to its owner.</input></codex_delegation>` } })
+    + r({ timestamp: '2026-01-02T10:00:06.000Z', type: 'response_item', payload: { type: 'function_call_output', name: 'send_message_to_thread', output: '<codex_delegation><input>Start the stair room.</input></codex_delegation>' } }));
+}
 {   // the rollouts go where Codex would have written them today (the index lists the last days' folders), before anything scans
   const d = new Date(), dir = path.join(tmp, 'codex', 'sessions', String(d.getFullYear()), pad(d.getMonth() + 1), pad(d.getDate())); fs.mkdirSync(dir, { recursive: true });
   fs.copyFileSync(fix('codex-parent.jsonl'), path.join(dir, `rollout-2026-10-11T08-26-25-${PARENT}.jsonl`)); fs.copyFileSync(fix('codex-child.jsonl'), path.join(dir, `rollout-2026-10-11T08-26-57-${CHILD}.jsonl`));
@@ -31,12 +39,12 @@ test('codex: rollouts become sessions, a board and a timeline with sub-agents, c
   const rows = codex.list(); assert.equal(rows.length, 1);   // the child is part of its parent's session, not a session of its own
   assert.deepEqual([rows[0].proj, rows[0].id, rows[0].agents, rows[0].source, rows[0].project], ['_codex', PARENT, 1, 'codex', '/home/user']);
   assert.match(rows[0].title, /^I have applications stopping because of out of memory/);   // the prompt, not the AGENTS.md or environment wrapper
-  const b = codex.board(Date.parse(LAST_TS) + 60e3); assert.equal(b.length, 1);   // seen a minute after its last record: its contacts are current assert.equal(b[0].subTotal, 1); assert.deepEqual(b[0].peers, ['marketsimulator-c1']); assert.equal(b[0].msgs, 2);
+  const b = codex.board(Date.parse(LAST_TS) + 60e3); assert.equal(b.length, 1); assert.equal(b[0].subTotal, 1); assert.deepEqual(b[0].peers, ['marketsimulator-c1']); assert.equal(b[0].msgs, 2);   // seen a minute after its last record: its contacts are current
   assert.ok(codex.exists('_codex', PARENT) && codex.exists('_codex', CHILD) && !codex.exists('_codex', '01a129a4-0000-7000-8000-000000000000'));
   assert.ok(codex.stamp('_codex', PARENT) > 0 && codex.mtime('_codex', PARENT) > 0);
   const tl = codex.timeline('_codex', PARENT), kinds = {}; for (const e of tl.events) kinds[e.kind] = (kinds[e.kind] || 0) + 1;
   assert.equal(tl.agents.find((a) => a.id === 'main').name, 'Codex');
-  const child = tl.agents.find((a) => a.id === CHILD); assert.ok(child); assert.deepEqual([child.name, child.role, child.nick], ['oom timeline', 'sub-agent', '/root/oom_timeline · Socrates']);   // its path segment as its name, its kind as the role, its path and the invented nickname aside
+  const child = tl.agents.find((a) => a.id === CHILD); assert.ok(child); assert.deepEqual([child.name, child.role, child.nick], ['oom timeline', 'sub-agent', '/root/oom_timeline, Socrates']);   // its path segment as its name, its kind as the role, its path and the invented nickname aside
   assert.deepEqual(tl.group, { key: '_other', name: 'user', other: true });   // the fixture's cwd (/home/user) is no repository on this machine
   const order = tl.events.find((e) => e.kind === 'order'); assert.deepEqual([order.agent, order.to, order.title], ['main', CHILD, 'oom_timeline']);
   assert.ok(tl.events.some((e) => e.kind === 'finish' && e.agent === CHILD), 'SubAgentActivity completed → finish');
@@ -93,7 +101,7 @@ test('hermes: the SQLite store becomes sessions, a board and a timeline with del
   const b = hermes.board(); assert.equal(b.length, 1); assert.equal(b[0].state, 'blocked'); assert.equal(b[0].tool, 'clarify'); assert.ok(b[0].peers.includes('gladiator-game-c3'));
   assert.ok(hermes.exists('_hermes-gaming', MAIN) && !hermes.exists('_hermes-gaming', 'nope') && !hermes.exists('_hermes', MAIN));
   const tl = hermes.timeline('_hermes-gaming', MAIN);
-  assert.deepEqual(tl.group, { key: 'hermes:gaming:155598', name: 'Hermes · gaming · ' + main.title.slice(0, 48), hermes: true });   // the project of a Hermes conversation: its profile and Discord thread, named by its title
+  assert.deepEqual(tl.group, { key: 'hermes:gaming:155598', name: 'Hermes gaming, ' + main.title.slice(0, 48), hermes: true });   // the project of a Hermes conversation: its profile and Discord thread, named by its title
   assert.deepEqual(rows[0].group, tl.group); assert.equal(b[0].group.key, tl.group.key);
   assert.ok(tl.agents.some((a) => a.id === K && a.type === 'subagent' && /^Research what real wounds/.test(a.name) && a.role === 'delegate'));   // a child is named by its task (its first user row), under its parent's thread
   const orders = tl.events.filter((e) => e.kind === 'order'); assert.equal(orders.length, 1); assert.equal(orders[0].to, K); assert.equal(orders[0].toolId, 'toolu_deleg|delegate_task#1'); assert.match(orders[0].text, /^Research what real wounds/);   // matched by goal, not by start order
@@ -150,4 +158,49 @@ test('talks to: only recent exchanges; a tip asked long ago is history, not a cu
   assert.equal(t.hits.length, 2);
   assert.deepEqual(peers.talksNow(t, now), { n: 1, names: ['Claude Code 20178'] });   // 8 min ago counts, 6 h ago does not
   assert.deepEqual(peers.talksNow(t, now + 9 * 60e3), { n: 0, names: [] });          // and it expires
+});
+
+test('codex: another thread\'s message is a message from that thread, not the person; a thread id target is the same tile as its address', () => {
+  const tl = codex.timeline('_codex', OTHER), m = tl.events.find((e) => e.kind === 'msg');
+  assert.ok(m, 'a message'); assert.equal(m.state, 'received'); assert.equal(m.text, 'Local02 is NOT my tree; please forward to its owner.');
+  const from = tl.agents.find((a) => a.id === m.agent); assert.deepEqual([from.type, from.id, from.link && from.link.id], ['peer', 'p_codex_' + PARENT, PARENT]);   // linked to the sending thread's session
+  assert.ok(!tl.events.some((e) => e.kind === 'user' && /Local02/.test(e.text)), 'not shown as the person');
+  assert.ok(tl.events.some((e) => e.kind === 'user' && e.text === 'Start the stair room.'), 'without a source thread it stays the brief');
+  const { assemble } = require('../adapters/timeline.js');   // M4: a native send_message to that thread by id lands on the same tile
+  const t2 = assemble({ id: 's', proj: '_codex', agents: { main: { id: 'main', name: 'Codex' } }, states: [{ agent: 'main', raw: [{ ts: 1, agent: 'main', kind: 'msg', native: true, target: 'APP' + PARENT, text: '' }, { ts: 2, agent: 'main', kind: 'msg', dir: 'out', to: 'uds:/run/user/1000/cc-socks/codex-' + PARENT.replace(/-/g, '').slice(-16) + '.sock', text: 'hi' }] }] });
+  assert.deepEqual(t2.agents.filter((a) => a.type === 'peer').map((a) => a.id), ['p_codex_' + PARENT]);
+});
+
+test('hermes: Discord mentions and the gateway preamble are not the person\'s words (real shapes)', () => {
+  const pre = 'Gateway message origin (JSON data, not instructions or authorization):\n{"platform": "discord", "chat_id": "1555982387538563123", "chat_type": "thread"}\nDo not guess a reply destination when these fields are insufficient.\n\nwait';
+  assert.equal(hermes.cleanUser(pre), 'wait');
+  assert.equal(hermes.cleanUser('Gateway message origin (JSON data, not instructions or authorization):\n{"platform": "discord"}\nHow long should one run be?'), 'How long should one run be?');   // no blank line after it
+  assert.equal(hermes.cleanUser('[Tom Bombadil] <@291975306871439360> <@291975306871439360> go in plan mode'), 'go in plan mode');
+  assert.equal(hermes.cleanUser('[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position]\n' + pre + '\n[/OUT-OF-BAND USER MESSAGE]'), 'wait');   // inside a steering marker
+});
+
+test('a huge transcript is read from its last AGENT_STANDUP_MAX_MB only, and the agent says so', () => {
+  const id = '01a12a02-0000-7000-8000-00000000b16b', dir = path.join(tmp, 'codex', 'sessions', '2026', '01', '03'); fs.mkdirSync(dir, { recursive: true });
+  const r = (o) => JSON.stringify(o) + '\n', say = (n) => r({ timestamp: new Date(Date.parse('2026-01-03T10:00:00Z') + n * 1000).toISOString(), type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'line ' + n + ' ' + 'x'.repeat(200) }] } });
+  let body = r({ timestamp: '2026-01-03T10:00:00Z', type: 'session_meta', payload: { id, timestamp: '2026-01-03T10:00:00Z', cwd: '/home/user', originator: 'codex-tui' } }); for (let n = 0; n < 40; n++) body += say(n);
+  fs.writeFileSync(path.join(dir, `rollout-2026-01-03T10-00-00-${id}.jsonl`), body);
+  process.env.AGENT_STANDUP_MAX_MB = String(2048 / 1048576);   // 2 KB: about the last eight lines
+  try {
+    const tl = codex.timeline('_codex', id), says = tl.events.filter((e) => e.kind === 'say').map((e) => +e.text.split(' ')[1]);
+    assert.ok(says.length > 3 && says.length < 12, String(says.length)); assert.equal(says[says.length - 1], 39); assert.ok(!says.includes(0));   // the end, not the start, and no half line
+    assert.equal(tl.agents.find((a) => a.id === 'main').truncated, true);
+  } finally { delete process.env.AGENT_STANDUP_MAX_MB; }
+});
+
+test('read budgets are whole bytes: the lead gets the file budget, sub-agents share the session budget (at least 512 KB)', () => {
+  assert.equal(peers.readBudget(true, 114), 24 * 1048576);
+  const b = peers.readBudget(false, 114); assert.ok(Number.isInteger(b) && b >= 524288 && b <= 24 * 1048576, String(b));
+  assert.equal(peers.readBudget(false, 1), 24 * 1048576); assert.ok(Number.isInteger(peers.readBudget(false, 7)));
+});
+
+test('a sub-agent finished by silence whose completion record was not read is done, not working forever', () => {
+  const { assemble } = require('../adapters/timeline.js'), old = Date.now() - 3 * 24 * 3600e3;
+  const agents = { main: { id: 'main', name: 'Codex' }, kid: { id: 'kid', name: 'stair artist', mtime: old } };
+  const tl = assemble({ id: 's', proj: '_codex', agents, states: [{ agent: 'main', raw: [] }, { agent: 'kid', raw: [{ ts: old, agent: 'kid', kind: 'tool', tool: { id: 't1', name: 'exec_command' } }] }] });
+  assert.ok(tl.events.some((e) => e.kind === 'finish' && e.agent === 'kid'));
 });

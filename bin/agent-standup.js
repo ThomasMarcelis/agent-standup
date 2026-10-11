@@ -46,7 +46,7 @@ function snapshot(dir) {
   const act = rows.filter((r) => r.state !== 'idle' || now - r.mtime < 15 * 60e3), n = (st) => act.filter((r) => r.state === st).length;
   return { rows: act, needsYou: n('blocked'), working: n('working') + n('waiting'), yourTurn: n('turn'), idle: rows.length - act.length };
 }
-const line = (s, short) => { const p = []; if (s.needsYou) p.push(short ? `✋${s.needsYou}` : `✋ ${s.needsYou} needs you`); if (s.working) p.push(short ? `⚙${s.working}` : `⚙ ${s.working} working`); if (!s.needsYou && !s.working && s.yourTurn) p.push(short ? '✓' : '✓ your turn'); return p.join(short ? ' ' : ' · ') || (short ? '' : 'idle'); };
+const line = (s, short) => { const p = []; if (s.needsYou) p.push(short ? `✋${s.needsYou}` : `✋ ${s.needsYou} needs you`); if (s.working) p.push(short ? `⚙${s.working}` : `⚙ ${s.working} working`); if (!s.needsYou && !s.working && s.yourTurn) p.push(short ? '✓' : '✓ your turn'); return p.join(short ? ' ' : ', ') || (short ? '' : 'idle'); };
 
 if (cmd === 'status') {
   const s = snapshot(flags.here ? process.cwd() : '');

@@ -17,7 +17,9 @@ function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}
     if (agents[t]) return t;
     const mine = pathOf[st.agent] || '/root', up = mine.replace(/\/[^/]+$/, '') || '/root';
     for (const p of [t, mine + '/' + t, up + '/' + t, '/root/' + t]) if (childByPath[p]) return childByPath[p];
-    const stray = 'x_' + t.replace(/[^\w-]/g, '_'), short = t.replace(/^.*\//, '');   // an agent this session's files do not show (not listed, or beyond the cap): still an edge, to a placeholder
+    const short = t.replace(/^.*\//, ''), thread = /^(?:APP)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(short);
+    if (thread) { if (agents[thread[1]]) return thread[1]; const pa = peers.peerAgent('uds:codex-' + thread[1].replace(/-/g, '').slice(-16) + '.sock', '', book); if (!agents[pa.id]) agents[pa.id] = pa; return pa.id; }   // another Codex thread by id: the same tile as its agent-peers address
+    const stray = 'x_' + t.replace(/[^\w-]/g, '_');   // an agent this session's files do not show (not listed, or beyond the cap): still an edge, to a placeholder
     if (!agents[stray]) agents[stray] = { id: stray, name: /^[0-9a-f-]{32,}$/i.test(short) || /^APP[0-9a-f-]{20,}$/.test(short) ? 'agent ' + short.slice(-4) : short, role: 'not in view', type: 'peer' };
     return stray;
   };
@@ -38,6 +40,7 @@ function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}
       else if (i === lastSay) events.push({ ...e, kind: 'report', to: null });
       else events.push(e);
     });
+    if (st.agent !== 'main' && finished.has(st.agent) && lastSay < 0 && !doneSeen.has(st.agent) && agents[st.agent]) { doneSeen.add(st.agent); events.push({ ts: st.raw.length ? st.raw[st.raw.length - 1].ts : agents[st.agent].mtime || 0, agent: st.agent, kind: 'finish', to: 'main' }); }   // finished by silence without a completion record read: done
   }
   for (const e of events) if (e.kind === 'report' && e.to === null) e.to = parent[e.agent] || 'main';
   events.sort((a, b) => a.ts - b.ts);

@@ -111,7 +111,7 @@ function titleOf(m) {
   } catch {}
   titleCache.set(m.file, { size: (statOf(m) || {}).size, title }); return title || fallbackTitle(m);
 }
-const fallbackTitle = (m) => (m.agentPath ? human(m.agentPath.split('/').pop()) : threadName(m.id) || 'Codex session, no prompt yet · ' + (m.start ? new Date(m.start).toTimeString().slice(0, 5) : m.id.slice(-4)));
+const fallbackTitle = (m) => (m.agentPath ? human(m.agentPath.split('/').pop()) : threadName(m.id) || 'Codex session from ' + (m.start ? new Date(m.start).toTimeString().slice(0, 5) : m.id.slice(-4)) + ', no prompt yet');
 // Functional names: the thread name the person gave (session_index.jsonl), and for a sub-agent the last segment of its agent path, as words.
 const human = (seg) => String(seg || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
 let names = { at: 0, sig: '', map: new Map() };
@@ -125,10 +125,10 @@ function list(limit = 60) { return sessionRows().slice(0, limit).map(({ meta, al
 
 // ---- the transcript: each rollout is parsed once, then only the bytes appended since (same incremental reader as the Claude Code path)
 const fileStates = new Map();
-function readNew(file, agent, meta) {
+function readNew(file, agent, meta, budget = peers.maxFileBytes()) {
   let size; try { size = fs.statSync(file).size; } catch { fileStates.delete(file); return null; }
   let st = fileStates.get(file);
-  if (!st || size < st.offset) { st = { agent, offset: 0, tail: Buffer.alloc(0), raw: [], pending: new Map(), childByCall: {}, seen: new Set(), model: '', exec: null, histStart: meta.histStart || 0 }; fileStates.set(file, st); }
+  if (!st || size < st.offset) { st = { agent, offset: 0, tail: Buffer.alloc(0), raw: [], pending: new Map(), childByCall: {}, seen: new Set(), model: '', exec: null, histStart: meta.histStart || 0 }; if (size > budget) { st.offset = size - budget; st.cutStart = true; st.truncated = true; } fileStates.set(file, st); }   // a huge file: only its end
   while (size > st.offset) {
     const fd = fs.openSync(file, 'r'); let buf;
     try { buf = Buffer.alloc(Math.min(16 * 1024 * 1024, size - st.offset)); fs.readSync(fd, buf, 0, buf.length, st.offset); } finally { fs.closeSync(fd); }
@@ -136,7 +136,8 @@ function readNew(file, agent, meta) {
     const all = st.tail.length ? Buffer.concat([st.tail, buf]) : buf, cut = all.lastIndexOf(10);
     if (cut < 0) { st.tail = all; continue; }
     st.tail = all.subarray(cut + 1);
-    for (const line of all.subarray(0, cut).toString('utf8').split('\n')) {
+    const lines = all.subarray(0, cut).toString('utf8').split('\n'); if (st.cutStart) { lines.shift(); st.cutStart = false; }   // the first line of a cut read is a piece of one
+    for (const line of lines) {
       if (!line) continue; let r; try { r = JSON.parse(line); } catch { continue; }
       if (!r || typeof r !== 'object') continue;
       try { parseRecord(st, r); } catch {}
@@ -199,7 +200,12 @@ function parseRecord(st, r) {
       break;
     }
     case 'function_call_output': {
-      const task = delegated(p); if (task) { if (agent === 'main') st.raw.push({ ts, agent: 'user', kind: 'user', text: clip(task, 4000) }); break; }
+      const task = delegated(p); if (task) {   // another Codex thread's message (codex_tui send_message_to_thread): from that thread, not from the person
+        const src = (/<source_thread_id>([0-9a-f-]{32,})<\/source_thread_id>/.exec(p.output) || [])[1];
+        if (src) st.raw.push({ ts, agent, kind: 'msg', dir: 'in', from: 'uds:codex-' + src.replace(/-/g, '').slice(-16) + '.sock', name: '', text: clip(task, 4000) });
+        else if (agent === 'main') st.raw.push({ ts, agent: 'user', kind: 'user', text: clip(task, 4000) });
+        break;
+      }
       const pd = st.pending.get(p.call_id); if (!pd) break; st.pending.delete(p.call_id);
       const out = typeof p.output === 'string' ? p.output : segs(p.output);
       if (pd.msg) { st.raw.push({ ...pd.msg, ts, sent: pd.msg.ts, state: out.trim() && !/^\s*\{/.test(out) ? 'failed' : 'accepted', detail: clip(out, 200) }); break; }
@@ -229,7 +235,7 @@ function item(st, it, ts) {   // the structured record of each thing a script di
       const text = mcpText(it.result), err = it.status === 'failed' || !!(it.result && it.result.isError), a = it.arguments || {};
       if (it.server === 'agent-peers' && it.tool === 'send_peer') { const sc = (it.result && it.result.structuredContent) || {}; st.raw.push({ ts, agent, kind: 'msg', dir: 'out', to: sc.to || a.to || '', name: sc.name || '', text: clip(a.message, 2000), msgId: sc.message_id || '', state: sc.receipt === 'held' ? 'held' : peers.sendState(text, err), detail: clip(text, 200) }); break; }
       const name = 'mcp__' + (it.server || '') + '__' + (it.tool || '');
-      st.raw.push({ ts, agent, kind: 'tool', tool: { id: it.id, ts, name, arg: clip(firstStr(a), 90), d: { kind: 'text', what: 'mcp', v: (it.server || '') + ' · ' + (it.tool || ''), text: clip(JSON.stringify(a), 400) } } }, { ts, agent, kind: 'results', items: [{ id: it.id, err, out: clip(text, 900) }] });
+      st.raw.push({ ts, agent, kind: 'tool', tool: { id: it.id, ts, name, arg: clip(firstStr(a), 90), d: { kind: 'text', what: 'mcp', v: (it.server || '') + ' ' + (it.tool || ''), text: clip(JSON.stringify(a), 400) } } }, { ts, agent, kind: 'results', items: [{ id: it.id, err, out: clip(text, 900) }] });
       break;
     }
     case 'ImageView': st.raw.push({ ts, agent, kind: 'tool', tool: { id: it.id, ts, name: 'view_image', arg: clip(fileOfUrl(it.path), 90), d: { kind: 'read', file: fileOfUrl(it.path) } } }); break;
@@ -247,10 +253,10 @@ function timeline(proj, id) {
     const aid = m === root ? 'main' : m.id;
     if (aid !== 'main') {   // the functional name: the last segment of its path as words; its kind (worker, explorer) as the role; its full path and the nickname Codex invented only in the detail header
       const segs = (m.agentPath || '').split('/').filter(Boolean), leaf = segs.pop() || '';
-      agents[aid] = { id: aid, name: peers.label(human(leaf).replace(/ (?:ultra|max|xhigh)$/i, '') || m.nickname || 'sub-agent', 40), role: m.role && !/^(default|agent)$/.test(m.role) ? m.role : 'sub-agent', nick: [m.agentPath, m.nickname].filter(Boolean).join(' · '), type: m.role || 'agent', mtime: (statOf(m) || {}).mtime };
+      agents[aid] = { id: aid, name: peers.label(human(leaf).replace(/ (?:ultra|max|xhigh)$/i, '') || m.nickname || 'sub-agent', 40), role: m.role && !/^(default|agent)$/.test(m.role) ? m.role : 'sub-agent', nick: [m.agentPath, m.nickname].filter(Boolean).join(', '), type: m.role || 'agent', mtime: (statOf(m) || {}).mtime };
       if (m.agentPath) { childByPath[m.agentPath] = aid; pathOf[aid] = m.agentPath; }
     }
-    const st = readNew(m.file, aid, m); if (!st) continue; states.push(st); Object.assign(childByTool, st.childByCall);
+    const st = readNew(m.file, aid, m, peers.readBudget(m === root, all.length - 1)); if (!st) continue; states.push(st); Object.assign(childByTool, st.childByCall); if (st.truncated && agents[aid]) agents[aid].truncated = true;
   }
   // this session's own agent-peers addresses and names: codex-<last 16 hex>, codex:<slug>-<last 4 hex>, codex:<nickname>
   const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, ''), byKey = {}, byName = {}, byTail = {};

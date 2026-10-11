@@ -6,6 +6,11 @@ const path = require('path');
 const os = require('os');
 
 const clip = (x, n) => String(x == null ? '' : x).slice(0, n);
+// A transcript is read from at most its last AGENT_STANDUP_MAX_MB (24 MB): a 570 MB rollout is mostly tool output nobody scrolls back to, and reading all of it
+// would block every client for seconds. The agent is flagged so the page can say its older history was not loaded.
+const maxFileBytes = () => Math.floor(Math.max(1024, (+process.env.AGENT_STANDUP_MAX_MB || 24) * 1048576));
+// A tree of 115 sub-agents can hold 570 MB in files of a few MB each: the sub-agents share AGENT_STANDUP_SESSION_MB (64 MB), at least 512 KB each; the lead gets the file budget.
+const readBudget = (lead, others) => Math.floor(lead ? maxFileBytes() : Math.min(maxFileBytes(), Math.max(Math.min(524288, maxFileBytes()), (+process.env.AGENT_STANDUP_SESSION_MB || 64) * 1048576 / Math.max(1, others))));
 // A name or title cut at a word with an ellipsis, never mid-word ("Research what real wounds…", not "Research what real wounds, blunt t").
 const label = (x, n) => { const s = String(x == null ? '' : x).replace(/\s+/g, ' ').trim(); if (s.length <= n) return s; const cut = s.lastIndexOf(' ', n - 1); return s.slice(0, cut > n * 0.5 ? cut : n - 1).replace(/[\s,;:/–—-]+$/, '') + '…'; };
 const ADDR = /uds:(?:[^\s"'<>]*\/)?([\w.-]+)\.sock/;
@@ -69,8 +74,8 @@ function peerAgent(addrOrName, nameHint, book) {
   }
   const p = parseAddress(addrOrName), r = p ? resolve(p.addr) : null, key = p ? p.key : String(addrOrName || 'peer');
   let name = String(nameHint || (r && r.name) || (p ? (p.kind === 'claude' ? 'claude pid ' + key : key) : key)).replace(/^claude:/, ''); if (!NAME.test(name)) name = p ? (ROLE[p.kind] || 'peer') + ' ' + key.slice(-6) : 'unknown peer';   // a name is a name, not an ellipsis or a sentence
-  const hermesName = /^hermes:([\w.-]+)/.exec(name), group = (r && r.group) || (hermesName ? { key: 'hermes:' + hermesName[1], name: 'Hermes · ' + hermesName[1], hermes: true } : null);   // the peer's project, so an edge reads project to project
-  const runtime = ROLE[p ? p.kind : ''] || 'peer', role = group ? (group.hermes ? group.name : runtime + ' · ' + group.name) : runtime;   // "Claude Code · gladiator-game", "Hermes · gaming · <thread>"
+  const hermesName = /^hermes:([\w.-]+)/.exec(name), group = (r && r.group) || (hermesName ? { key: 'hermes:' + hermesName[1], name: 'Hermes ' + hermesName[1], hermes: true } : null);   // the peer's project, so an edge reads project to project
+  const runtime = ROLE[p ? p.kind : ''] || 'peer', role = group ? (group.hermes ? group.name : runtime + ', ' + group.name) : runtime;   // "Claude Code, gladiator-game", "Hermes gaming, <thread>"
   return { id: peerId(r && r.id ? r.source + ':' + r.id : key), name, role, type: 'peer', addr: p ? p.addr : '', link: r && r.proj ? { proj: r.proj, id: r.id } : null, cwd: r ? r.cwd : '', group };   // one tile per session, however many addresses it wrote from
 }
 // Who a session talked to, from the tail of its transcript (any runtime's wording): a short list for the board.
@@ -95,4 +100,4 @@ function tailPeers(text) {   // every message in the tail, with its time when th
 // asked hours ago is not "talking to"; the transcript and the detail panel keep the history.
 const TALK_MS = 10 * 60e3;
 function talksNow(t, now = Date.now()) { const h = ((t && t.hits) || []).filter((x) => !x.ts || now - x.ts <= TALK_MS); return { n: h.length, names: [...new Set(h.map((x) => x.name))].slice(0, 4) }; }
-module.exports = { parseAddress, peerId, incoming, sendState, resolve, register, peerAgent, nameBook, tailPeers, talksNow, TALK_MS, clip, label };
+module.exports = { parseAddress, peerId, incoming, sendState, resolve, register, peerAgent, nameBook, tailPeers, talksNow, TALK_MS, clip, label, maxFileBytes, readBudget };

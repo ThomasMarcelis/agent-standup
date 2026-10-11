@@ -40,7 +40,7 @@ test('peer messages of a Claude Code session: edges in and out, states, peers as
     assert.deepEqual([msgs[4].state, msgs[4].text, msgs[4].msgId], ['received', 'Tom approves.', '0b0b0b0b-1111-2222-3333-444444444444']);   // the queued one, once
     const [inn, out, nat, bad] = msgs;
     assert.deepEqual([inn.to, inn.state, inn.msgId, inn.text], ['main', 'received', 'f4fc7b29-bc08-46c4-8245-3614c17977af', 'Scope update from Tom.']);
-    const hermes = tl.agents.find((a) => a.id === inn.agent); assert.deepEqual([hermes.type, hermes.name, hermes.role, hermes.link, hermes.group], ['peer', 'hermes:gaming:cb050161', 'Hermes · gaming', null, { key: 'hermes:gaming', name: 'Hermes · gaming', hermes: true }]);   // the profile is in the name even when the conversation is not on this machine
+    const hermes = tl.agents.find((a) => a.id === inn.agent); assert.deepEqual([hermes.type, hermes.name, hermes.role, hermes.link, hermes.group], ['peer', 'hermes:gaming:cb050161', 'Hermes gaming', null, { key: 'hermes:gaming', name: 'Hermes gaming', hermes: true }]);   // the profile is in the name even when the conversation is not on this machine
     assert.deepEqual([out.agent, out.state, out.msgId, out.text, out.ts], ['main', 'accepted', '77498bf7-df71-4867-b2fb-100349758a96', 'Fable here. Plan + findings; please challenge.', Date.parse(t('02:01.000'))]);   // dated by the result, so the event never changes once sent
     const codex = tl.agents.find((a) => a.id === out.to); assert.deepEqual([codex.type, codex.name, codex.role], ['peer', 'codex-9f73ec26c5009ae5', 'Codex']);
     assert.deepEqual([nat.agent, nat.to, nat.native, nat.state], ['main', 'a1685c1dd9cf8f419', true, 'accepted']);   // to this session's own background agent: no peer tile

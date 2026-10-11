@@ -45,7 +45,7 @@ const toolLabel = (b, ts) => {
     case 'AskUserQuestion': out.d = { kind: 'text', what: 'question', text: clip((q0 ? q0.question + '\n' + (q0.options || []).map((o) => '• ' + (o.label || '')).join('\n') : ''), 500) }; break;
     case 'Skill': out.d = { kind: 'text', what: 'skill', v: i.skill, text: clip(i.skill + (i.args ? ' ' + i.args : ''), 200) }; break;
     case 'ToolSearch': out.d = { kind: 'text', what: 'toolsearch', text: clip(i.query, 200) }; break;
-    default: out.d = mcp ? { kind: 'text', what: 'mcp', v: (mcp[1] || '') + ' · ' + (mcp.slice(2).join('__') || ''), text: clip(JSON.stringify(i), 400) } : { kind: 'text', text: clip(JSON.stringify(i), 300) };
+    default: out.d = mcp ? { kind: 'text', what: 'mcp', v: (mcp[1] || '') + ' ' + (mcp.slice(2).join('__') || ''), text: clip(JSON.stringify(i), 400) } : { kind: 'text', text: clip(JSON.stringify(i), 300) };
   }
   return out;
 };
@@ -125,23 +125,28 @@ function stamp(proj, id) {
   return n;
 }
 const tlCache = new Map();   // "proj/id" → { st (file stamp), tl, at, ms, files[], json?, gz? }
-const MAX_CACHED_SESSIONS = 3;
+const MAX_CACHED_SESSIONS = 3, MAX_CACHE_BYTES = () => (+process.env.AGENT_STANDUP_CACHE_MB || 200) * 1048576;   // at most 3 sessions, and their served JSON within the byte budget (the newest is always kept)
+const entryBytes = (e) => e.bytes || e.tl.events.length * 600;   // before its first response, an estimate from its events
 function timelineEntry(proj, id) {
   const key = proj + '/' + id, st = stamp(proj, id), hit = tlCache.get(key), now = Date.now();
-  if (hit && hit.st === st && !(hit.recentUntil && now > hit.recentUntil)) return hit;   // a sub-agent's 4-minute silence rule can flip without any file change
-  if (hit && now - hit.at < Math.max(250, hit.ms * 2)) return hit;   // very big sessions: don't rebuild on every poll
+  const fresh = (h) => { tlCache.delete(key); tlCache.set(key, h); return h; };   // the most recently used goes last: eviction takes the oldest
+  if (hit && hit.st === st && !(hit.recentUntil && now > hit.recentUntil)) return fresh(hit);   // a sub-agent's 4-minute silence rule can flip without any file change
+  if (hit && now - hit.at < Math.max(250, hit.ms * 2)) return fresh(hit);   // very big sessions: don't rebuild on every poll
   const src = sourceOf(proj), t0 = Date.now(), tl = src ? src.timeline(proj, id) : buildTimeline(proj, id), base = path.join(ROOT, proj), sd = path.join(base, id, 'subagents');
   const files = src ? [] : [path.join(base, id + '.jsonl')]; if (!src) try { for (const f of fs.readdirSync(sd)) files.push(path.join(sd, f)); } catch {}
   // rev changes when events already sent to the page got reordered or inserted before (a sub-agent file that appeared late): the page then reloads instead of appending
   const rev = hit ? hit.rev + (samePrefix(hit.tl.events, tl.events) ? 0 : 1) : 1;
   const entry = { st, tl, at: Date.now(), ms: Date.now() - t0, files, recentUntil: tl.recentUntil || 0, rev, forget: src && src.forget ? () => src.forget(proj, id) : null };
   tlCache.delete(key); tlCache.set(key, entry);
-  while (tlCache.size > MAX_CACHED_SESSIONS) {   // free the memory of sessions nobody is looking at any more
-    const [oldKey, old] = tlCache.entries().next().value; tlCache.delete(oldKey);
+  trimCache(); return entry;
+}
+function trimCache() {
+  let total = 0; for (const e of tlCache.values()) total += entryBytes(e);
+  while (tlCache.size > MAX_CACHED_SESSIONS || (tlCache.size > 1 && total > MAX_CACHE_BYTES())) {   // free the memory of sessions nobody is looking at any more
+    const [oldKey, old] = tlCache.entries().next().value; tlCache.delete(oldKey); total -= entryBytes(old);
     for (const f of old.files) fileStates.delete(f);
     if (old.forget) old.forget();
   }
-  return entry;
 }
 // The events already sent must be unchanged for the page to keep appending: same place, and same content for what can grow or flip (a tool beat, a message's state, usage).
 const evSig = (e) => (e.kind === 'tools' ? e.tools.length : e.kind === 'msg' ? e.state + '|' + e.to : e.kind === 'usage' ? e.u.i + e.u.o + e.u.r + e.u.w : e.kind === 'results' ? e.items.length : 0);
@@ -225,6 +230,11 @@ function currentSession(projFilter, idFilter, stick) {
   const safe = (x) => typeof x === 'string' && /^[\w.\-]+$/.test(x) && x !== '..';
   if (stick && safe(stick.id) && safe(stick.proj) && (!projFilter || stick.proj === projFilter || stick.proj.startsWith(projFilter + '-')) && Date.now() - sessionMtime(stick.proj, stick.id) < STICK_MS) return { proj: stick.proj, id: stick.id, mtime: sessionMtime(stick.proj, stick.id) };
   if (idFilter && projFilter && projFilter !== '..' && idFilter !== '..' && /^[\w.\-]+$/.test(idFilter) && /^[\w.\-]+$/.test(projFilter) && (sourceOf(projFilter) ? sourceOf(projFilter).exists(projFilter, idFilter) : fs.existsSync(path.join(ROOT, projFilter, idFilter + '.jsonl')))) return { proj: projFilter, id: idFilter, mtime: Date.now() };   // pinned from the board
+  const memoKey = projFilter || '*', hit = latestMemo.get(memoKey); if (hit && Date.now() - hit.at < 2000) return hit.v;   // the full scan stats every session file: once per 2 s at most, like the listings
+  const v = latestScan(projFilter, stick); latestMemo.set(memoKey, { at: Date.now(), v }); if (latestMemo.size > 50) latestMemo.delete(latestMemo.keys().next().value); return v;
+}
+const latestMemo = new Map();
+function latestScan(projFilter, stick) {
   let best = null;
   const consider = (proj, id, m) => { if (!best || m > best.mtime) best = { proj, id, mtime: m }; };
   for (const src of SOURCES) { try { for (const r of src.list()) if (!projFilter || r.proj === projFilter || r.proj.startsWith(projFilter + '-')) consider(r.proj, r.id, r.mtime); } catch {} }
@@ -248,10 +258,10 @@ function currentSession(projFilter, idFilter, stick) {
 // ---- Incremental transcript reader: each .jsonl is parsed once, then only the bytes appended since are read.
 // A session is merged from its main file and one file per sub-agent; the per-file results are cached and re-assembled cheaply.
 const fileStates = new Map();   // path → { agent, offset, tail, raw[], toolName{}, msgUsage Map }
-function readNew(file, agent) {
+function readNew(file, agent, budget = peers.maxFileBytes()) {
   let size; try { size = fs.statSync(file).size; } catch { fileStates.delete(file); return null; }
   let st = fileStates.get(file);
-  if (!st || size < st.offset) { st = { agent, offset: 0, tail: Buffer.alloc(0), raw: [], toolName: {}, msgUsage: new Map() }; fileStates.set(file, st); }
+  if (!st || size < st.offset) { st = { agent, offset: 0, tail: Buffer.alloc(0), raw: [], toolName: {}, msgUsage: new Map() }; if (size > budget) { st.offset = size - budget; st.cutStart = true; st.truncated = true; } fileStates.set(file, st); }   // a huge file: only its end
   while (size > st.offset) {   // read in chunks of at most 16 MB so a huge transcript never needs one giant buffer
     const fd = fs.openSync(file, 'r'); let buf;
     try { buf = Buffer.alloc(Math.min(16 * 1024 * 1024, size - st.offset)); fs.readSync(fd, buf, 0, buf.length, st.offset); } finally { fs.closeSync(fd); }
@@ -259,7 +269,8 @@ function readNew(file, agent) {
     const all = st.tail.length ? Buffer.concat([st.tail, buf]) : buf, cut = all.lastIndexOf(10);   // only complete lines; a half-written last line waits for the next read
     if (cut < 0) { st.tail = all; continue; }
     st.tail = all.subarray(cut + 1);
-    for (const line of all.subarray(0, cut).toString('utf8').split('\n')) {
+    const lines = all.subarray(0, cut).toString('utf8').split('\n'); if (st.cutStart) { lines.shift(); st.cutStart = false; }   // the first line of a cut read is a piece of one
+    for (const line of lines) {
       if (!line) continue;
       let r; try { r = JSON.parse(line); } catch { continue; }
       if (!r || typeof r !== 'object') continue;
@@ -323,14 +334,15 @@ function buildTimeline(proj, id) {
   const base = path.join(ROOT, proj), mainFile = path.join(base, id + '.jsonl');
   if (!fs.existsSync(mainFile)) throw new Error('session not found');
   const agents = { main: { id: 'main', role: 'Lead', type: 'main' } };
-  const states = [readNew(mainFile, 'main')];
+  const states = [readNew(mainFile, 'main')]; if (states[0] && states[0].truncated) agents.main.truncated = true;
   const subDir = path.join(base, id, 'subagents');
   if (fs.existsSync(subDir)) {
-    for (const f of fs.readdirSync(subDir).filter((x) => x.endsWith('.jsonl'))) {
+    const subs = fs.readdirSync(subDir).filter((x) => x.endsWith('.jsonl')), share = peers.readBudget(false, subs.length);
+    for (const f of subs) {
       const aid = f.replace(/^agent-/, '').replace(/\.jsonl$/, '').replace(/[^\w.-]/g, '_'), m = readMeta(path.join(subDir, f.replace(/\.jsonl$/, '.meta.json')));
       agents[aid] = { id: aid, name: m.description ? peers.label(m.description, 40) : '', role: m.agentType || 'Agent', type: m.agentType || 'agent', toolUseId: m.toolUseId };   // the task it was given is its name; a nameless one gets an invented one on the page
       try { agents[aid].mtime = fs.statSync(path.join(subDir, f)).mtimeMs; } catch {}
-      const st = readNew(path.join(subDir, f), aid); if (st) states.push(st);
+      const st = readNew(path.join(subDir, f), aid, share); if (st) { states.push(st); if (st.truncated) agents[aid].truncated = true; }
     }
   }
   const childByTool = {};   // Agent tool_use id → the sub-agent it created, so we know who ordered whom
@@ -357,6 +369,7 @@ function buildTimeline(proj, id) {
       else events.push(e);
     });
     for (const [, mu] of st.msgUsage) events.push({ ts: mu.ts, agent: st.agent, kind: 'usage', u: mu.u, model: mu.model });
+    if (st.agent !== 'main' && finished.has(st.agent) && lastSay < 0 && !doneSeen.has(st.agent) && agents[st.agent]) { const lastTs = st.raw.length ? st.raw[st.raw.length - 1].ts : agents[st.agent].mtime || 0; doneSeen.add(st.agent); events.push({ ts: lastTs, agent: st.agent, kind: 'finish', to: 'main' }); }   // finished by silence, its completion record not read (older history cut, or never written): done, not working forever
   }
   for (const e of events) if (e.kind === 'report' && e.to === null) e.to = parent[e.agent] || 'main';
 
@@ -689,8 +702,7 @@ function start(port = PORT) {
       const after = url.searchParams.get('after');
       if (after == null) {   // the whole timeline: serialize once per version, send gzip-compressed when the browser allows it (12 MB → ~1.5 MB)
         const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
-        if (!entry.json) entry.json = JSON.stringify({ ...tl, rev: entry.rev });
-        if (gz && !entry.gz) entry.gz = zlib.gzipSync(entry.json, { level: 5 });
+        if (gz ? !entry.gz : !entry.json) { const j = JSON.stringify({ ...tl, rev: entry.rev }); if (gz) entry.gz = zlib.gzipSync(j, { level: 5 }); else entry.json = j; entry.bytes = j.length; trimCache(); }   // keep only the encoding that is served; its size counts against the budget
         res.writeHead(200, { 'content-type': 'application/json', ...(gz ? { 'content-encoding': 'gzip' } : {}), vary: 'accept-encoding' });
         return res.end(gz ? entry.gz : entry.json);
       }

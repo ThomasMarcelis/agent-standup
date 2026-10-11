@@ -58,9 +58,11 @@ const mtimeOf = (s) => Math.round(Math.max(s.last_activity_at || 0, s.ended_at |
 const projectOf = (s) => s.cwd || (s.display_name ? String(s.display_name).split(' / ').slice(0, 2).join(' / ') : s.source || '');
 
 // What the human typed, without what the gateway wraps around it: "[Name] " on shared chats, the origin preamble, the steering markers.
-function cleanUser(t) {
-  return String(t || '').replace(/^\[[^\]\n]{1,60}\]\s*/, '').replace(/^Gateway message origin[\s\S]*?\n\n/, '')
-    .replace(/^\[(?:OUT-OF-BAND USER MESSAGE|EXTERNAL SESSION MESSAGE)[^\]]*\]\s*/, '').replace(/\s*\[\/(?:OUT-OF-BAND USER MESSAGE|EXTERNAL SESSION MESSAGE)\]\s*$/, '').trim();
+function cleanUser(t) {   // exported for the tests
+  return String(t || '').replace(/^\[[^\]\n]{1,60}\]\s*/, '')
+    .replace(/^\[(?:OUT-OF-BAND USER MESSAGE|EXTERNAL SESSION MESSAGE)[^\]]*\]\s*/, '').replace(/\s*\[\/(?:OUT-OF-BAND USER MESSAGE|EXTERNAL SESSION MESSAGE)\]\s*$/, '')   // the steering markers first: the preamble can sit inside them
+    .replace(/^Gateway message origin[^\n]*\n\{[^\n]*\}[ \t]*\n?(?:Do not guess a reply destination[^\n]*\n?)?\s*/, '').replace(/^Gateway message origin[\s\S]*?\n\n/, '')
+    .replace(/<@[!&]?\d+>\s*/g, '').trim();   // Discord mentions (<@291975306871439360>) are routing, not words
 }
 function titleOf(db, s) {
   if (s.title) return s.title;
@@ -108,7 +110,7 @@ function label(name, a, ts, id) {   // what the call looks like on a screen: the
     case 'todo': case 'todo_list': out.d = { kind: 'todo', items: (Array.isArray(a.todos) ? a.todos : []).slice(0, 20).map((x) => ({ c: clip(x.content || x.text || x.title, 120), s: x.status })) }; break;
     case 'clarify': out.d = { kind: 'text', what: 'question', text: clip((a.questions || []).map((x) => (x.question || '') + '\n' + (x.choices || []).map((c) => '• ' + c).join('\n')).join('\n'), 500) }; break;
     case 'skill_view': out.d = { kind: 'text', what: 'skill', v: a.name, text: clip(a.name, 200) }; break;
-    default: out.d = /^mcp__/.test(name) ? { kind: 'text', what: 'mcp', v: name.split('__').slice(1).join(' · '), text: clip(JSON.stringify(a), 400) } : { kind: 'text', text: clip(JSON.stringify(a), 300) };
+    default: out.d = /^mcp__/.test(name) ? { kind: 'text', what: 'mcp', v: name.split('__').slice(1).join(' '), text: clip(JSON.stringify(a), 400) } : { kind: 'text', text: clip(JSON.stringify(a), 300) };
   }
   return out;
 }
@@ -130,7 +132,7 @@ function parseSession(db, s, agent, kids) {
       const t = cleanUser(r.content); if (/^\[CONTEXT COMPACTION/.test(t)) { st.raw.push({ ts, agent, kind: 'compact' }); continue; }
       if (t && agent === 'main') st.raw.push({ ts, agent: 'user', kind: 'user', text: t });
     } else if (r.role === 'assistant') {
-      const t = String(r.content || '').trim(); if (t) st.raw.push({ ts, agent, kind: 'say', text: t });
+      const t = String(r.content || '').replace(/<@[!&]?\d+>\s*/g, '').trim(); if (t) st.raw.push({ ts, agent, kind: 'say', text: t });   // a reply to Discord opens with a mention: routing, not words
       for (const c of calls(r)) {
         pend.set(c.key, { ...c, ts });
         if (c.name === 'delegate_task') {   // one sub-agent session per task, matched by its goal; a task whose child is not found stays an order without a tile
@@ -142,7 +144,7 @@ function parseSession(db, s, agent, kids) {
       const name = r.tool_name || '', pd = pend.get(r.tool_call_id + '|' + name) || [...pend.values()].find((x) => x.callId === r.tool_call_id) || null; if (pd) pend.delete(pd.key);
       const content = String(r.content || ''), j = jsonOf(content), args = pd ? pd.args : {}, id = pd ? pd.key : r.tool_call_id + '|' + name;
       if (name === 'send_peer') { st.raw.push({ ts, agent, kind: 'msg', dir: 'out', to: args.to || '', text: clip(args.message, 2000), msgId: (j && j.message_id) || '', state: j && j.error ? 'failed' : j && j.status === 'held' ? 'held' : peers.sendState(content), detail: clip((j && (j.text || j.error)) || content, 200) }); continue; }
-      if (name === 'list_peers') { st.raw.push({ ts, agent, kind: 'tool', tool: { id, ts: pd ? pd.ts : ts, name, arg: '', d: { kind: 'text', what: 'mcp', v: 'agent-peers · list_peers', text: '' } } }, { ts, agent, kind: 'results', items: [{ id, err: false, out: clip(content, 900) }] }); continue; }
+      if (name === 'list_peers') { st.raw.push({ ts, agent, kind: 'tool', tool: { id, ts: pd ? pd.ts : ts, name, arg: '', d: { kind: 'text', what: 'mcp', v: 'agent-peers list_peers', text: '' } } }, { ts, agent, kind: 'results', items: [{ id, err: false, out: clip(content, 900) }] }); continue; }
       if (name === 'delegate_task') { const res = j && Array.isArray(j.results) ? j.results : null; st.raw.push({ ts, agent, kind: 'results', items: [{ id, err: !!(j && j.error), out: clip(res ? res.map((x, i) => `#${i + 1} ${x.status || ''}: ${x.summary || ''}`).join('\n') : content, 1300) }] }); continue; }
       st.raw.push({ ts, agent, kind: 'results', items: [{ id, err: !!(j && j.error), out: clip(unwrap(j, content), MAX[name] || (/^mcp__/.test(name) ? 900 : 600)) }] });
     }
@@ -217,4 +219,4 @@ function addressMap() {
   addrMemo = { at: Date.now(), map }; return map;
 }
 peers.register('hermes', (key) => addressMap().get(key) || null);
-module.exports = { list, board, exists, mtime, stamp, timeline, profiles, forget() {} };
+module.exports = { list, board, exists, mtime, stamp, timeline, profiles, cleanUser, forget() {} };

@@ -39,7 +39,7 @@ test('speechOf: who a message is from or for is not read (real openers from this
 });
 
 // Live speech under load: the page's own freshness rule and sentence clipping
-const live = new Function(grab(/const SPK = new Set[^\n]*/) + '\n' + grab(/const STALE_MS = [\s\S]*?\n\}/) + '\n' + grab(/function clipSpeech\(t, cap\) \{[\s\S]*?\n\}/) + '\nreturn { freshPlan, clipSpeech, STALE_MS };')();
+const live = new Function(grab(/const SPK = new Set[^\n]*/) + '\n' + grab(/const STALE_MS = [\s\S]*?\n\}/) + '\n' + grab(/const SPEECH_MAX = [^\n]*/) + '\n' + grab(/function clipSpeech\(t, cap\) \{[\s\S]*?\n\}/) + '\nreturn { freshPlan, clipSpeech, STALE_MS };')();
 
 test('live speech: nothing stale is read; when behind, the freshest line comes next, the most important first', () => {
   const { freshPlan } = live, s = 1000, T = 1.79e12;
@@ -94,4 +94,22 @@ test('guests: an agent of another session is on the line only while the exchange
   assert.deepEqual(guestsAt(evs, 3, T + 60 * m, agents).map((g) => [g.id, g.n]), [['p_live', 1]]);   // the tip asked an hour ago is gone; the current exchange is there
   assert.deepEqual(guestsAt(evs, 1, T + 2 * m, agents).map((g) => [g.id, g.n]), [['p_tip', 2]]);     // in a replay, at the time of the tip, it was on the line
   assert.deepEqual(guestsAt(evs, 3, T + 69 * m, agents), []);                                          // and every exchange expires
+});
+
+test('live speech: with no cap (a replay) a long line still ends at a sentence under the server\'s 600-character voice limit', () => {
+  const { clipSpeech } = live, long = 'The pinsetter assembly passed its static checks. ' + 'Every rake, table and lift was measured against the saved source and the clearances hold everywhere it matters. '.repeat(8);
+  const out = clipSpeech(long, 0); assert.ok(out.length <= 560, out.length); assert.match(out, /[.!?]$/); assert.ok(long.startsWith(out.slice(0, -1).replace(/[,;:]$/, '')));
+  const one = 'A single sentence that runs on ' + 'and on, '.repeat(120) + 'until it ends.';
+  const o2 = clipSpeech(one, 0); assert.ok(o2.length <= 561, o2.length); assert.match(o2, /and on\.$/);   // one runaway sentence ends at a clause break, whole words
+});
+
+test('board: a busy one-off run stays in its project; quiet rows fold into one line', () => {
+  const { boardKey, splitGroup } = new Function(grab(/const boardKey = [^\n]*/) + '\n' + grab(/const splitGroup = [^\n]*/) + '\nreturn { boardKey, splitGroup };')();
+  const ms = { key: '/w/MarketSimulator', name: 'MarketSimulator' };
+  assert.equal(boardKey({ oneshot: true, state: 'working', group: ms }), '/w/MarketSimulator');   // a working codex exec in MarketSimulator
+  assert.equal(boardKey({ oneshot: true, state: 'idle', group: ms }), '_other');                  // a finished one-off: "Other / single"
+  assert.equal(boardKey({ state: 'idle', group: { key: '_other', other: true } }), '_other'); assert.equal(boardKey({ state: 'working' }), '_other');
+  const rows = ['working', 'idle', 'turn', 'done', 'idle'].map((state, i) => ({ state, i }));
+  const sp = splitGroup(rows, false); assert.deepEqual(sp.cards.map((r) => r.state), ['working', 'turn']); assert.deepEqual(sp.quiet.map((r) => r.state), ['idle', 'done', 'idle']);
+  assert.equal(splitGroup(rows, true).cards.length, 5);
 });
