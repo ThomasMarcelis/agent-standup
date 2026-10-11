@@ -77,7 +77,8 @@ function tailPeers(text) {
     n++; const a = parseAddress(m[1]) || parseAddress(m[2] || ''), nm = (parseAddress(m[1]) ? m[2] || '' : m[1]).replace(/^claude:/, '');
     const name = NAME.test(nm) ? nm : a ? peerAgent(a.addr).name : ''; if (!name) continue; names.add(name); if (a) byAddr.set(a.key, name);
   }
-  for (const m of String(text).matchAll(/\\*"to\\*":\\*"(uds:[^"\\]+)/g)) { const a = parseAddress(m[1]); if (!a) continue; n++; names.add(byAddr.get(a.key) || peerAgent(a.addr).name); }
+  // sends: Claude's SendMessage input and Codex's send_peer arguments are plain JSON, Hermes's arguments are a JSON string inside JSON (a list_peers listing is neither)
+  for (const m of String(text).matchAll(/"to":"(uds:[^"]+)"|\\"arguments\\":\{\\"to\\":\\"(uds:[^"\\]+)/g)) { const a = parseAddress(m[1] || m[2]); if (!a) continue; n++; names.add(byAddr.get(a.key) || peerAgent(a.addr).name); }
   return { n, names: [...names].slice(0, 4) };
 }
 module.exports = { parseAddress, peerId, incoming, sendState, resolve, register, peerAgent, nameBook, tailPeers, clip };
