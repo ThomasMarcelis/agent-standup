@@ -202,7 +202,7 @@ function boardRows0() {
       else if (p.lastType === 'assistant' && !p.lastTool) state = 'turn';
       else { state = age < 10 * 60e3 ? 'working' : 'idle'; if (state === 'working' && p.lastCall) tool = p.lastCall.name; }   // between two calls: the last thing it ran
     }
-    const stopped = !!(live && live.size && !live.has(id)); if (stopped && /^(working|waiting|blocked)$/.test(state)) { state = 'idle'; tool = ''; }   // stopped: no Claude process runs it any more, whatever its last record says
+    const stopped = !!(live && !live.has(id));   // an empty registry means every Claude session has ended (null: no registry on this machine) if (stopped && /^(working|waiting|blocked)$/.test(state)) { state = 'idle'; tool = ''; }   // stopped: no Claude process runs it any more, whatever its last record says
     let subActive = 0, subTotal = 0; const sd = path.join(ROOT, proj, id, 'subagents'), active = [];
     try { for (const x of fs.readdirSync(sd)) if (x.endsWith('.jsonl')) { subTotal++; if (now - fs.statSync(path.join(sd, x)).mtimeMs < 90e3) { subActive++; if (active.length < 4) { const d = readMeta(path.join(sd, x.replace(/\.jsonl$/, '.meta.json'))).description; if (d) active.push(peers.label(d, 32)); } } } } catch {}
     const group = project.groupOf(p.cwd); if (p.msgIds && p.msgIds.length) peers.indexMessages(p.msgIds, { proj, id, cwd: p.cwd, group });   // so a message id in another runtime's log finds this session even after its pid is gone

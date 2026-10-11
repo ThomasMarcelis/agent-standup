@@ -89,5 +89,9 @@ test('round 5: a Claude session is running only while a live process owns its re
   const peers = require('../adapters/peers.js'), dir = path.join(process.env.CLAUDE_CONFIG_DIR, 'sessions'); fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, process.pid + '.json'), JSON.stringify({ pid: process.pid, sessionId: 'live-1', cwd: '/w' }));
   fs.writeFileSync(path.join(dir, '2147480000.json'), JSON.stringify({ pid: 2147480000, sessionId: 'gone-1', cwd: '/w' }));   // no such process
-  try { assert.deepEqual([...peers.liveClaude()], ['live-1']); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  try {
+    assert.deepEqual([...peers.liveClaude()], ['live-1']);
+    for (const f of fs.readdirSync(dir)) fs.rmSync(path.join(dir, f)); assert.deepEqual([...peers.liveClaude()], [], 'every session ended: an empty set, so the board marks them stopped');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  assert.equal(peers.liveClaude(), null, 'no registry on this machine: nothing is marked stopped');
 });

@@ -2031,7 +2031,9 @@ async function followProject(key) {   // '' is everything
   closeProjects(); const rows = await boardNow(0), t = key ? followTarget(rows, 'g:' + key) : null, g = key && rows.find((r) => boardKey(r) === key);
   prefs.follow = key ? 'g:' + key : 'all'; S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; prefs.proj = ''; Q.delete('proj'); savePrefs();
   S.autoPin = t ? { proj: t.proj, id: t.id } : null; S.switchAt = t ? Date.now() : 0; S.why = g ? L('suit ', 'following ') + g.group.name : '';
-  if (document.body.classList.contains('board')) setView('call'); S.cur = null; await followCurrent(); $('#calls')._h = ''; renderCalls();
+  if (document.body.classList.contains('board')) setView('call');
+  if (!S.live || S.demo) await setMode('live'); else { S.cur = null; await followCurrent(); }   // a replay or the demo: back to the live call
+  $('#calls')._h = ''; renderCalls();
 }
 $('#pbtn').onclick = () => ($('#pmenu').classList.contains('on') ? closeProjects() : openProjects());
 $('#pbtn').onkeydown = (e) => { if (e.key === 'ArrowDown' && !$('#pmenu').classList.contains('on')) { e.preventDefault(); openProjects(); } };
@@ -2154,6 +2156,15 @@ function railSplit(rows, curId, now = Date.now()) {
   return { needs, live, quiet };
 }
 const railGroup = (r) => { const k = boardKey(r); return k === '_other' ? L('Autres', 'Other') : r.group.hermes ? r.group.name.split(', ')[0] : r.group.name; };   // a Hermes thread is its own project: the header says "Hermes gaming", the row says the thread
+function updateFollow(rows) {   // whether the rail is on screen or not (the tree, a narrow window), a followed project keeps its call current
+  const follow = prefs.follow || 'all', cur = S.cur || {}, t = !S.pin && followTarget(rows, follow);
+  if (!S.pin) {   // follow: switch with a hold so the call does not flicker between sessions
+    const there = t && cur.id === t.id, hold = Date.now() - (S.switchAt || 0) < FOLLOW_HOLD;
+    if (t && !there && !hold) { S.autoPin = { proj: t.proj, id: t.id }; S.switchAt = Date.now(); S.why = (t.state === 'blocked' ? L('a basculé : ', 'switched: ') + (t.group ? t.group.name : t.title) + ' ' + L('vous attend', 'needs you') : L('suit ', 'following ') + (t.group ? t.group.name : t.title)); S.cur = null; followCurrent(true); }
+    else if (!t && S.autoPin && !hold) { S.autoPin = null; S.why = ''; S.cur = null; followCurrent(true); }   // nothing needs Tom any more: back to the most active session
+  }
+}
+setInterval(async () => { if (S.live && !S.demo && !document.hidden && !document.body.classList.contains('board')) updateFollow(await boardNow(1000)); }, 3000);
 // Which session the call should go to on its own: in "everything", one that needs Tom; in a project, its most urgent session (a pin always wins)
 function followTarget(rows, follow) {
   const pool = follow && follow.startsWith('g:') ? rows.filter((r) => boardKey(r) === follow.slice(2)) : rows.filter((r) => r.state === 'blocked');
@@ -2162,12 +2173,8 @@ function followTarget(rows, follow) {
 async function renderCalls() {
   const box = $('#calls'); if (!box || document.hidden || !S.live || document.body.classList.contains('board') || document.body.classList.contains('tree') || getComputedStyle($('#side')).display === 'none') return;
   const rows = await boardNow(1000); paintProjSum(rows);
-  const follow = prefs.follow || 'all', cur = S.cur || {}, t = !S.pin && followTarget(rows, follow);
-  if (!S.pin) {   // follow: switch with a hold so the call does not flicker between sessions
-    const there = t && cur.id === t.id, hold = Date.now() - (S.switchAt || 0) < FOLLOW_HOLD;
-    if (t && !there && !hold) { S.autoPin = { proj: t.proj, id: t.id }; S.switchAt = Date.now(); S.why = (t.state === 'blocked' ? L('a basculé : ', 'switched: ') + (t.group ? t.group.name : t.title) + ' ' + L('vous attend', 'needs you') : L('suit ', 'following ') + (t.group ? t.group.name : t.title)); S.cur = null; followCurrent(true); }
-    else if (!t && S.autoPin && !hold) { S.autoPin = null; S.why = ''; S.cur = null; followCurrent(true); }   // nothing needs Tom any more: back to the most active session
-  }
+  const follow = prefs.follow || 'all', cur = S.cur || {};
+
   const groups = new Map(); for (const r of rows) { const k = boardKey(r); if (!groups.has(k)) groups.set(k, { key: k, name: railGroup(r), rows: [] }); groups.get(k).rows.push(r); }
   const row = (r, proj) => { const n = (r.subTotal || 0) + 1, here = cur.id === r.id;   // two lines: the title in full; one status word and what it is doing
     return `<button class="crow${here ? ' cur' : ''}" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" title="${esc(r.title)}"${here ? ` aria-current="true"` : ''}><span class="cn"><b>${proj ? `<span style="color:${GCOL(boardKey(r))}">${esc(railGroup(r))}</span> ` : ''}${esc(r.title)}</b></span><span class="ca">${sHtml(r.state, callStatus(r))}${n > 1 ? `<small>${n} ${L('agents', 'agents')}</small>` : ''}</span></button>`; };
