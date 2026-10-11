@@ -386,7 +386,7 @@ const L = (fr, en) => (FR() ? fr : tr(en));
 async function loadLocale(code) { LOC = {}; if (code === 'en' || code === 'fr') return; try { const r = await fetch('/locales/' + encodeURIComponent(code) + '.json'); if (r.ok) LOC = await r.json(); } catch {} }
 async function setLang(code, save) {
   if (!LANGS.some((l) => l[0] === code)) code = 'en'; prefs.lang = code; await loadLocale(code); if (save) { prefs.langChosen = true; savePrefs(); }
-  if (FR()) fetch('/api/warm').catch(() => {}); AUD.stopAll(); synth && synth.cancel(); applyLang(); if (FR()) prefetchTr(S.idx);
+  if (FR()) fetch('/api/warm').catch(() => {}); stopVoice('language'); applyLang(); if (FR()) prefetchTr(S.idx);
 }
 
 // =====================================================================
@@ -890,7 +890,9 @@ async function speakServer(text, p, gain, token, fr = FR(), still) {
   const data = new Uint8Array(an.fftSize);
   S.level[p.id] = () => { an.getByteTimeDomainData(data); let s = 0; for (const v of data) { const x = (v - 128) / 128; s += x * x; } return Math.sqrt(s / data.length); };   // drives the mouth
   AUD.live.add(src);
-  captionRun(p.id, text, buf.duration * 1000); await new Promise((res) => { src.onended = res; setTimeout(res, buf.duration * 1000 + 800); src.start(); });
+  const len = buf.duration / (src.playbackRate.value || 1); S.sayingLine = text; vlog('start');
+  captionRun(p.id, text, len * 1000); const ended = await new Promise((res) => { src.onended = () => res(true); setTimeout(() => res(false), len * 1000 + 1500); src.start(); });
+  vlog(ended ? 'end' : 'end: no ended event, timer'); S.sayingLine = '';
   AUD.live.delete(src); delete S.level[p.id]; stops.forEach((o) => { try { o.stop(); } catch {} }); return true;
 }
 function speakBrowser(text, p, token, fr = FR()) {   // fallback where no server voice exists (Windows/Linux)
@@ -1961,17 +1963,26 @@ function clipSpeech(t, cap) {   // the bubble keeps the full text; the voice rea
   const most = Math.min(cap * 2, SPEECH_MAX); if (out.length <= most) return out.trim();
   const c = out.slice(0, most).search(/[,;:—–](?=[^,;:—–]*$)/); return (c > cap / 2 ? out.slice(0, c) : out.slice(0, most).replace(/\s+\S*$/, '')).trim() + '.';   // one runaway sentence: end at its last clause break
 }
-function pause() { S.playing = false; S.hurry = false; S.boost = 1; S.token++; synth && synth.cancel(); AUD.stopAll(); clearSpeaking(); $('#card').classList.remove('on'); syncUI(); }
+// The voice log: every line that starts or ends, every wait for one, and every stop of one with its reason (window.__voiceLog; ?debug=voice prints it).
+const VLOG = (window.__voiceLog = []);
+function vlog(what) { const e = { at: new Date().toISOString().slice(11, 23), what, sounding: AUD.live.size > 0 || !!(synth && synth.speaking), line: String(S.sayingLine || '').slice(0, 60) }; VLOG.push(e); if (VLOG.length > 60) VLOG.shift(); if (Q.get('debug') === 'voice') console.debug('[voice]', e); }
+function stopVoice(reason) { if (voiceBusy()) vlog('cut: ' + reason); synth && synth.cancel(); AUD.stopAll(); }   // only an explicit pause, mute, seek or language change gets here with a line still playing
+async function finishLine(cap = 20000) {   // a switch, a reload or a mode change waits for the line being said (up to 20 s); no new line starts meanwhile
+  if (!voiceBusy()) return; S.token++; vlog('wait for the line to end'); const t0 = Date.now();
+  while (voiceBusy() && Date.now() - t0 < cap) await sleep(150);
+  if (voiceBusy()) vlog('still playing after ' + cap / 1000 + ' s');
+}
+function pause(reason = 'pause') { S.playing = false; S.hurry = false; S.boost = 1; S.token++; stopVoice(reason); clearSpeaking(); $('#card').classList.remove('on'); syncUI(); }
 function togglePlay() {
   if (S.playing) { S.userPaused = true; pause(); } else { claimAudio(); S.userPaused = false; run(S.idx >= S.events.length - 1 && !S.live ? (recomputeStatus(0), 0) : S.idx); }
 }
 function seekTo(i) {
-  pause(); i = Math.max(0, Math.min(S.events.length - 1, i)); S.idx = i; recomputeStatus(i); paintStatus(); S.userPaused = false; run(i);
+  pause('seek'); i = Math.max(0, Math.min(S.events.length - 1, i)); S.idx = i; recomputeStatus(i); paintStatus(); S.userPaused = false; run(i);
 }
 
 // Freeze the call at one exact moment (used for screenshots: ?demo=1&at=<event index>).
 function showMoment(i) {
-  S.hold = true; pause(); recomputeStatus(i); S.idx = i; const e = S.events[i];
+  S.hold = true; pause('moment'); recomputeStatus(i); S.idx = i; const e = S.events[i];
   if (e.kind === 'tools') {
     tickTools(e);
     for (let k = i + 1; k < Math.min(S.events.length, i + 10); k++) { const r = S.events[k]; if (r.kind === 'results' && r.agent === e.agent && r.items.some((it) => e.tools.some((t) => t.id === it.id))) applyResults(r); }
@@ -1983,9 +1994,9 @@ function showMoment(i) {
 //  data: live follow + replay
 // =====================================================================
 const voiceBusy = () => S.speakers.size > 0 || AUD.live.size > 0 || !!(synth && synth.speaking);   // a voice is sounding: its audio, not only the speaking flag (a silent beat of the same agent clears that)
-async function loadSession(proj, id, gentle = false) {
-  if (gentle && S.playing) { const n0 = S.loadN; S.token++; for (let t = 0; t < 270 && voiceBusy(); t++) await sleep(150); if (S.loadN !== n0) return false; }   // a reload nobody asked for: no new line starts, the one being said is finished (up to 40 s, a long line in a natural voice), then the switch
-  pause(); const mine = (S.loadN = (S.loadN || 0) + 1);
+async function loadSession(proj, id) {   // every switch comes here (a click on a call, the board, the switcher, a guest; following; a rewrite): the line being said is finished first
+  const n0 = S.loadN; await finishLine(); if (S.loadN !== n0) return false;   // another switch was asked meanwhile: that one goes ahead
+  pause('switch'); const mine = (S.loadN = (S.loadN || 0) + 1);
   const data = await (await fetch(`/api/session?proj=${encodeURIComponent(proj)}&id=${id}`)).json();
   if (mine !== S.loadN || data.error) return false;
   const again = [S.cur, S.last].some((c) => c && c.proj === proj && c.id === id), keepDetail = again && S.detail, joined = S.joinAt;   // the same session rebuilt (a live rewrite): the room stays as it was
@@ -2055,7 +2066,7 @@ async function fillProjects() {   // live view: follow the latest activity anywh
   sel.value = prefs.proj && rows.some((r) => r.proj === prefs.proj) ? prefs.proj : ''; sel.style.display = rows.length > 1 ? '' : 'none';
 }
 $('#liveProj').onchange = () => { Q.delete('proj'); prefs.proj = $('#liveProj').value; S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; savePrefs(); S.cur = null; followCurrent(); };
-async function followCurrent(gentle = false) {
+async function followCurrent() {   // a switch lets the line being said finish (loadSession)
   const auto = !S.pin && S.autoPin, pid = S.pin || (auto && auto.id), pproj = auto ? auto.proj : Q.get('proj') || prefs.proj || '';   // the rail's follow target, asked like a pin
   const cur = await (await fetch('/api/current?proj=' + encodeURIComponent(pproj) + (pid ? '&id=' + encodeURIComponent(pid) : '') + (S.cur && !pid ? '&sproj=' + encodeURIComponent(S.cur.proj) + '&sid=' + encodeURIComponent(S.cur.id) : ''))).json();
   if (auto && cur.id !== auto.id) S.autoPin = null;
@@ -2063,7 +2074,7 @@ async function followCurrent(gentle = false) {
   if (S.pin && cur.id !== S.pin) { S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; savePrefs(); }   // the pinned session is gone: follow the latest one instead of staying silently pinned
   if (S.cur && S.cur.id === cur.id && S.cur.proj === cur.proj) return false;
   const was = S.last && S.last.proj === cur.proj && S.last.id === cur.id ? S.last.ts : 0;   // the same session reloaded (it was rewritten): carry on after what was already played
-  if (!(await loadSession(cur.proj, cur.id, gentle))) return false;
+  if (!(await loadSession(cur.proj, cur.id))) return false;
   let start = Math.max(0, S.events.length - 16); if (was) { const r = S.events.findIndex((e) => e.ts > was); start = r < 0 ? S.events.length : Math.max(start, r); }
   recomputeStatus(start); S.idx = start; trNew(start); paintStatus();
   if (!S.userPaused) run(start); return true;
@@ -2072,7 +2083,7 @@ let polling = false;
 setInterval(async () => {
   if (!S.live || polling || document.hidden || (document.body.classList.contains('board') && !S.playing)) return; polling = true;   // the board has its own loop; a hidden tab follows nothing
   try {
-    const switched = await followCurrent(true); if (S.offline) { S.offline = false; syncUI(); }
+    const switched = await followCurrent(); if (S.offline) { S.offline = false; syncUI(); }
     if (switched || !S.cur) return;
     const d = await (await fetch(`/api/session?proj=${encodeURIComponent(S.cur.proj)}&id=${S.cur.id}&after=${S.events.length}`)).json();
     if (d.error) return; if (d.total < S.events.length || (d.rev != null && S.rev != null && d.rev !== S.rev)) { const e = S.events[Math.min(S.idx, S.events.length - 1)]; S.last = { ...S.cur, ts: (e && e.ts) || 0 }; S.cur = null; return; }   // transcript was rewritten, or events were inserted before what we have: reload next tick
@@ -2160,8 +2171,8 @@ function updateFollow(rows) {   // whether the rail is on screen or not (the tre
   const follow = prefs.follow || 'all', cur = S.cur || {}, t = !S.pin && followTarget(rows, follow);
   if (!S.pin) {   // follow: switch with a hold so the call does not flicker between sessions
     const there = t && cur.id === t.id, hold = Date.now() - (S.switchAt || 0) < FOLLOW_HOLD;
-    if (t && !there && !hold) { S.autoPin = { proj: t.proj, id: t.id }; S.switchAt = Date.now(); S.why = (t.state === 'blocked' ? L('a basculé : ', 'switched: ') + (t.group ? t.group.name : t.title) + ' ' + L('vous attend', 'needs you') : L('suit ', 'following ') + (t.group ? t.group.name : t.title)); S.cur = null; followCurrent(true); }
-    else if (!t && S.autoPin && !hold) { S.autoPin = null; S.why = ''; S.cur = null; followCurrent(true); }   // nothing needs Tom any more: back to the most active session
+    if (t && !there && !hold) { S.autoPin = { proj: t.proj, id: t.id }; S.switchAt = Date.now(); S.why = (t.state === 'blocked' ? L('a basculé : ', 'switched: ') + (t.group ? t.group.name : t.title) + ' ' + L('vous attend', 'needs you') : L('suit ', 'following ') + (t.group ? t.group.name : t.title)); S.cur = null; followCurrent(); }
+    else if (!t && S.autoPin && !hold) { S.autoPin = null; S.why = ''; S.cur = null; followCurrent(); }   // nothing needs Tom any more: back to the most active session
   }
 }
 setInterval(async () => { if (S.live && !S.demo && !document.hidden && !document.body.classList.contains('board')) updateFollow(await boardNow(1000)); }, 3000);
@@ -2225,13 +2236,13 @@ function closeSwitcher() { const sw = $('#switcher'); if (sw) sw.remove(); }
 setInterval(() => { if (!document.hidden) renderBoardView(); }, 2500);
 async function setMode(m) {
   if (m === 'demo') {   // a built-in fictional session: nothing to install, nothing private on screen
-    pause(); S.live = false; S.demo = true; S.userPaused = false; S.cur = null; $('#empty').classList.remove('on');
+    await finishLine(); pause('mode'); S.live = false; S.demo = true; S.userPaused = false; S.cur = null; $('#empty').classList.remove('on');
     document.querySelectorAll('#modeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.m === 'demo')); $('#sessions').style.display = 'none';
     if (await loadSession('_demo', 'demo')) { S.title = L('Démo — une équipe corrige un login lent', 'Demo — a team fixes a slow login'); $('#subtitle').textContent = S.title; syncUI(); }
     return;
   }
   S.demo = false;
-  const live = m === 'live'; if (live === S.live && S.cur) return; pause(); S.live = live; S.userPaused = false;
+  const live = m === 'live'; if (live === S.live && S.cur) return; await finishLine(); pause('mode'); S.live = live; S.userPaused = false;
   document.querySelectorAll('#modeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.m === m)); $('#sessions').style.display = live ? 'none' : '';
   S.cur = null; syncUI();
   if (live) { fillProjects(); await followCurrent(); return; }
@@ -2317,13 +2328,13 @@ async function exportVideo(from = 0, to = 0, clip = 0) {   // clip: length in ms
   const timer = setInterval(() => {
     const el = performance.now() - t0; drawFrame(cv, clip ? (outro ? 2 : 1) : 0);
     if (clip && S.playing && !S.stopAt && el > clip - 4000) S.stopAt = S.idx + 1;   // the line being said is finished rather than cut…
-    if (clip && S.playing && el > clip + 8000) pause();                              // …unless it is a very long one
+    if (clip && S.playing && el > clip + 8000) pause('export');                              // …unless it is a very long one
     $('#pill').textContent = `⏹ ${Math.max(0, Math.min(100, Math.round((clip ? el / clip : (S.idx - from) / ((to || S.events.length) - from)) * 100)))}%`;
   }, 33), done = new Promise((res) => (recorder.onstop = res));
   S.exporting = true; S.stopAt = to || 0; S.idx = from; recomputeStatus(from); recorder.start(500); run(from);
   const poll = setInterval(() => { if (!S.playing && recorder) { const rec = recorder; outro = !!clip; setTimeout(() => recorder === rec && rec.stop(), clip ? 2600 : 900); clearInterval(poll); } }, 300);
   await done; clearInterval(timer); clearInterval(poll); S.exporting = false; S.stopAt = 0; recorder = null;
-  if (clip) { pause(); S.idx = back; recomputeStatus(back); paintStatus(); }   // back where the replay was, so the same clip can be taken again
+  if (clip) { pause('export'); S.idx = back; recomputeStatus(back); paintStatus(); }   // back where the replay was, so the same clip can be taken again
   syncUI();
   const blob = new Blob(chunks, { type: mime.split(';')[0] || 'video/webm' }); window.__lastExport = blob.size; const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `agent-standup${clip ? '-clip' : ''}.${ext}`; a.click();
 }
@@ -2345,7 +2356,7 @@ const elsewhere = () => !!(S.owner && S.owner !== CID);
 function applyMute() {
   const b = $('#bMute'); b.textContent = AUD.muted ? '🔇' : elsewhere() ? '🔈' : '🔊';
   b.title = elsewhere() ? L('Le son est joué dans une autre fenêtre — cliquer pour le reprendre ici', 'Sound is playing in another window — click to take it over here') : L('Son (touche M)', 'Sound (M key)');
-  AUD.apply(); if (AUD.off()) { synth && synth.cancel(); AUD.stopAll(); }
+  AUD.apply(); if (AUD.off()) stopVoice(AUD.muted ? 'mute' : 'another window took the sound');
 }
 async function audioSync(claim) {   // heartbeat + ownership: avoids two Agent Standup windows talking at the same time
   try {
@@ -2427,7 +2438,7 @@ $('#eDemo').onclick = () => setMode('demo');
 const GESTURES = ['pointerdown', 'keydown', 'touchstart'];
 function unlockAudio() {
   GESTURES.forEach((t) => removeEventListener(t, unlockAudio, true));
-  claimAudio(); AUD.init(); AUD.apply(); if (AUD.ctx) AUD.ctx.resume().then(paintVnote, () => {});
+  if (!elsewhere()) claimAudio(); AUD.init(); AUD.apply(); if (AUD.ctx) AUD.ctx.resume().then(paintVnote, () => {});   // another window playing keeps the sound: 🔈 takes it over
   if (synth && !EMBED) { try { synth.speak(new SpeechSynthesisUtterance('')); } catch {} }   // unlock browser speech
 }
 GESTURES.forEach((t) => addEventListener(t, unlockAudio, true));

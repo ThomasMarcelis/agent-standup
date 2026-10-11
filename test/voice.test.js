@@ -226,3 +226,24 @@ test('server: at most two requests are in flight, the rest wait for a slot', asy
 });
 
 test.after(() => { srv.shutdown(); fs.rmSync(tmp, { recursive: true, force: true }); });
+
+// ---- the page's switches: none of them cuts the line being said (Tom: "the audio still often gets cut off")
+function pageScope(over) {   // run page functions with the names they use stubbed: what is not given is a no-op (DOM painting), the rest is real
+  const el = () => ({ classList: { add() {}, remove() {}, toggle() {}, contains: () => false }, style: {}, dataset: {}, selectedOptions: [], querySelector: () => null, querySelectorAll: () => [] });
+  const noop = () => el();
+  return new Proxy(over, { has: () => true, get: (t, k) => (k in t ? t[k] : k === Symbol.unscopables ? undefined : k in globalThis ? globalThis[k] : noop), set: (t, k, v) => ((t[k] = v), true) });
+}
+test('switches: loading another session (every switch path) lets the line being said finish, then switches; only a pause cuts', async () => {
+  const src = [grab(/const voiceBusy = [^\n]*/), grab(/const VLOG = [^\n]*/), grab(/function vlog\(what\) \{[^\n]*\}/), grab(/function stopVoice\(reason\) \{[^\n]*\}/), grab(/async function finishLine\(cap = 20000\) \{[\s\S]*?\n\}/), grab(/function pause\(reason = 'pause'\) \{[^\n]*\}/), grab(/async function loadSession\(proj, id\) \{[\s\S]*?\n\}/)].join('\n');
+  const cuts = [], live = new Set([{}]), S = { playing: true, speakers: new Set(), loadN: 0, token: 1, cur: { proj: 'a', id: '1' }, agents: {}, events: [] };
+  const AUD = { live, stopAll() { if (live.size) cuts.push('stopped while playing'); live.clear(); } };
+  const scope = pageScope({ S, AUD, Q: new URLSearchParams(''), window: {}, synth: { speaking: false, cancel() {} }, sleep, fetch: async () => ({ json: async () => ({ agents: [], events: [{ ts: 1, kind: 'say', agent: 'main', text: 'x' }], rev: 1, group: null }) }), nameBook: {} });
+  const page = new Function('scope', 'with (scope) { ' + src + '\nreturn { loadSession, pause, VLOG: window.__voiceLog }; }')(scope);
+  setTimeout(() => live.clear(), 300);   // the line ends 300 ms from now
+  const t0 = Date.now(); assert.equal(await page.loadSession('b', '2'), true);
+  assert.deepEqual(cuts, [], 'no line was cut'); assert.ok(Date.now() - t0 >= 280, 'the switch waited for the end of the line: ' + (Date.now() - t0) + ' ms');
+  assert.deepEqual(S.cur, { proj: 'b', id: '2' }); assert.ok(page.VLOG.some((e) => e.what === 'wait for the line to end'));
+  live.add({}); S.playing = true; page.pause('pause'); assert.deepEqual(cuts, ['stopped while playing'], 'an explicit pause does stop it'); assert.ok(page.VLOG.some((e) => e.what === 'cut: pause'));
+  assert.ok(!/AUD\.stopAll\(\)|synth\.cancel\(\)/.test(html.replace(/function stopVoice\(reason\) \{[^\n]*\}/, '').replace(/function speakBrowser[\s\S]*?\n\}/, '').replace(/stopAll\(\) \{[^\n]*\}/, '')), 'nothing else stops a voice');
+  assert.ok(/await finishLine\(\); pause\('mode'\)/.test(html) && (html.match(/await finishLine\(\); pause\('mode'\)/g) || []).length === 2, 'a mode change waits too');
+});
