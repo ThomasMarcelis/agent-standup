@@ -36,7 +36,7 @@ test('codex: rollouts become sessions, a board and a timeline with sub-agents, c
   assert.ok(codex.stamp('_codex', PARENT) > 0 && codex.mtime('_codex', PARENT) > 0);
   const tl = codex.timeline('_codex', PARENT), kinds = {}; for (const e of tl.events) kinds[e.kind] = (kinds[e.kind] || 0) + 1;
   assert.equal(tl.agents.find((a) => a.id === 'main').name, 'Codex');
-  const child = tl.agents.find((a) => a.id === CHILD); assert.ok(child); assert.deepEqual([child.name, child.role, child.nick], ['oom timeline', '/root', 'Socrates']);   // its path segment as its name, the parent path as the role, the invented nickname aside
+  const child = tl.agents.find((a) => a.id === CHILD); assert.ok(child); assert.deepEqual([child.name, child.role, child.nick], ['oom timeline', 'sub-agent', '/root/oom_timeline · Socrates']);   // its path segment as its name, its kind as the role, its path and the invented nickname aside
   assert.deepEqual(tl.group, { key: '_other', name: 'user', other: true });   // the fixture's cwd (/home/user) is no repository on this machine
   const order = tl.events.find((e) => e.kind === 'order'); assert.deepEqual([order.agent, order.to, order.title], ['main', CHILD, 'oom_timeline']);
   assert.ok(tl.events.some((e) => e.kind === 'finish' && e.agent === CHILD), 'SubAgentActivity completed → finish');

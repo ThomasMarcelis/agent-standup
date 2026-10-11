@@ -15,14 +15,14 @@ Then open <http://localhost:4747>. `PORT=4790 node server.js` picks another port
 ## What it shows
 
 - **Sessions board** (the default view): every recent session across the three runtimes, one card each, ranked blocked → busy → your turn → done. Cards are grouped by **project**: the git root of the session's folder (a worktree counts as its parent repo), or for Hermes the profile plus the Discord thread. One colour per project, one-off and non-repo runs last under *Other*. Each card shows the session's functional name, its state, the tool it is running and on what, its age, active sub-agents and who it talks to. Click a card to open its call.
-- **Call**: one session as a team call. Each agent is a tile with what it is doing right now; the shared screen shows the real command and output, the file read or the diff applied. Agents from other sessions that exchanged messages join as participants, with the message and its delivery state (📨 taken by the inbox, ✋ held, ✗ refused, 📥 received).
+- **Call**: one session as a team call. The header names the project in its colour. Every agent wears its project's colour with the project's name on its shirt (a peer from another project wears its own); your shirt says `Tom` (`OWNER` in `public/index.html`). Each tile says what the agent is doing right now; the shared screen shows the real command and output, the file read or the diff applied. Agents from other sessions that exchanged messages join as participants, with the message and its delivery state (📨 taken by the inbox, ✋ held, ✗ refused, 📥 received).
 - **Tree** (T): the lead and its sub-agents at every depth, with status, tool counts and current action. Sub-agents always sit under their root.
 - **Agent detail** (click a tile or a tree row): the task it was given, its tools, recent activity, its messages, and *Open this session* for a peer that lives elsewhere on this machine.
 - **Transcript** (L), **replay and recap** (R), **Ctrl/Cmd+K** to jump to any session, **J/K** for the next agent that needs you, **?** for all shortcuts.
 
-**Names are functional**: a Codex root is named by its thread name (or its first prompt without the model/effort boilerplate), a Codex sub-agent by its `agent_path` leaf ("escape stair"), a Claude sub-agent by the task it was given, a Hermes delegate by its goal. Codex's invented nicknames only appear in the detail header.
+**Names are functional**: a Codex root is named by its thread name (or its first prompt without the model/effort boilerplate), a Codex sub-agent by its `agent_path` leaf ("escape stair") with its kind (worker, explorer) as the role, a Claude sub-agent by the task it was given, a Hermes delegate by its goal. Its full path and Codex's invented nickname only appear in the detail header.
 
-**Sound and voice**: a sound plays only when an agent newly needs you. The voice is ElevenLabs by default and reads content only (no names, labels, routing, delivery state or "From X:" openers). Mute with M.
+**Sound and voice**: a sound plays only when an agent newly needs you. The voice is ElevenLabs by default and reads content only (no names, labels, routing, delivery state or "From X:" openers), in whole sentences. When activity outpaces it, it never reads a line more than 12 s behind the newest event: it jumps to the freshest lines instead. Invented chatter is off (⚙ to turn it on). Mute with M.
 
 ## Where the data comes from
 

@@ -16,7 +16,8 @@
   .dim { color:var(--dim) }
 
   /* ---------- header ---------- */
-  header { height:48px; flex:none; display:flex; align-items:center; gap:10px; padding:0 12px; border-bottom:1px solid var(--line); background:var(--bg) }
+  header { height:48px; flex:none; display:flex; align-items:center; gap:10px; padding:0 12px; border-bottom:3px solid var(--proj, var(--line)); background:var(--bg) }
+  body.board header { border-bottom-color:var(--line) } body.board .brand b { color:inherit !important }
   .brand { display:flex; align-items:center; gap:9px; min-width:0; overflow:hidden } .brand .logo { flex:none } .brand > div { min-width:0 } .brand b { overflow:hidden; text-overflow:ellipsis }
   header > * { flex-shrink:0 } header .brand { flex-shrink:100 } header #board { flex-shrink:50 } .tok, .ctxp { flex-shrink:2; min-width:0; overflow:hidden; text-overflow:ellipsis } #pill { flex-shrink:.05; min-width:0; overflow:hidden; text-overflow:ellipsis }   /* in a narrow window the buttons (the gear above all) stay whole: the name gives way first, then the counters */
   @media (max-width:480px) { header { gap:6px; padding:0 8px } .ctxp { display:none !important } } @media (max-width:420px) { .tok { display:none !important } }
@@ -359,6 +360,11 @@ function uniqueName(id, h) {
   return (nameBook[id] = NAMES[h % NAMES.length] + ' ' + (taken.size + 1));
 }
 const PAL = ['#ff7a6b','#ffb347','#ffd84a','#4fd1a5','#4cc3ff','#7c8cff','#b583ff','#ff7eb6'];
+const OWNER = 'Tom';   // the name on the person's shirt
+// Team shirts: every agent wears its project's colour (the board's) with the project's short name on it; a peer wears its own project's, so a mixed call looks mixed.
+const teamOf = (g) => (!g || g.other ? { key: '_other', short: '' } : { key: g.key, short: g.hermes ? 'Hermes ' + (String(g.key).split(':')[1] || '') : g.name });
+const inkOn = (hex) => { const [r, g, b] = hexRGB(hex); return r * 0.299 + g * 0.587 + b * 0.114 > 150 ? '#1b1d2a' : '#ffffff'; };
+const shirtText = (t) => { t = String(t || '').trim(); return t.length > 16 ? t.slice(0, 15) + '…' : t; };
 const hexRGB = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const mix = (a, b, t) => { const A = hexRGB(a), B = hexRGB(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
 // ---- custom characters: the person's own pixel art (folder served by /api/characters) replaces the drawn figure, scene and desk stay ----
@@ -387,9 +393,10 @@ function renderCharInfo() {
 function persona(a) { const p = persona0(a); p.custom = customFor(a.id); return p; }
 function persona0(a) {
   const h = hash(a.id), base = { ...a };
-  if (a.id === 'main') return { ...base, name: a.name || 'Claude', role: L('Chef', 'Lead'), shirt: '#e8845f', shape: 0, acc: 1, eye: 0, glasses: false, scene: 6, prop: 1, acc2: '#f5c04a', lead: true, vi: 0, gid: 'main' };   // the lead is Claude, Codex or Hermes, as the server says
-  if (a.id === 'user') return { ...base, name: L('Vous', 'You'), role: L('Humain', 'Human'), shirt: '#8a94c9', shape: 1, acc: 2, eye: 1, glasses: false, scene: 7, prop: 1, acc2: '#ff7a6b', vi: 3, gid: 'user' };
-  return { ...base, name: a.name || uniqueName(a.id, h), roleEn: a.roleEn || a.role, role: (FR() && a.roleFr) || a.roleEn || a.role, shirt: PAL[(h >>> 6) % 8], shape: (h >>> 3) % 5, acc: (h >>> 9) % 6, eye: (h >>> 12) % 3, glasses: ((h >>> 15) % 4) === 0,
+  const team = teamOf(a.type === 'peer' ? a.group : S.group), tee = shirtText(team.short), shirt = tee ? GCOL(team.key) : a.id === 'main' ? '#e8845f' : PAL[(h >>> 6) % 8];   // no project (the demo, a one-off): the old colours
+  if (a.id === 'main') return { ...base, name: a.name || 'Claude', role: L('Chef', 'Lead'), shirt, tee, shape: 0, acc: 1, eye: 0, glasses: false, scene: 6, prop: 1, acc2: '#f5c04a', lead: true, vi: 0, gid: 'main' };   // the lead is Claude, Codex or Hermes, as the server says
+  if (a.id === 'user') return { ...base, name: L('Vous', 'You'), role: L('Humain', 'Human'), shirt: '#eef0f6', tee: OWNER, shape: 1, acc: 2, eye: 1, glasses: false, scene: 7, prop: 1, acc2: '#ff7a6b', vi: 3, gid: 'user' };
+  return { ...base, name: a.name || uniqueName(a.id, h), roleEn: a.roleEn || a.role, role: (FR() && a.roleFr) || a.roleEn || a.role, shirt, tee, shape: (h >>> 3) % 5, acc: (h >>> 9) % 6, eye: (h >>> 12) % 3, glasses: ((h >>> 15) % 4) === 0,
            scene: (h >>> 18) % 6, prop: (h >>> 21) % 3, acc2: PAL[(h >>> 24) % 8], vi: h >>> 4, gid: h.toString(36) };
 }
 
@@ -473,13 +480,14 @@ function avatarSVG(p, o, uid = '') {   // uid keeps SVG ids unique per instance:
   const prop = [`<path d="M11 62.4l1.6-7.4h7.2l1.6 7.4z" fill="#e07a5f"/><path d="M16 55q-6-8-2-12q5 4 2 12z" fill="#3fbf7f"/><path d="M16 55q6-7 10-5q-1 6-10 5z" fill="#53c98a"/>`,
     `<rect x="79" y="55.6" width="7.4" height="6.8" rx="1.6" fill="#f6f2ea"/><path d="M86.2 57q3.2 0 3.2 2.2t-3.2 2.2" fill="none" stroke="#f6f2ea" stroke-width="1.3"/><g class="steam" fill="none" stroke="#fff" stroke-width=".8" stroke-linecap="round" opacity=".7"><path d="M81.5 53q-1.4-1.8 0-3.4M84.3 53q-1.4-1.8 0-3.4"/></g>`,
     `<rect x="76" y="58.2" width="14" height="4.2" rx="1" fill="#ff7a6b"/><rect x="77.5" y="54.4" width="12" height="3.8" rx="1" fill="#4cc3ff"/><rect x="76.5" y="50.8" width="11" height="3.6" rx="1" fill="#ffd84a"/>`][p.prop];
-  const lap = `<rect x="33" y="46" width="34" height="18" rx="2.8" fill="#d3d8e6"/><rect x="33" y="46" width="34" height="18" rx="2.8" fill="url(#${uid}lg)" opacity=".5"/><circle cx="50" cy="55" r="2.3" fill="${c1}"/><rect x="29.5" y="63.4" width="41" height="3" rx="1.5" fill="#aab1c2"/>`;
+  const tee = (y, fill, w) => (p.tee ? `<text x="50" y="${y}" text-anchor="middle" font-size="5.2" font-weight="800" font-family="system-ui,sans-serif" fill="${fill}"${p.tee.length > 9 ? ` textLength="${Math.min(w, p.tee.length * 2.9)}" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(p.tee)}</text>` : '');   // the project (or the person's name) printed on the shirt, and on the laptop lid while it works
+  const lap = `<rect x="33" y="46" width="34" height="18" rx="2.8" fill="#d3d8e6"/><rect x="33" y="46" width="34" height="18" rx="2.8" fill="url(#${uid}lg)" opacity=".5"/>${p.tee ? `<rect x="33" y="46" width="34" height="2.4" rx="1.2" fill="${c}"/>` + tee(57, '#2a2f40', 30) : `<circle cx="50" cy="55" r="2.3" fill="${c1}"/>`}<rect x="29.5" y="63.4" width="41" height="3" rx="1.5" fill="#aab1c2"/>`;
   const lapDark = `<rect x="33" y="46" width="34" height="18" rx="2.8" fill="#3b4152"/><rect x="33" y="46" width="34" height="18" rx="2.8" fill="url(#${uid}lg)" opacity=".18"/><circle cx="50" cy="55" r="2.3" fill="${c1}"/><rect x="29.5" y="63.4" width="41" height="3" rx="1.5" fill="#262a36"/>`;   // for custom characters: darker, so it still shows under a white or cream sprite
   const hands = `<circle class="hand l" cx="38" cy="65.6" r="3.1" fill="${c2}"/><circle class="hand r" cx="62" cy="65.6" r="3.1" fill="${c2}"/>`;
   const sparks = star(22, 28, 3) + star(78, 22, 2.6, '#ff9bb8') + star(70, 40, 1.9, '#9be7ff') + star(30, 46, 1.6, '#ffe58a');
   const custFig = (c, talking) => { const base = 'x="20" y="6" width="60" height="58" preserveAspectRatio="xMidYMax meet"', px = 'image-rendering:pixelated;';
     return `<image class="cimg" href="${c.idle}" ${base} style="${px}${talking && c.talk ? 'display:none' : ''}"/>` + (c.talk ? `<image class="cimg cimg-talk" href="${c.talk}" ${base} style="${px}${talking ? '' : 'display:none'}"/>` : ''); };
-  const fig = p.custom ? custFig(p.custom, st && o.m === 2) : `${arm('l')}${bodyShape(p.shape, `url(#${gid})`, c2)}${arm('r')}${face}${acc}`;
+  const fig = p.custom ? custFig(p.custom, st && o.m === 2) : `${arm('l')}${bodyShape(p.shape, `url(#${gid})`, c2)}${arm('r')}${face}${acc}${tee(60.6, inkOn(c), 26)}`;
   return `<svg viewBox="0 0 100 75" preserveAspectRatio="xMidYMid slice"${st ? ' xmlns="http://www.w3.org/2000/svg" width="400" height="300"' : ''}>
     <defs><linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="0" y1="12" x2="0" y2="72"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c}"/></linearGradient>
       <linearGradient id="${uid}dk${p.scene}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${sc.desk[0]}"/><stop offset="1" stop-color="${sc.desk[1]}"/></linearGradient>
@@ -1706,14 +1714,17 @@ async function loadSession(proj, id, gentle = false) {
   pause(); const mine = (S.loadN = (S.loadN || 0) + 1);
   const data = await (await fetch(`/api/session?proj=${encodeURIComponent(proj)}&id=${id}`)).json();
   if (mine !== S.loadN || data.error) return false;
-  S.term = {}; S.camFor = null; S.focus = null; S.agents = {}; for (const k in nameBook) delete nameBook[k]; [{ id: 'user' }, ...data.agents].forEach((a) => (S.agents[a.id] = persona(a)));
+  S.term = {}; S.camFor = null; S.focus = null; S.agents = {}; for (const k in nameBook) delete nameBook[k]; S.group = data.group || null; [{ id: 'user' }, ...data.agents].forEach((a) => (S.agents[a.id] = persona(a)));
   S.events = data.events; S.rev = data.rev; S.group = data.group || null; S.joinAt = Date.now(); S.idx = 0; S.status = {}; S.tc = {}; S.cur = { proj, id }; S.logTo = 0; S.detail = null; $('#detail').classList.remove('on');
   const opt = $('#sessions').selectedOptions[0]; S.title = [S.group && !S.group.other ? S.group.name : niceProj(proj), S.live ? (data.title || '') : (opt && opt.dataset.title) || data.title || ''].filter(Boolean).join(' · ');   // project · session, so it is clear where this call belongs
   if (proj === '_demo') S.events.forEach((e) => { if (e.fr) trMem.set(baseText(e), e.fr); });   // the demo ships its own French
   paintSubtitle(); recomputeStatus(0); buildStage(); renderHighlights(); setFocus('main'); renderLog(true); computeGantt(); layout(); paintStatus(); prefetchTr(0); return true;
 }
 // the header line: 📌 while the live call is pinned to one session (click to unpin and follow the latest activity again)
-function paintSubtitle() { const s = $('#subtitle'); s.textContent = (S.live && S.pin ? '📌 ' : '') + (S.title || ''); s.title = S.live && S.pin ? L('Épinglé · cliquer pour suivre à nouveau la dernière activité', 'Pinned · click to follow the latest activity again') : ''; s.style.cursor = S.live && S.pin ? 'pointer' : ''; }
+function paintSubtitle() {   // in a call the header names the project in its colour, with a stripe of it, so a jump to another project is obvious
+  const team = teamOf(S.group), b = $('.brand b'), inCall = !!(S.cur && S.cur.proj !== '_demo' && team.short);
+  b.textContent = inCall ? team.short : 'Agent Standup'; b.style.color = inCall ? GCOL(team.key) : ''; document.documentElement.style.setProperty('--proj', inCall ? GCOL(team.key) : 'var(--line)');
+  const s = $('#subtitle'); s.textContent = (S.live && S.pin ? '📌 ' : '') + (S.title || '').replace(inCall ? team.short + ' · ' : '\u0000', ''); s.title = S.live && S.pin ? L('Épinglé · cliquer pour suivre à nouveau la dernière activité', 'Pinned · click to follow the latest activity again') : ''; s.style.cursor = S.live && S.pin ? 'pointer' : ''; }
 $('#subtitle').onclick = () => { if (!(S.live && S.pin)) return; S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; savePrefs(); S.cur = null; followCurrent(); };
 const niceProj = (p) => (p === '_demo' ? '' : p === '_codex' ? 'Codex' : /^_hermes/.test(p) ? 'Hermes' + (p.length > 7 ? ' · ' + p.slice(8) : '') : String(p).replace(/^-+/, '').replace(/-/g, '/').split('/').slice(-2).join('/'));
 // where a session runs: its folder for Claude Code; the tool and its folder or chat for Codex and Hermes

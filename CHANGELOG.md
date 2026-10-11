@@ -1,5 +1,15 @@
 # Changelog
 
+## Fork (personal, 2026-10-11)
+Tom's fork: one overview of Claude Code, Codex CLI and Hermes, and the agent-peers messages between them. Not published.
+- **Codex CLI and Hermes sessions** next to Claude Code's (adapters in `adapters/`), and **agent-peers messages** as edges with their delivery state. Native Codex sub-agents and Hermes `delegate_task` children sit under their root.
+- **Sessions board first**: every recent session, grouped by project (git root; a worktree counts as its repo) or Hermes profile + thread, one colour per project, one-offs last, ranked blocked → busy → your turn → done. `npm run check:placement` checks that every busy session has a project.
+- **Who is who, at a glance**: every agent wears its project's colour with the project's name on its shirt (on the laptop lid while it works); a peer from another project wears its own, so a mixed call looks mixed; your shirt says `Tom` (`OWNER` in `public/index.html`). In a call the header is the project's name in its colour, with a stripe of it.
+- **Functional names**: Codex roots by thread name or their first prompt without the model/effort boilerplate, Codex sub-agents by their `agent_path` leaf with their kind (worker, explorer) as the role, Claude sub-agents by their task, Hermes delegates by their goal; cut at a word.
+- **Voice**: ElevenLabs by default (key, model and voice from the Hermes profile, cached per line); content only; the sound only when an agent newly needs a human. Under load nothing more than 12 s behind the newest event is read (the call jumps to the freshest lines, the most important first), sentences are never cut, a background reload finishes the sentence being said and carries on after it, and only lines that will be read are synthesised. Invented chatter is off by default.
+- Fixes: the page no longer throws on load; `list_peers` listings and echoed send results are not counted as messages; a send between agents of the same Codex session stays inside it; a sub-agent given more work after finishing shows as working; context warnings only for agents still at work.
+- No coffee or support links.
+
 ## 1.25.1
 - Fix: in a live call, the first line after a silence (typically your own order) was skipped or rushed. The call measured how far behind it was against the previous event, which after a few idle minutes looked like a huge backlog. The lag is now the gap between the line being played and the newest line of the session, so an idle session is never “behind”.
 - Fix: your own sub-agent characters were picked per agent without looking at the others, so two sub-agents often got the same picture while others went unused. A new sub-agent now gets a picture no other agent on the call holds; pictures repeat only once every one is taken. Contributed by [rqwj](https://github.com/rqwj) (#1).

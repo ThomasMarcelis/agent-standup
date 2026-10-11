@@ -245,9 +245,9 @@ function timeline(proj, id) {
   const agents = { main: { id: 'main', role: 'Lead', type: 'main', name: 'Codex' } }, states = [], childByTool = {}, childByPath = { '/root': 'main' }, pathOf = { main: '/root' };
   for (const m of all) {
     const aid = m === root ? 'main' : m.id;
-    if (aid !== 'main') {   // the functional name: the last segment of its path as words; the parent path as the role; the nickname Codex invented only as a dim extra
+    if (aid !== 'main') {   // the functional name: the last segment of its path as words; its kind (worker, explorer) as the role; its full path and the nickname Codex invented only in the detail header
       const segs = (m.agentPath || '').split('/').filter(Boolean), leaf = segs.pop() || '';
-      agents[aid] = { id: aid, name: peers.label(human(leaf).replace(/ (?:ultra|max|xhigh)$/i, '') || m.nickname || 'sub-agent', 40), role: segs.length ? '/' + segs.join('/') : 'sub-agent', nick: m.nickname || '', type: m.role || 'agent', mtime: (statOf(m) || {}).mtime };
+      agents[aid] = { id: aid, name: peers.label(human(leaf).replace(/ (?:ultra|max|xhigh)$/i, '') || m.nickname || 'sub-agent', 40), role: m.role && !/^(default|agent)$/.test(m.role) ? m.role : 'sub-agent', nick: [m.agentPath, m.nickname].filter(Boolean).join(' · '), type: m.role || 'agent', mtime: (statOf(m) || {}).mtime };
       if (m.agentPath) { childByPath[m.agentPath] = aid; pathOf[aid] = m.agentPath; }
     }
     const st = readNew(m.file, aid, m); if (!st) continue; states.push(st); Object.assign(childByTool, st.childByCall);
