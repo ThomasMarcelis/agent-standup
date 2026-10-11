@@ -11,12 +11,13 @@ What exists today, what was investigated, and what is deliberately not built yet
 | **Desktop** | Small app for macOS (Apple Silicon and Intel, unsigned): window + menu bar indicator + notification when an agent may need you. Windows and Linux builds are set up in CI but untested. |
 | **JetBrains IDEs** | Not native yet. Recipe: *Settings → Tools → External Tools → +*, program `npx`, arguments `-y @double_geste/agent-standup --open`, working directory `$ProjectFileDir$`; the call opens in your browser. |
 
-## Other agent tools (researched, not built)
-Agent Standup reads Claude Code's transcripts. Reading other tools needs one adapter each. A web research pass found that **almost every format is undocumented or reverse-engineered and sources disagree**, and no real log of these tools was available to test against, so no adapter was written blind. Ranking if/when someone wants to take one (sources are third-party; verify against a real install first):
+## Other agent tools
+Agent Standup reads Claude Code's transcripts, and since this fork also **Codex CLI** (`adapters/codex.js`, verified against codex-cli 0.162.1 rollouts: `session_meta`, `item_completed` items for commands, patches and MCP calls, `SubAgentActivity` for native sub-agents, `token_usage_record` deduplicated by response) and **Hermes Agent** (`adapters/hermes.js`, read-only SQLite per profile: `sessions`, `messages` with `active=1 or compacted=1`, `delegate_task` children by `parent_session_id`). Each adapter turns its store into the common event list (`say`, `tools`, `results`, `order`, `finish`, `usage`, `msg`…) and is chosen by the `proj` prefix (`_codex`, `_hermes[-profile]`); `adapters/peers.js` reads the messages agents send each other through agent-peers. Fixtures in `test/fixtures` are trimmed, anonymised real logs.
+
+Remaining candidates, researched but not built (sources are third-party; verify against a real install first):
 
 | Tool | Where logs live (per sources) | Fit |
 |---|---|---|
-| Codex CLI | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | Closest to Claude Code (JSONL, tool items, token counts, sub-agent parentage). Field names differ between sources. First candidate. |
 | Gemini CLI | `~/.gemini/tmp/<project_hash>/chats/` | Official docs confirm the folder, tool I/O and tokens; file format to confirm on a real install. |
 | OpenCode | `~/.local/share/opencode/` | Has explicit parent/child sessions and full token/cost data, but storage changed between versions (SQLite, then JSON, then SQLite again). |
 | Amp | `~/.local/share/amp/threads/T-<uuid>.json` (community sources) | One JSON file per thread; small adapter, small user base. |
