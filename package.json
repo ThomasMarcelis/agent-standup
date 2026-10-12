@@ -134,5 +134,8 @@
   "bugs": {
     "url": "https://github.com/Atoll92/agent-standup/issues"
   },
-  "l10n": "./l10n"
+  "l10n": "./l10n",
+  "bin": {
+    "agent-standup": "server.js"
+  }
 }

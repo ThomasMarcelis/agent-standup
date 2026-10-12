@@ -10,6 +10,13 @@ This is Tom's personal fork of [Atoll92/agent-standup](https://github.com/Atoll9
 cd ~/workspace/agent-standup && node server.js
 ```
 
+Or install the command once (it links this clone, so `git pull` updates it):
+
+```sh
+cd ~/workspace/agent-standup && npm link
+agent-standup
+```
+
 Then open <http://localhost:4747>. `PORT=4790 node server.js` picks another port. Node 22.5+ (Hermes is read with the built-in `node:sqlite`); there is nothing to install.
 
 ## What it shows
