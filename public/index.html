@@ -2254,7 +2254,7 @@ async function followCurrent() {   // a switch lets the line being said finish (
 }
 let polling = false;
 setInterval(async () => {
-  if (!S.live || polling || document.hidden || (document.body.classList.contains('board') && !S.playing)) return; polling = true;   // the board has its own loop; a hidden tab follows nothing
+  if (!S.live || polling || (document.hidden && !heard()) || (document.body.classList.contains('board') && !S.playing)) return; polling = true;   // the board has its own loop; a hidden tab keeps following while it holds the sound, so the voice carries on in the background
   try {
     const switched = await followCurrent(); if (S.offline) { S.offline = false; syncUI(); }
     if (switched || !S.cur) return;
@@ -2364,7 +2364,7 @@ function updateFollow(rows) {   // whether the rail is on screen or not (the tre
     else if (!t && S.autoPin && !hold) { S.autoPin = null; followCurrent(); }   // nothing needs Tom any more: back to the most active session
   }
 }
-setInterval(async () => { if (S.live && !S.demo && !document.hidden && !document.body.classList.contains('board')) updateFollow(await boardNow(1000)); }, 3000);
+setInterval(async () => { if (S.live && !S.demo && (!document.hidden || heard()) && !document.body.classList.contains('board')) updateFollow(await boardNow(1000)); }, 3000);
 // Which session the call should go to on its own: in "everything", one that needs Tom; in a project, its most urgent session (a pin always wins)
 function followTarget(rows, follow) {
   const pool = follow && follow.startsWith('g:') ? rows.filter((r) => boardKey(r) === follow.slice(2)) : rows.filter((r) => r.state === 'blocked');
@@ -2537,6 +2537,7 @@ function applyLang() {
   document.querySelectorAll('#menu .mi[data-t]').forEach((b) => b.querySelector('.sw').classList.toggle('on', !!prefs[b.dataset.t])); renderTokens(); updateHint(); renderLog(true); syncUI(); if ($('#logTools')) paintLogTools();
 }
 const elsewhere = () => !!(S.owner && S.owner !== CID);
+const heard = () => !!prefs.voice && !AUD.off();   // this window holds the sound and is not muted: it keeps narrating when hidden
 function applyMute() {
   paintSound(); AUD.apply(); if (AUD.off()) stopVoice(AUD.muted ? 'mute' : 'another window took the sound');
 }
