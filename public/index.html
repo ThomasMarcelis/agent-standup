@@ -1146,9 +1146,15 @@ function renderTokens() {
 // file edits are instant, so one that stays pending is almost surely an approval prompt; a Bash command may legitimately run long (⏳ badge instead)
 const NEEDS_OK = /^(Edit|Write|MultiEdit|NotebookEdit|AskUserQuestion|ExitPlanMode|apply_patch|patch|write_file|request_user_input|clarify)/, ASKS = /^(AskUserQuestion|ExitPlanMode|request_user_input|clarify)/;   // Claude Code, Codex and Hermes names for "needs the human"
 const atTail = () => S.idx >= S.events.length - 3;   // only trust wall-clock ages when playback has caught up with the live end
+const teamOf2 = (lead) => { const pre = lead === 'main' ? '' : lead.slice(0, lead.indexOf('__') + 2); return Object.keys(S.agents).filter((c) => c !== lead && c !== 'user' && S.agents[c].type !== 'peer' && (pre ? c.startsWith(pre) : !c.includes('__'))); };   // a lead's own sub-agents, in a project's call
 function agentState(id, now) {
-  let s = S.status[id]; const r = S.run[id], w = S.waitOn[id], la = S.lastAct[id];
-  if (id === 'main' && !s) { if (r || (w && w.size) || (S.live && la && now - la < 25000)) s = 'working'; else if (S.live && la) return { k: 'done', txt: '✓ ' + L('fini', 'finished') }; }   // its turn ended: finished, not "needs you" 
+  let s = S.status[id]; const r = S.run[id], w = S.waitOn[id], la = S.lastAct[id], lead = id === 'main' || !!(S.agents[id] || {}).lead;
+  if (lead && s !== 'done') {   // a lead: working while it acts; its turn ended but its own sub-agents still work: waiting on them, never finished; else finished, not "needs you"
+    if (r || (w && w.size) || (S.live && la && now - la < 25000)) s = 'working';
+    else { const kids = S.live ? teamOf2(id).filter((c) => S.status[c] === 'working' && !S.gone.has(c) && now - (S.seen[c] || 0) < VANISH_MS) : [];
+      if (kids.length) { const on = kids.map(nameOf); return { k: 'waiting', txt: '⏳ ' + L('attend ', 'waiting on ') + on.slice(0, 2).concat(on.length > 2 ? ['+' + (on.length - 2)] : []).join(', '), on }; }
+      if (S.live && la) return { k: 'done', txt: '✓ ' + L('fini', 'finished') }; }
+  } 
   if (s === 'done') return { k: 'done', txt: '✓ ' + L('terminé', 'done') };
   if (s === 'peer') return { k: 'peer', txt: '↔ ' + L('autre session', 'other session') };
   if (!s) return { k: 'idle', txt: '' };
@@ -1968,17 +1974,18 @@ function triageItems(evs, done, now, needs = new Set(), agents = {}, beat = plai
 function applyTriage(items, res) {   // the model's answer, held to the rules; null when it is not usable
   if (!res || typeof res !== 'object' || !Array.isArray(res.say) || !Array.isArray(res.drop)) return null;
   const byId = new Map(items.map((it) => [it.id, it])), out = [];
-  for (const x of res.say) { if (out.length >= maxLines(items.length)) break; if (!x || typeof x.line !== 'string' || !Array.isArray(x.ids)) continue; const its = x.ids.map((id) => byId.get(id)).filter(Boolean), line = withRoute(speakable(x.line), its); if (its.length && line && !GENERIC.test(line)) out.push({ line, items: its }); }   // a generic line is dropped, not said
-  for (const it of items) if (it.kind === 'needs_you' && !out.some((o) => o.items.includes(it))) out.push({ line: clipSpeech(it.text, 200), items: [it] });   // never dropped, whatever the model said
+  for (const x of res.say) { if (out.length >= maxLines(items.length)) break; if (!x || typeof x.line !== 'string' || !Array.isArray(x.ids)) continue; const its = x.ids.map((id) => byId.get(id)).filter(Boolean), line = withProject(withRoute(speakable(x.line), its), its); if (its.length && line && !GENERIC.test(line)) out.push({ line, items: its }); }   // a generic line is dropped, not said
+  for (const it of items) if (it.kind === 'needs_you' && !out.some((o) => o.items.includes(it))) out.push({ line: withProject(clipSpeech(it.text, 200), [it]), items: [it] });   // never dropped, whatever the model said
   return out;
 }
 function localPick(items) {   // without the model: everything that needs Tom, then the most important of the rest (the newest among equals), as many lines as the queue allows, each cut at a sentence
   const need = items.filter((it) => it.kind === 'needs_you'), rest = items.filter((it) => it.kind !== 'needs_you' && it.kind !== 'work' && it.kind !== 'status' && !GENERIC.test(it.text)).sort((a, b) => (TPRIO[b.kind] || 0) - (TPRIO[a.kind] || 0) || b.ev.ts - a.ev.ts);   // what an agent is doing needs the model's words from its content: without the model it is not said
-  return [...need, ...rest.slice(0, Math.max(0, maxLines(items.length) - need.length))].map((it) => ({ line: withRoute(clipSpeech(it.text, 200), [it]), items: [it] }));
+  return [...need, ...rest.slice(0, Math.max(0, maxLines(items.length) - need.length))].map((it) => ({ line: withProject(withRoute(clipSpeech(it.text, 200), [it]), [it]), items: [it] }));
 }
 // A line about messages between agents starts with the route of its first message, exactly as the page made it (2 to 4 words): what the model put before a colon is
 // replaced when it is a lead-in, so the route is never a title, a session name or a sentence. Other lines stay content only.
 const ROUTE_MAX = 4;
+const withProject = (line, its) => { const p = its.length && its.every((it) => it.far && it.far === its[0].far) ? its[0].project : ''; return !p || !line || line.toLowerCase().startsWith(String(p).toLowerCase()) ? line : `${p}: ${line}`; };   // "MarketSimulator: …" when the line is about another project
 function withRoute(line, its) {
   const r = (its.find((it) => it.route) || {}).route; if (!r || !line || !its.every((it) => it.route)) return line;
   const m = /^([^:.!?]{1,80}):\s*/.exec(line), lead = m && (m[1].trim().split(/\s+/).length <= 5 || /^(?:to|from|for)\b|\b(?:to|from)\b/i.test(m[1])), body = lead ? line.slice(m[0].length) : line;   // a short lead-in, or one that says who to whom
@@ -2017,10 +2024,27 @@ async function decide(items, max) {
   } catch {}
   return warmLines(localPick(items));
 }
+const lastSays = (evs, now = Date.now()) => { const out = {}; for (let k = evs.length - 1, n = 0; k >= 0 && n < 400; k--, n++) { const e = evs[k]; if (now - (e.ts || 0) > 180000) break; if (e.kind === 'say' && e.text && !out[e.agent]) out[e.agent] = clipSpeech(String(e.text), 220); } return out; };   // each agent's latest words: what its command is for
 function collect() {
-  D.ctx = {}; for (let k = S.events.length - 1, n = 0; k >= 0 && n < 400; k--, n++) { const e = S.events[k]; if (Date.now() - (e.ts || 0) > 180000) break; if (e.kind === 'say' && e.text && !D.ctx[e.agent]) D.ctx[e.agent] = clipSpeech(String(e.text), 220); }   // each agent's latest words: what its command is for
-  const items = triageItems(S.events, D.done, Date.now(), new Set(S.needs || []), S.agents, beatOf).filter((it) => { if (it.kind !== 'work' || D.beat.get(it.agent) !== it.act) return true; D.done.add(it.ev); return false; });   // still doing what was said: nothing new
+  D.ctx = lastSays(S.events); const env = callEnv(), now = Date.now(), notNew = (it) => { if (it.kind !== 'work' || D.beat.get(it.agent) !== it.act) return true; D.done.add(it.ev); return false; };   // still doing what was said: nothing new
+  const items = triageItems(S.events, D.done, now, new Set(S.needs || []), S.agents, (e) => beatOf(e, env)).filter(notNew);
+  if (farOn()) for (const p of FAR.projects) { const fe = farEnv(p); items.push(...triageItems(p.events, D.done, now, new Set(), p.agents, (e) => beatOf(e, fe)).filter(notNew).slice(-FAR_EACH).map((it) => Object.assign(it, { project: p.name, far: p.key }))); }
   items.forEach((it, n) => { it.id = n + 1; D.done.add(it.ev); if (it.ev.kind === 'msg' && it.kind !== 'needs_you') it.route = routeOf(it.ev); }); return items;
+}
+// ---- Everything narrates every live project (Tom: "it's not appropriately telling me everything from ALL projects"): the other projects' new events come from /api/feed
+// (the server's cached timelines of their live sessions), join the director's queue with the same freshness and dedupe, and a line about one starts with its name.
+const FAR = { projects: [], ev: new Map() }, FAR_EACH = 6, FAR_MS = 4000;
+const farOn = () => S.live && !S.demo && !S.pin && (prefs.follow || 'all') === 'all' && prefs.voice && !AUD.off();
+async function farFeed() {
+  if (!farOn() || !heardOrShown()) { FAR.projects = []; return; } let d; try { d = await (await fetch('/api/feed?skip=' + encodeURIComponent((S.group || {}).key || ''))).json(); } catch { return; }
+  const now = Date.now(); for (const [k, e] of FAR.ev) if (now - (e.ts || 0) > 300000) FAR.ev.delete(k);
+  FAR.projects = (d.projects || []).map((p) => { const events = p.events.map((e) => { const k = e.sess + '|' + e.ts + '|' + e.kind + '|' + e.agent; if (!FAR.ev.has(k)) FAR.ev.set(k, e); return FAR.ev.get(k); });   // the same event is the same object: told once
+    return { ...p, events, ctx: lastSays(events, now) }; });
+}
+const heardOrShown = () => !document.hidden || heard();   // heard() is defined below; this runs from a timer, after the page is set up
+function farEnv(p) {   // another project's agents, named as on their shirts; its leads by their harness ("Claude", "Codex")
+  return { agents: p.agents, ctx: p.ctx || {}, task: (id) => { const a = p.agents[id] || {}; return a.lead ? a.task : a.name; },
+    who: (id) => { const a = p.agents[id]; if (!a) return ''; if (a.lead) return a.name || L('Le chef', 'The lead'); const n = String(a.name || '').trim(), role = n && n.split(/\s+/).length <= 3 ? n : shirtRole(n || a.role || '') || a.role || ''; return role ? L(role.charAt(0).toUpperCase() + role.slice(1), `The ${role}`) : ''; } };
 }
 // Who, in a line about what an agent does: "Gladiator lead", "The kettle hat" (a sub-agent by its role, never "a sub-agent"), "Astra"
 function whoDoes(id) {
@@ -2043,17 +2067,18 @@ function testsOf(out) {   // a test run's result from its output (node, jest, py
   if (pass == null || (pass === 0 && !fail)) return ''; const all = pass + (fail || 0);
   return fail ? L(`${fail} tests sur ${all} échouent`, `${fail} of ${all} tests failed`) : L(`les ${pass} tests passent`, `all ${pass} tests pass`);
 }
-function beatOf(e) {   // the line an event is worth: its own words, or, in plain words from the event itself, what the agent is doing, starting, finishing, committing or what its tests said
+// Whose events a beat is worded from: the call on screen, or another live project's sessions from the feed (Everything narrates every project)
+const callEnv = () => ({ agents: S.agents, who: whoDoes, ctx: D.ctx || {}, task: (id) => { const a = S.agents[id] || {}; return id === 'main' ? (S.title || '').split(', ').slice(1).join(', ') : a.lead ? (a.team || {}).title : a.name; } });
+function beatOf(e, env = callEnv()) {   // the line an event is worth: its own words, or, in plain words from the event itself, what the agent is doing, starting, finishing, committing or what its tests said
   const own = plainBeat(e); if (own && own.text && !e.label) return own;
-  const who = whoDoes(e.agent); if (!who) return null;
-  if (e.kind === 'order') { const n = String(e.title || (S.agents[e.to] || {}).name || '').replace(/[_-]+/g, ' '), brief = !e.label && e.text ? clipSpeech(String(e.text), 300) : ''; return n ? { kind: 'order', text: `${who} ${L('lance', 'started')} ${L(n, 'the ' + n)}`, hint: brief ? 'its brief: ' + brief : '' } : null; }   // what it was started to do
-  if (e.kind === 'finish') { const said = (D.ctx || {})[e.agent]; return said ? { kind: 'finish', text: `${who} ${L('a terminé', 'finished')}`, hint: 'it concluded: ' + said } : null; }   // what it concluded, or nothing (its report says it)
+  const who = env.who(e.agent); if (!who) return null;
+  if (e.kind === 'order') { const n = String(e.title || (env.agents[e.to] || {}).name || '').replace(/[_-]+/g, ' '), brief = !e.label && e.text ? clipSpeech(String(e.text), 300) : ''; return n ? { kind: 'order', text: `${who} ${L('lance', 'started')} ${L(n, 'the ' + n)}`, hint: brief ? 'its brief: ' + brief : '' } : null; }   // what it was started to do
+  if (e.kind === 'finish') { const said = env.ctx[e.agent]; return said ? { kind: 'finish', text: `${who} ${L('a terminé', 'finished')}`, hint: 'it concluded: ' + said } : null; }   // what it concluded, or nothing (its report says it)
   if (e.kind === 'results') { for (const it of e.items || []) { const r = testsOf(it.out); if (r) return { kind: 'tests', text: `${who}: ${r}` }; } return null; }
   if (e.kind !== 'tools') return null;
   for (const t of e.tools || []) { const c = commitOf(t); if (c) return { kind: 'commit', text: `${who} ${L('a fait un commit', 'committed')}: ${c}` }; }
   const t = (e.tools || []).find((x) => { const a = plainAct(x.name, x.arg); return !dullAct(a) && verbAct(a); }); if (!t) return null;
-  const act = plainAct(t.name, t.arg), d = t.d || {}, a = S.agents[e.agent] || {}, shell = /^(Bash|exec_command|shell|terminal|local_shell|exec)$/.test(t.name);
-  const task = e.agent === 'main' ? (S.title || '').split(', ').slice(1).join(', ') : a.lead ? (a.team || {}).title : a.name, said = (D.ctx || {})[e.agent];
+  const act = plainAct(t.name, t.arg), d = t.d || {}, shell = /^(Bash|exec_command|shell|terminal|local_shell|exec)$/.test(t.name), task = env.task(e.agent), said = env.ctx[e.agent];
   const hint = [shell && 'command: ' + String(t.arg || '').split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 3).join(' ; ').slice(0, 260), d.note && 'its purpose: ' + d.note, d.file && 'file: ' + d.file, said && 'it just said: ' + said, task && 'its task: ' + task].filter(Boolean).join(' | ');
   return { kind: 'work', act, text: L(`${who} : ${ing(act)}`, `${who} is ${ing(act)}`), hint };   // the content for the wording (what, why, for which task), never read out as such
 }
@@ -2061,7 +2086,7 @@ function beatOf(e) {   // the line an event is worth: its own words, or, in plai
 const STATUS_MS = 20000;
 function statusItems(rows, now = Date.now()) {
   const f = prefs.follow || 'all', scope = S.pin ? rows.filter((r) => S.cur && r.id === S.cur.id) : f.startsWith('g:') ? rows.filter((r) => boardKey(r) === f.slice(2)) : rows;
-  const busy = scope.filter((r) => /^(working|blocked)$/.test(r.state) && now - r.mtime < LIVE_MS && !(r.oneshot && (!r.group || r.group.other))).sort((a, b) => (b.state === 'blocked') - (a.state === 'blocked') || b.mtime - a.mtime);
+  const busy = scope.filter((r) => /^(working|waiting|blocked)$/.test(r.state) && now - r.mtime < LIVE_MS && !r.oneshot).sort((a, b) => (b.state === 'blocked') - (a.state === 'blocked') || b.mtime - a.mtime);
   if (!busy.length) return [];
   const name = (r) => projWord(r.group) || (r.group && r.group.hermes ? 'Hermes' : niceProj(r.proj)) || L('un appel', 'a call');
   const top = busy.slice(0, 3).sort((a, b) => (b.state === 'blocked') - (a.state === 'blocked') || name(a).localeCompare(name(b)));   // the 3 most recent, in a steady order: the line changes only when the work does
@@ -2114,6 +2139,7 @@ async function directorStep() {   // called every 300 ms and not awaited: decidi
   } finally { D.speaking = false; }
 }
 (async () => { for (;;) { await sleep(300); directorStep().catch(() => {}); } })();
+setInterval(farFeed, FAR_MS);   // Everything: the other live projects' new events, every 4 s
 const SPEECH_MAX = 560;   // the server reads at most 600 characters of a line (ELEVEN_MAX): what is sent always ends before that, at a sentence or a clause
 function clipSpeech(t, cap) {   // the bubble keeps the full text; the voice reads the first sentence(s) up to cap characters
   cap = cap || 520;   // no cap (a replay) still ends at a sentence under the server's 600-character voice limit, never mid-word
@@ -2341,6 +2367,7 @@ function railSplit(rows, curId, now = Date.now()) {
   for (const r of rows) {
     const here = curId instanceof Set ? curId.has(r.id) : r.id === curId, busy = /^(working|waiting|blocked)$/.test(r.state), age = now - r.mtime;   // the call's sessions (a set) or one session
     if (!here && !busy && (r.stopped || r.state === 'done' || r.oneshot || age > OLD_MS)) continue;   // a one-off that ended is not shown at all
+    if (!here && r.oneshot && r.state !== 'blocked') continue;   // a one-shot run (a cron's progress report) is a report, not a call
     const stray = r.oneshot && (!r.group || r.group.other);   // a one-off outside any project ("Reply with PONG-3969"): quiet even while it runs
     if (r.state === 'blocked') needs.push(r); else if (here || (!stray && (busy || age < LIVE_MS))) live.push(r); else quiet.push(r);
   }
@@ -2357,18 +2384,31 @@ function noteSwitch(text) {   // a switch nobody asked for says why: a toast lon
 }
 const dividerHtml = (d) => `<div class="row divider">⇄ ${esc(d.text)} <span class="dim">${new Date(d.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span></div>`;
 function updateFollow(rows) {   // whether the rail is on screen or not (the tree, a narrow window), a followed project keeps its call current
-  const follow = prefs.follow || 'all', cur = S.cur || {}, t = !S.pin && followTarget(rows, follow);
+  const follow = prefs.follow || 'all', cur = S.cur || {}, t = !S.pin && followTarget(rows, follow, (S.group || {}).key || '');
   if (!S.pin) {   // follow: switch with a hold so the call does not flicker between sessions
-    const there = t && (cur.id === t.id || inCall(t)), hold = Date.now() - (S.switchAt || 0) < FOLLOW_HOLD;   // a session of this call is already on screen
-    if (t && !there && !hold) { S.autoPin = { proj: t.proj, id: t.id }; S.switchWhy = { why: t.state === 'blocked' ? 'needs' : 'busy', to: t.group ? t.group.name : t.title, toTitle: t.title }; followCurrent(); }
+    const there = t && (cur.id === t.id || inCall(t) || (S.group && boardKey(t) === S.group.key)), hold = Date.now() - (S.switchAt || 0) < FOLLOW_HOLD;   // this call, or this project's call: already on screen
+    if (t && !there && !hold) { S.autoPin = { proj: t.proj, id: t.id }; S.switchWhy = { why: t.state === 'blocked' ? 'needs' : 'busy', to: t.group ? t.group.name : t.title, toTitle: t.group && !t.group.other ? t.group.name : t.title }; followCurrent(); }
+    else if (t && there && follow === 'all' && !S.autoPin) S.autoPin = { proj: cur.proj, id: cur.id };   // everything: the busiest project is on screen, so it holds the call (not the most recently written session anywhere)
     else if (!t && S.autoPin && !hold) { S.autoPin = null; followCurrent(); }   // nothing needs Tom any more: back to the most active session
   }
 }
 setInterval(async () => { if (S.live && !S.demo && (!document.hidden || heard()) && !document.body.classList.contains('board')) updateFollow(await boardNow(1000)); }, 3000);
 // Which session the call should go to on its own: in "everything", one that needs Tom; in a project, its most urgent session (a pin always wins)
-function followTarget(rows, follow) {
-  const pool = follow && follow.startsWith('g:') ? rows.filter((r) => boardKey(r) === follow.slice(2)) : rows.filter((r) => r.state === 'blocked');
-  return pool.sort((a, b) => BORDER.indexOf(a.state) - BORDER.indexOf(b.state) || b.mtime - a.mtime)[0] || null;
+// How busy each project is now: every agent that wrote in the last 2 minutes, leads and sub-agents of all its sessions (one-shot runs are not work); its best session first
+const ACT_MS = 120000;
+function projectActivity(rows, now = Date.now()) {
+  const m = new Map();
+  for (const r of rows) { if (r.oneshot || r.stopped || !r.group || r.group.other) continue; const k = boardKey(r), a = (now - r.mtime < ACT_MS ? 1 : 0) + (r.subActive || 0); if (!a && !/^(working|waiting|blocked)$/.test(r.state)) continue;
+    const g = m.get(k) || { key: k, score: 0, row: null, best: -1 }; g.score += a; if (a > g.best || (a === g.best && r.mtime > g.row.mtime)) { g.best = a; g.row = r; } m.set(k, g); }
+  return [...m.values()].sort((a, b) => b.score - a.score || b.row.mtime - a.row.mtime);
+}
+// Which session the call should be on: in a project, its most urgent; in "everything", one that needs Tom, else the busiest project, but the call on screen stays unless
+// another is clearly busier (half again as busy, two agents more at least): Tom saw it stuck on gladiator while MarketSimulator had six agents at work
+function followTarget(rows, follow, curKey = '', now = Date.now()) {
+  if (follow && follow.startsWith('g:')) return rows.filter((r) => boardKey(r) === follow.slice(2) && !r.oneshot).sort((a, b) => BORDER.indexOf(a.state) - BORDER.indexOf(b.state) || b.mtime - a.mtime)[0] || null;
+  const need = rows.filter((r) => r.state === 'blocked').sort((a, b) => b.mtime - a.mtime)[0]; if (need) return need;
+  const act = projectActivity(rows, now), top = act[0], cur = act.find((g) => g.key === curKey); if (!top) return null;
+  return cur && (cur === top || top.score < Math.max(cur.score * 1.5, cur.score + 2)) ? cur.row : top.row;
 }
 async function renderCalls() {
   const box = $('#calls'); if (!box || document.hidden || !S.live || document.body.classList.contains('board') || document.body.classList.contains('tree') || getComputedStyle($('#side')).display === 'none') return;

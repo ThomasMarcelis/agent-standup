@@ -125,7 +125,7 @@ function stamp(proj, id) {
   return n;
 }
 const tlCache = new Map(), revSeen = new Map();   // "proj/id" → { st (file stamp), tl, at, ms, files[], json?, gz? }; the last revision of each, kept past eviction
-const MAX_CACHED_SESSIONS = 8, MAX_CACHE_BYTES = () => (+process.env.AGENT_STANDUP_CACHE_MB || 200) * 1048576;   // at most 8 sessions (a project's call holds up to 6), and their served JSON within the byte budget (the newest is always kept)
+const MAX_CACHED_SESSIONS = 16, MAX_CACHE_BYTES = () => (+process.env.AGENT_STANDUP_CACHE_MB || 200) * 1048576;   // at most 16 sessions (a project's call holds up to 6, and Everything reads the other live projects), and their served JSON within the byte budget (the newest is always kept)
 const entryBytes = (e) => e.bytes || e.tl.events.length * 600;   // before its first response, an estimate from its events
 function timelineEntry(proj, id) {
   const key = proj + '/' + id, st = stamp(proj, id), hit = tlCache.get(key), now = Date.now();
@@ -146,7 +146,7 @@ function timelineEntry(proj, id) {
 const CALL_LIVE_MS = 10 * 60e3, CALL_MAX = 6, callCache = new Map();
 function callMates(proj, id, group, rows, now = Date.now()) {   // the other live sessions of the same project, the most recent first
   if (!group || group.other || !group.key) return [];
-  return rows.filter((r) => r.group && r.group.key === group.key && !(r.proj === proj && r.id === id) && !r.stopped && !(r.oneshot && !/^(working|waiting|blocked)$/.test(r.state)) && (/^(working|waiting|blocked)$/.test(r.state) || now - r.mtime < CALL_LIVE_MS))
+  return rows.filter((r) => r.group && r.group.key === group.key && !(r.proj === proj && r.id === id) && !r.stopped && !r.oneshot && (/^(working|waiting|blocked)$/.test(r.state) || now - r.mtime < CALL_LIVE_MS))   // a one-shot run (a cron's report) is no part of a call
     .sort((a, b) => b.mtime - a.mtime).slice(0, CALL_MAX - 1);
 }
 const callPrefix = (id) => 's' + String(id).replace(/[^0-9a-z]/gi, '').slice(-6) + '__';   // safe in an element id and a CSS selector (#t-s0a56b7__main)
@@ -174,6 +174,27 @@ function callEntry(proj, id) {   // the call of a session: its timeline merged w
   const tl = mergeCall({ proj, id, tl: me.tl }, mates.map((m) => ({ proj: m.proj, id: m.id, tl: m.e.tl })));
   const c = { parts, tl, rev: parts.map((p) => p.rev).join('.'), sig: [key, ...mates.map((m) => m.proj + '/' + m.id)].sort().join(' ') };
   callCache.delete(key); callCache.set(key, c); if (callCache.size > 12) callCache.delete(callCache.keys().next().value); return c;
+}
+// ---- Everything narrates every live project (Tom: "it's not appropriately telling me everything from ALL projects"): the newest speakable events of the other live
+// projects' sessions, for the voice director only (the screen keeps one call). Each session's timeline is the cached one, rebuilt at most every FEED_MS, so it stays cheap.
+const FEED_MS = 12000, FEED_WINDOW = 120000, FEED_SESSIONS = 10, FEED_KINDS = new Set(['say', 'report', 'msg', 'order', 'finish', 'tools', 'results']), feedMemo = new Map();
+function feed(skipKey, rows, now = Date.now(), entryOf = timelineEntry) {
+  const live = rows.filter((r) => r.group && !r.group.other && !r.oneshot && !r.stopped && r.group.key !== skipKey && now - r.mtime < FEED_WINDOW).sort((a, b) => b.mtime - a.mtime).slice(0, FEED_SESSIONS);
+  const cut = (t, n) => String(t == null ? '' : t).slice(0, n), projects = new Map();
+  for (const r of live) {
+    const k = r.proj + '/' + r.id; let m = feedMemo.get(k);
+    if (!m || now - m.at > FEED_MS) { try { m = { at: now, tl: entryOf(r.proj, r.id).tl }; feedMemo.set(k, m); if (feedMemo.size > 40) feedMemo.delete(feedMemo.keys().next().value); } catch { continue; } }
+    const p = projects.get(r.group.key) || { key: r.group.key, name: r.group.name, agents: {}, events: [] }; projects.set(r.group.key, p);
+    const pre = callPrefix(r.id), byId = new Map(m.tl.agents.map((a) => [a.id, a])), id = (x) => (x === 'user' || /^p_|^x_/.test(x) ? x : pre + x), add = (x) => { const a = byId.get(x); if (a && !p.agents[id(x)]) p.agents[id(x)] = { name: a.name || '', role: a.role || '', type: a.type || '', lead: x === 'main', task: x === 'main' ? m.tl.title || '' : undefined }; };
+    for (let i = m.tl.events.length - 1; i >= 0; i--) {
+      const e = m.tl.events[i]; if (!e.ts || now - e.ts > FEED_WINDOW) break; if (!FEED_KINDS.has(e.kind) || !e.agent || e.agent === 'user') continue;
+      const ev = { ts: e.ts, kind: e.kind, agent: id(e.agent), sess: r.id, ...(e.to ? { to: id(e.to) } : {}), ...(e.text ? { text: cut(e.text, 1500) } : {}), ...(e.title ? { title: e.title } : {}), ...(e.label ? { label: true } : {}), ...(e.msgId ? { msgId: e.msgId } : {}), ...(e.state ? { state: e.state } : {}) };
+      if (e.kind === 'tools') ev.tools = (e.tools || []).slice(-3).map((t) => ({ name: t.name, arg: cut(t.arg, 300), ...(t.d ? { d: { kind: t.d.kind, note: t.d.note, file: t.d.file } } : {}) }));
+      if (e.kind === 'results') { ev.items = (e.items || []).filter((x) => /\b(?:pass|fail)/i.test(x.out || '')).map((x) => ({ out: String(x.out).slice(-800) })); if (!ev.items.length) continue; }   // a test run's summary is at its end
+      add(e.agent); if (e.to) add(e.to); p.events.push(ev);
+    }
+  }
+  return [...projects.values()].map((p) => ({ ...p, events: p.events.sort((a, b) => a.ts - b.ts) })).filter((p) => p.events.length);
 }
 function trimCache() {
   let total = 0; for (const e of tlCache.values()) total += entryBytes(e);
@@ -242,7 +263,7 @@ function boardRows0() {
     try { for (const x of fs.readdirSync(sd)) if (x.endsWith('.jsonl')) { subTotal++; if (now - fs.statSync(path.join(sd, x)).mtimeMs < 90e3) { subActive++; if (active.length < 4) { const d = readMeta(path.join(sd, x.replace(/\.jsonl$/, '.meta.json'))).description; if (d) active.push(peers.label(d, 32)); } } } } catch {}
     const group = project.groupOf(p.cwd); if (p.msgIds && p.msgIds.length) peers.indexMessages(p.msgIds, { proj, id, cwd: p.cwd, group });   // so a message id in another runtime's log finds this session even after its pid is gone
     return { proj, id, title: p.title || id, mtime: st.mtimeMs, state, tool, arg: lp ? lp.arg || '' : tool && p.lastCall ? p.lastCall.arg || '' : '', ageMs, subActive, subTotal, active, stopped, model: p.model || '', source: 'claude', ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(p.talks)), group };
-  })).map((r) => (r.oneshot && r.state === 'turn' ? { ...r, state: 'done' } : r)).sort((a, b) => boardRank(a) - boardRank(b) || b.mtime - a.mtime).slice(0, BOARD_MAX);   // a one-shot that answered is done, not finished-and-waiting: nobody is waiting for the human there
+  })).map((r) => (r.oneshot && r.state === 'turn' ? { ...r, state: 'done' } : !r.oneshot && r.subActive > 0 && /^(turn|idle)$/.test(r.state) ? { ...r, state: 'waiting' } : r)).sort((a, b) => boardRank(a) - boardRank(b) || b.mtime - a.mtime).slice(0, BOARD_MAX);   // a one-shot that answered is done, not finished-and-waiting: nobody is waiting for the human there
 }
 // The board with its placement check: every row derives its project from its own log (a git root from the cwd, a Hermes thread); a session the
 // server could not place has no group. `npm run check:placement` fails when a busy one is unplaced.
@@ -389,8 +410,8 @@ function buildTimeline(proj, id) {
   for (const a of Object.values(agents)) if (a.toolUseId) childByTool[a.toolUseId] = a.id;
 
   const finished = new Set(), now0 = Date.now(); for (const st of states) if (st) for (const e of st.raw) if (e.kind === 'agentdone' && childByTool[e.toolId]) finished.add(childByTool[e.toolId]);
-  let recentUntil = 0; for (const a of Object.values(agents)) if (a.id !== 'main' && a.mtime && now0 - a.mtime <= 240000) recentUntil = Math.max(recentUntil, a.mtime + 241000);
-  for (const a of Object.values(agents)) if (a.id !== 'main' && a.type !== 'peer' && now0 - (a.mtime || 0) > 240000) finished.add(a.id);   // old transcripts without a completion record: silent for 4 min counts as finished
+  const QUIET = require('./adapters/timeline.js').QUIET_MS; let recentUntil = 0; for (const a of Object.values(agents)) if (a.id !== 'main' && a.mtime && now0 - a.mtime <= QUIET) recentUntil = Math.max(recentUntil, a.mtime + QUIET + 1000);
+  for (const a of Object.values(agents)) if (a.id !== 'main' && a.type !== 'peer' && now0 - (a.mtime || 0) > QUIET) finished.add(a.id);   // old transcripts without a completion record: silent for 10 min counts as finished, as for Codex and Hermes
   const events = [], parent = {}, doneSeen = new Set(), book = peers.nameBook(states);
   for (const st of states) {
     if (!st) continue;
@@ -410,7 +431,12 @@ function buildTimeline(proj, id) {
       else events.push(e);
     });
     for (const [, mu] of st.msgUsage) events.push({ ts: mu.ts, agent: st.agent, kind: 'usage', u: mu.u, model: mu.model });
-    if (st.agent !== 'main' && finished.has(st.agent) && lastSay < 0 && !doneSeen.has(st.agent) && agents[st.agent]) { const lastTs = st.raw.length ? st.raw[st.raw.length - 1].ts : agents[st.agent].mtime || 0; doneSeen.add(st.agent); events.push({ ts: lastTs, agent: st.agent, kind: 'finish', to: 'main' }); }   // finished by silence, its completion record not read (older history cut, or never written): done, not working forever
+    if (st.agent !== 'main' && finished.has(st.agent) && (lastSay < 0 || st.raw.some((e, i) => i > lastSay && (e.kind === 'tool' || e.kind === 'tools'))) && !doneSeen.has(st.agent) && agents[st.agent]) {   // also when it acted after its last words: a closing finish, so it is not working for ever
+      const lastTs = st.raw.length ? st.raw[st.raw.length - 1].ts : agents[st.agent].mtime || 0; doneSeen.add(st.agent); events.push({ ts: lastTs + 1, agent: st.agent, kind: 'finish', to: 'main' }); }   // finished by silence, its completion record not read (older history cut, or never written): done, not working forever
+  }
+  for (const a of Object.values(agents)) if (a.id !== 'main' && a.type !== 'peer' && finished.has(a.id)) {   // finished by silence: what it did after its last finish or report (a follow-up, a hand-back call) is closed too, never "working" for ever
+    let act = 0, end = 0; for (const e of events) if (e.agent === a.id) { if (e.kind === 'finish' || e.kind === 'report') end = Math.max(end, e.ts || 0); else if (e.kind !== 'usage') act = Math.max(act, e.ts || 0); }
+    if (act > end) events.push({ ts: act + 1, agent: a.id, kind: 'finish', to: 'main' });
   }
   for (const e of events) if (e.kind === 'report' && e.to === null) e.to = parent[e.agent] || 'main';
 
@@ -761,6 +787,7 @@ function start(port = PORT) {
       if (!im) { res.writeHead(bad ? 400 : 404); return res.end(bad ? 'bad request' : 'not found'); }
       res.writeHead(200, { 'content-type': im.type, 'content-length': im.buf.length, 'cache-control': 'private, max-age=3600', 'x-content-type-options': 'nosniff' }); return res.end(im.buf);
     }
+    if (url.pathname === '/api/feed') return json({ now: Date.now(), projects: feed(url.searchParams.get('skip') || '', boardRows()) });
     if (url.pathname === '/api/session') {
       const proj = url.searchParams.get('proj') || '', sid = url.searchParams.get('id') || '', SAFE = /^[\w.\-]+$/;
       if (!SAFE.test(proj) || !SAFE.test(sid) || proj === '..' || sid === '..' || proj.length > 200 || sid.length > 200) { res.writeHead(400); return res.end('bad request'); }
@@ -795,7 +822,7 @@ function start(port = PORT) {
   } catch (e) { if (res.headersSent) return res.destroy(); json({ error: String(e.message || e) }, 500); }
   }).listen(port, '127.0.0.1', function () { console.log(`Agent Standup → http://localhost:${this.address().port}`); });
 }
-module.exports = { tts, elevenStats, elevenHome: HERMES_PROFILE, elevenSetup, mergeCall, callMates, start, currentSession, shutdown, findClaude, bundledClaude, boardRows, placement, charactersDir, listCharacters, triageInput, TRIAGE_SYS, TRIAGE_SCHEMA, SUMMARY_URL, SUMMARY_MODEL };   // the triage pieces: for the offline evaluation of thinking levels
+module.exports = { tts, elevenStats, elevenHome: HERMES_PROFILE, elevenSetup, mergeCall, callMates, timelineEntry, feed, start, currentSession, shutdown, findClaude, bundledClaude, boardRows, placement, charactersDir, listCharacters, triageInput, TRIAGE_SYS, TRIAGE_SCHEMA, SUMMARY_URL, SUMMARY_MODEL };   // the triage pieces: for the offline evaluation of thinking levels
 if (require.main === module) {
   start().on('error', (e) => {
     console.error(e.code === 'EADDRINUSE' ? `Port ${PORT} is already in use (maybe Agent Standup is already running, e.g. inside VS Code). Try: PORT=4790 node server.js` : String(e));

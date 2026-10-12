@@ -109,3 +109,25 @@ test("claude: each agent's model is the latest its own transcript records; a boa
     const row = (await get(port, '/api/board')).find((r) => r.id === 'm1'); assert.ok(row, 'the session is on the board'); assert.equal(row.model, 'claude-opus-5-5');
   } finally { srv.close(); require('../server.js').shutdown(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('claude: a sub-agent silent for 10 min that acted after its last words is finished, not working for ever; a lead whose turn ended while its sub-agents work is waiting on the board', async () => {
+  const t20h = () => (Date.now() - 1300000) / 1000, at = (s) => new Date(Date.now() - s * 1000).toISOString(), say = (s, text) => JSON.stringify({ type: 'assistant', timestamp: at(s), cwd: '/w', message: { role: 'assistant', model: 'claude-opus-5-5', content: [{ type: 'text', text }] } });
+  const tool = (s, id) => JSON.stringify({ type: 'assistant', timestamp: at(s), cwd: '/w', message: { role: 'assistant', model: 'claude-opus-5-5', content: [{ type: 'tool_use', id, name: 'Bash', input: { command: 'ls' } }] } });
+  const dir = path.join(process.env.AGENT_STANDUP_PROJECTS, '-home-user-liveness'), sub = path.join(dir, 'q1', 'subagents'); fs.mkdirSync(sub, { recursive: true });
+  const task = JSON.stringify({ type: 'assistant', timestamp: at(1500), cwd: '/w', message: { role: 'assistant', model: 'claude-opus-5-5', content: [{ type: 'tool_use', id: 'toolu_task_back', name: 'Task', input: { description: 'Research the 2D fight view', prompt: 'Research it', subagent_type: 'general-purpose' } }] } });
+  const done = JSON.stringify({ type: 'user', timestamp: at(1420), cwd: '/w', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_task_back', content: [{ type: 'text', text: 'Done.' }] }] } });   // the lead records the task's result
+  fs.writeFileSync(path.join(dir, 'q1.jsonl'), [JSON.stringify({ type: 'user', timestamp: at(3600), cwd: '/w', message: { role: 'user', content: 'go' } }), say(3500, 'All started; waiting on the workers.'), task, done].join('\n') + '\n');
+  const old = path.join(sub, 'agent-aold.jsonl'); fs.writeFileSync(old, [say(1300, 'The armour page is built.'), tool(1250, 'toolu_after')].join('\n') + '\n');
+  const handback = path.join(sub, 'agent-aback.jsonl'); fs.writeFileSync(handback, [say(1400, 'Report: the decision page is done.'), tool(1350, 'toolu_handback')].join('\n') + '\n'); fs.writeFileSync(path.join(sub, 'agent-aback.meta.json'), JSON.stringify({ agentType: 'general-purpose', description: 'Research the 2D fight view', toolUseId: 'toolu_task_back' })); fs.utimesSync(handback, t20h(), t20h()); fs.writeFileSync(path.join(sub, 'agent-aold.meta.json'), JSON.stringify({ agentType: 'general-purpose', description: 'Build the armour decision page' }));
+  const t20 = (Date.now() - 1200000) / 1000; fs.utimesSync(old, t20, t20);   // its file last written 20 min ago
+  fs.writeFileSync(path.join(sub, 'agent-anew.jsonl'), say(5, 'Season run 3 of 10.') + '\n'); fs.writeFileSync(path.join(sub, 'agent-anew.meta.json'), JSON.stringify({ agentType: 'general-purpose', description: 'Why our band never lost' }));
+  const t5 = (Date.now() - 600000) / 1000; fs.utimesSync(path.join(dir, 'q1.jsonl'), t5, t5);   // the lead itself last wrote 10 min ago: its turn ended
+  const srv = require('../server.js').start(0); await new Promise((r) => srv.once('listening', r)); const port = srv.address().port;
+  try {
+    const tl = await get(port, '/api/session?proj=-home-user-liveness&id=q1'), mine = tl.events.filter((e) => e.agent === 'aold').map((e) => e.kind);
+    assert.deepEqual(mine.slice(-3), ['report', 'tools', 'finish'], 'its last words are its report, and a closing finish follows what it did after');
+    assert.equal(tl.events.filter((e) => e.agent === 'aback').pop().kind, 'finish', 'a hand-back call after its report: closed too (gladiator: two such tiles stayed working for hours)');
+    await new Promise((r) => setTimeout(r, 1300));
+    const row = (await get(port, '/api/board')).find((r) => r.id === 'q1'); assert.deepEqual([row.state, row.subActive], ['waiting', 1], 'its turn ended, one sub-agent wrote 5 s ago: waiting, not finished');
+  } finally { srv.close(); require('../server.js').shutdown(); fs.rmSync(dir, { recursive: true, force: true }); }
+});

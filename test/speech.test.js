@@ -114,13 +114,17 @@ test('board: a busy one-off run stays in its project; quiet rows fold into one l
   assert.equal(splitGroup(rows, true).cards.length, 5);
 });
 
-test('calls rail: "Follow: everything" goes to a session that needs Tom; following a project goes to its most urgent session', () => {
-  const { followTarget } = new Function(grab(/const BORDER = [^\n]*/) + '\n' + grab(/const boardKey = [^\n]*/) + '\n' + grab(/function followTarget\(rows, follow\) \{[\s\S]*?\n\}/) + '\nreturn { followTarget };')();
-  const gg = { key: '/w/gladiator-game', name: 'gladiator-game' }, ms = { key: '/w/MarketSimulator', name: 'MarketSimulator' };
-  const rows = [{ id: 'a', state: 'working', mtime: 3, group: ms }, { id: 'b', state: 'blocked', mtime: 1, group: gg }, { id: 'c', state: 'turn', mtime: 5, group: ms }, { id: 'd', state: 'idle', mtime: 9, group: ms }];
-  assert.equal(followTarget(rows, 'all').id, 'b');                                     // the one that needs Tom, wherever it is
-  assert.equal(followTarget(rows.filter((r) => r.id !== 'b'), 'all'), null);           // nobody needs Tom: the server's most active session
-  assert.equal(followTarget(rows, 'g:/w/MarketSimulator').id, 'a');                     // in a project: working before your turn before idle
+test('calls rail: everything goes to whoever needs Tom, else to the busiest project (all its sessions and sub-agents), staying put unless another is clearly busier; a project goes to its most urgent session', () => {
+  const { followTarget } = new Function(grab(/const BORDER = [^\n]*/) + '\n' + grab(/const boardKey = [^\n]*/) + '\n' + grab(/const ACT_MS = [^\n]*/) + '\n' + grab(/function projectActivity\(rows, now = Date\.now\(\)\) \{[\s\S]*?\n\}/) + '\n' + grab(/function followTarget\(rows, follow, curKey = '', now = Date\.now\(\)\) \{[\s\S]*?\n\}/) + '\nreturn { followTarget };')();
+  const now = 1.79e12, gg = { key: '/w/gladiator-game', name: 'gladiator-game' }, ms = { key: '/w/MarketSimulator', name: 'MarketSimulator' }, r = (id, state, ago, group, x = {}) => ({ id, state, mtime: now - ago * 1000, group, ...x });
+  const rows = [r('glad-claude', 'working', 5, gg, { subActive: 1 }), r('glad-codex', 'idle', 1440, gg), r('glad-cron', 'working', 10, gg, { oneshot: true }), r('ms-claude', 'turn', 20, ms, { subActive: 6 }), r('ms-codex', 'working', 8, ms)];
+  assert.equal(followTarget([...rows, r('ask', 'blocked', 30, gg)], 'all', '/w/MarketSimulator', now).id, 'ask', 'whoever needs Tom, wherever it is');
+  assert.equal(followTarget(rows, 'all', '/w/gladiator-game', now).id, 'ms-claude', 'Tom at 15:20: MarketSimulator (8 agents at work) is clearly busier than gladiator (2): it goes there');
+  assert.equal(followTarget(rows, 'all', '/w/MarketSimulator', now).id, 'ms-claude', 'on the busiest: it stays');
+  const close = [r('glad-claude', 'working', 5, gg, { subActive: 3 }), r('ms-claude', 'working', 5, ms, { subActive: 4 })];
+  assert.equal(followTarget(close, 'all', '/w/gladiator-game', now).id, 'glad-claude', 'only a little busier elsewhere: the call on screen stays (no flapping)');
+  assert.equal(followTarget([r('cron', 'working', 5, gg, { oneshot: true, subActive: 3 })], 'all', '', now), null, 'a one-shot run is not work to follow');
+  assert.equal(followTarget(rows, 'g:/w/gladiator-game', '', now).id, 'glad-claude', 'in a project: its most urgent session, never a one-shot');
 });
 
 // the page's own label helpers (round 5: L1 "(#2)" stays "(#2)", L2 a shell script or a JS wrapper is not a label)
@@ -175,12 +179,12 @@ test('a session that ended its turn is finished, then idle after 5 minutes, neve
   assert.equal(rail.plainAct('mcp__codex_tui__read_thread', '01a12b06-a451-7000-8000-000000000000'), 'Read thread', 'a tool in words, no id');
   assert.equal(rail.plainAct('SubagentHandback', ''), 'Reporting back'); assert.equal(rail.plainAct('cronjob_manage', ''), 'Cronjob manage');
 });
-test('rail: only what is live (busy, active in the last 5 min, needs Tom, on screen); stopped, done, old and one-offs are not shown; the rest is quiet', () => {
+test('rail: only what is live (busy, active in the last 5 min, needs Tom, on screen); stopped, done, old and one-shot runs are not shown; the rest is quiet', () => {
   const now = Date.now(), g = { key: 'repo:/w/game', name: 'gladiator-game' }, r = (id, state, ago, x = {}) => ({ id, state, mtime: now - ago, group: g, ...x });
   const rows = [r('ask', 'blocked', 30e3), r('busy', 'working', 20e3), r('fresh', 'turn', 120e3), r('sat', 'turn', 600e3), r('idle', 'idle', 1800e3), r('here', 'idle', 7200e3),
     r('stopped', 'idle', 60e3, { stopped: true }), r('done', 'done', 30e3), r('cron', 'turn', 60e3, { oneshot: true }), r('old', 'idle', 3 * 3600e3), r('ping', 'working', 5e3, { oneshot: true, group: { key: '_other', other: true, name: 'Other' } })];
   const sp = rail.railSplit(rows, 'here', now), ids = (l) => l.map((x) => x.id);
-  assert.deepEqual([ids(sp.needs), ids(sp.live), ids(sp.quiet)], [['ask'], ['busy', 'fresh', 'here'], ['sat', 'idle', 'ping']]);   // a running one-off outside any project (a test ping) is quiet
+  assert.deepEqual([ids(sp.needs), ids(sp.live), ids(sp.quiet)], [['ask'], ['busy', 'fresh', 'here'], ['sat', 'idle']]);   // a one-shot run (a cron's report, a test ping) is not a call, running or not
   assert.equal(rail.railGroup({ group: { key: 'hermes:gaming:t1', name: 'Hermes gaming, Plan the roguelike', hermes: true } }), 'Hermes gaming');   // the thread is said once, on its row
 });
 

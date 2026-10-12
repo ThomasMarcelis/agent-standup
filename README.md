@@ -30,7 +30,8 @@ agent-standup status          # ✋ needs you, ⚙ working, ✓ finished, across
   - **Bottom**: the team as a compact bar of tiles. Each tile has its project's shirt with its role, its model and its status dot, and the speaker is highlighted.
   - The **transcript** is closed by default, behind the *Transcript ▸* tab, ☰ or L.
 - **Header**:
-  - The project switcher always says what the call follows: *Following everything*, *Following gladiator-game* or *Pinned: <call>*. *Everything* moves only when someone needs you, or when the call goes quiet while another is busy (after a 20 s hold). Every automatic switch says why, in a toast and a line in the transcript.
+  - The project switcher always says what the call follows: *Following everything*, *Following gladiator-game* or *Pinned: <call>*. *Everything* goes to whoever needs you, else to the busiest project: the agents at work across all its sessions and sub-agents. It moves only when another project is clearly busier, after a 20 s hold. Every automatic switch says why, in a toast and a line in the transcript.
+  - In *Everything*, the voice narrates every live project, not only the call on screen. A line about another project starts with its name ("MarketSimulator: …").
   - The sound control, below.
 - **Calls rail** (left): only what is live, *Needs you* on top, then the calls by project; every session of the call on screen is marked. Each row has a dot and a plain word: *Running tests*, *Needs you: …*, *Waiting on …*, *Finished*, *Idle 10 min*. Click a call to pin it, and use *📌 unpin* to follow again.
 - **Tree** (T), **agent detail** (click a tile, a dot or a screen), **replay and recap** (R), **Ctrl/Cmd+K** to jump to any session, **J/K** for the next agent that needs you, **?** for all shortcuts.
@@ -40,7 +41,9 @@ agent-standup status          # ✋ needs you, ⚙ working, ✓ finished, across
 - Claude: a sub-agent by its task.
 - Hermes: a delegate by its goal.
 - Every tile, row and card says the model it runs on.
-- A sub-agent stays in the call until 10 minutes after its own last event, and comes back whenever it acts again.
+- A sub-agent stays in the call until 10 minutes after its own last event, and comes back whenever it acts again; silent for 10 minutes, it is finished, whatever it did last.
+- A lead whose sub-agents are working is *waiting on* them, never *finished*.
+- One-shot runs (a cron's progress report) are not calls: they stay out of the rail and the project's call.
 
 ## Sound and voice
 

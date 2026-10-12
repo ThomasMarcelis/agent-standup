@@ -80,3 +80,20 @@ test("a call is the project's: a Claude lead, a Codex thread and a Hermes sessio
     row('_hermes-gaming', 'cron', 'done', 1, { oneshot: true }), { ...row('-w-MarketSimulator', 'x', 'working', 0), group: { key: '/w/MarketSimulator', name: 'MarketSimulator' } }];
   assert.deepEqual(callMates('-w-gladiator-game', 'c1', G, rows, now).map((r) => r.id), [codex.id, 'h1'], 'live sessions of the same project (working, or written in the last 10 min); not stopped, not a finished one-shot, not another project');
 });
+
+test('everything: the feed has the newest events of the other live projects (not the one on screen, never a one-shot), named and cheap', () => {
+  const { feed } = require('../server.js'), now = Date.now(), gg = { key: '/w/gladiator-game', name: 'gladiator-game' }, ms = { key: '/w/MarketSimulator', name: 'MarketSimulator' };
+  const tls = { 'ms-claude': { title: 'Review the news gate', agents: [{ id: 'main', name: 'Claude', type: 'main' }, { id: 'a1', name: 'news polish', role: 'general-purpose', type: 'subagent' }],
+      events: [{ ts: now - 400000, agent: 'main', kind: 'say', text: 'Old.' }, { ts: now - 9000, agent: 'a1', kind: 'tools', tools: [{ name: 'Bash', arg: 'pytest tests/news', d: { kind: 'cmd', text: 'pytest', note: 'news gate' } }] }, { ts: now - 8000, agent: 'a1', kind: 'results', items: [{ out: 'collected 9\n9 passed in 2.1s' }, { out: 'no tests here' }] }, { ts: now - 5000, agent: 'main', kind: 'usage', u: {} }, { ts: now - 4000, agent: 'main', kind: 'say', text: 'The gate passes.' }] },
+    'glad-claude': { title: 'Combat', agents: [{ id: 'main', name: 'Claude', type: 'main' }], events: [{ ts: now - 3000, agent: 'main', kind: 'say', text: 'On screen already.' }] },
+    'glad-cron': { title: 'Gladiator: 30-min progress report', agents: [{ id: 'main', name: 'Hermes', type: 'main' }], events: [{ ts: now - 2000, agent: 'main', kind: 'say', text: 'Progress report.' }] } };
+  const row = (id, group, x = {}) => ({ proj: '-w-' + id, id, group, state: 'working', mtime: now - 3000, ...x });
+  const rows = [row('ms-claude', ms), row('glad-claude', gg), row('glad-cron', gg, { oneshot: true }), row('ms-old', ms, { mtime: now - 900000 })];
+  const f = feed('/w/gladiator-game', rows, now, (proj, id) => ({ tl: tls[id] }));
+  assert.deepEqual(f.map((p) => p.name), ['MarketSimulator'], 'the call on screen and the one-shot are not in it; a session quiet for 15 min neither');
+  const p = f[0], A = 'sclaude__';
+  assert.deepEqual(p.events.map((e) => [e.kind, e.agent]), [['tools', A + 'a1'], ['results', A + 'a1'], ['say', A + 'main']], 'speakable kinds within 2 min, every agent with its session in front');
+  assert.deepEqual(p.events[1].items, [{ out: 'collected 9\n9 passed in 2.1s' }], 'a result only when it holds a test summary');
+  assert.deepEqual(p.agents[A + 'main'], { name: 'Claude', role: '', type: 'main', lead: true, task: 'Review the news gate' });
+  assert.deepEqual(rows.filter((r) => true) && require('../server.js').callMates('-w-glad-claude', 'glad-claude', gg, rows, now).map((r) => r.id), [], 'a one-shot run never joins a call');
+});

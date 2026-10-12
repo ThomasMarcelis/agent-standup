@@ -392,11 +392,11 @@ test('sound: no setup: a Hermes key makes ElevenLabs the voice whatever was save
 function beatEnv(over = {}) {
   const src = [grab(/\nconst base = [^\n]*/), grab(/function cmdLabel\(text\) \{[\s\S]*?\n\}/), grab(/function cmdVerb\(cmd\) \{[\s\S]*?\n\}/), grab(/function plainAct\(tool, arg\) \{[\s\S]*?\n\}/), grab(/const projWord = [^\n]*/),
     grab(/function party\(p\) \{[\s\S]*?\n\}/), grab(/const TRIAGE_WAIT = [\s\S]*?\/\/ ---- end triage policy/), grab(/function whoDoes\(id\) \{[\s\S]*?\n\}/), grab(/const shirtRole = [^\n]*/), grab(/const DULL = [^\n]*/), grab(/const dullAct = [^\n]*/), grab(/const verbAct = [^\n]*/), grab(/const ing = [^\n]*/),
-    grab(/function commitOf\(t\) \{[\s\S]*?\n\}/), grab(/function testsOf\(out\) \{[\s\S]*?\n\}/), grab(/function beatOf\(e\) \{[\s\S]*?\n\}/), grab(/const STATUS_MS = [^\n]*/), grab(/function statusItems\(rows, now = Date\.now\(\)\) \{[\s\S]*?\n\}/),
-    grab(/function statusNext\(now = Date\.now\(\)\) \{[\s\S]*?\n\}/), grab(/const SPEECH_MAX = [^\n]*/), grab(/function clipSpeech\(t, cap\) \{[\s\S]*?\n\}/)].join('\n');
+    grab(/function commitOf\(t\) \{[\s\S]*?\n\}/), grab(/function testsOf\(out\) \{[\s\S]*?\n\}/), grab(/const callEnv = [^\n]*/), grab(/function beatOf\(e, env = callEnv\(\)\) \{[\s\S]*?\n\}/), grab(/const STATUS_MS = [^\n]*/), grab(/function statusItems\(rows, now = Date\.now\(\)\) \{[\s\S]*?\n\}/),
+    grab(/function statusNext\(now = Date\.now\(\)\) \{[\s\S]*?\n\}/), grab(/const SPEECH_MAX = [^\n]*/), grab(/function clipSpeech\(t, cap\) \{[\s\S]*?\n\}/), grab(/const lastSays = [^\n]*/), grab(/const FAR = \{[^\n]*/), grab(/const farOn = [^\n]*/), grab(/function farEnv\(p\) \{[\s\S]*?\n\}/), grab(/function collect\(\) \{[\s\S]*?\n\}/)].join('\n');
   const S = { agents: { main: { id: 'main', name: 'Codex', role: 'Codex, Lead' }, k1: { id: 'k1', name: 'kettle hat', role: 'worker' }, k2: { id: 'k2', name: 'buckler writer', role: 'worker' }, k3: { id: 'k3', name: 'Build the armour decision page', role: 'general-purpose' } }, group: { key: '/w/gladiator-game', name: 'gladiator-game' }, cur: { proj: '_codex', id: 'glad' }, pin: '', title: 'gladiator-game, Combat simulation realism gaps' };
   const env = { S, prefs: { follow: 'all' }, D: { quietAt: 0, statusSaid: [], pending: null, ctx: { main: 'The fatigue change landed; rerunning the armour sim to see if knockouts drop.' } }, decide: async (items, max) => ({ items, max }), L: (fr, en) => en, speechOf: (e) => e.text || '', speakable: (t) => t, boardMemo: { rows: [] }, boardKey: (r) => r.group.key, niceProj: (p) => p, LIVE_MS: 300000, warmLines: (l) => l, ...over };
-  return new Function('scope', 'with (scope) { ' + src + '\nreturn { beatOf, testsOf, commitOf, triageItems, applyTriage, localPick, statusItems, statusNext, maxLines, GENERIC }; }')(pageScope(env));
+  return new Function('scope', 'with (scope) { ' + src + '\nreturn { beatOf, testsOf, commitOf, triageItems, applyTriage, localPick, statusItems, statusNext, maxLines, GENERIC, collect, FAR }; }')(pageScope(env));
 }
 test('chatter: an event is worth a line in plain words: what an agent is doing, a sub-agent starting or finishing, a commit, a test result', () => {
   const b = beatEnv(), tools = (agent, name, arg) => ({ agent, kind: 'tools', ts: 1, tools: [{ name, arg }] });
@@ -472,4 +472,40 @@ test('director: a work beat never takes a needs-you or a message down with it; t
   assert.equal(freshIn({ items: [it('work', 19)] }, 1200), false, 'work alone is news for 20 s');
   assert.equal(freshIn({ items: [it('message', 50), it('work', 1)] }, 0), false, 'the content itself out of date: stale');
   assert.deepEqual(b.localPick([{ id: 1, kind: 'message', ev: { ts: now }, text: 'The lead is running a script.' }, { id: 2, kind: 'report', ev: { ts: now }, text: 'The armour page is ready.' }]).map((o) => o.items[0].id), [2]);
+});
+
+// ---- round 12 (Tom: "when doing follow everything, I feel it's not appropriately telling me everything from ALL projects, it also gets stuck in one project")
+test('everything: the director hears every live project; a line about another project starts with its name; a pinned call hears only itself', () => {
+  const now = Date.now(), D = { done: new WeakSet(), beat: new Map(), quietAt: now, statusSaid: [], pending: null, ctx: {} };
+  const S = { live: true, demo: false, pin: '', agents: { main: { id: 'main', name: 'Codex', role: 'Lead' } }, group: { key: '/w/gladiator-game', name: 'gladiator-game' }, title: 'gladiator-game, Combat simulation', events: [{ ts: now - 3000, agent: 'main', kind: 'report', text: 'The armour page is ready.' }], needs: [] };
+  const b = beatEnv({ S, D, prefs: { follow: 'all', voice: true }, AUD: { off: () => false }, routeOf: () => '' });
+  b.FAR.projects = [{ key: '/w/MarketSimulator', name: 'MarketSimulator', agents: { 's6a5c159__main': { name: 'Claude', lead: true, task: 'Review the news gate' }, 's6a5c159__a1': { name: 'news polish', role: 'general-purpose' } },
+    events: [{ ts: now - 2000, kind: 'tools', agent: 's6a5c159__a1', sess: 'x', tools: [{ name: 'Bash', arg: 'python3 -m pytest tests/news' }] }, { ts: now - 1000, kind: 'say', agent: 's6a5c159__main', sess: 'x', text: 'The cohort gate passes for all 268 openings.' }], ctx: {} }];
+  const items = b.collect();
+  assert.deepEqual(items.map((it) => [it.kind, it.far || '', it.text]), [['report', '', 'The armour page is ready.'], ['work', '/w/MarketSimulator', 'The news polish is running tests'], ['message', '/w/MarketSimulator', 'The cohort gate passes for all 268 openings.']]);
+  const lines = b.applyTriage(items, { drop: [], say: [{ ids: [1], line: 'The armour page is ready.' }, { ids: [3], line: 'The cohort gate passes for all 268 openings.' }, { ids: [2], line: 'MarketSimulator news polish is running the news tests.' }] }).map((o) => o.line);
+  assert.deepEqual(lines, ['The armour page is ready.', 'MarketSimulator: The cohort gate passes for all 268 openings.', 'MarketSimulator news polish is running the news tests.'], 'the call on screen as is; another project by its name, once');
+  assert.deepEqual(b.localPick(items).map((o) => o.line), ['The armour page is ready.', 'MarketSimulator: The cohort gate passes for all 268 openings.'], 'the fallback too');
+  const pinned = beatEnv({ S: { ...S, pin: 'combat' }, D: { ...D, done: new WeakSet() }, prefs: { follow: 'all', voice: true }, AUD: { off: () => false }, routeOf: () => '' }); pinned.FAR.projects = b.FAR.projects;
+  assert.deepEqual(pinned.collect().map((it) => it.text), ['The armour page is ready.'], 'pinned: only the call on screen');
+});
+test('liveness: a lead whose own sub-agents are working is waiting on them, never finished; a lead whose turn ended with nothing running is finished', () => {
+  const now = Date.now(), src = [grab(/const teamOf2 = [^\n]*/), grab(/function agentState\(id, now\) \{[\s\S]*?\n\}/)].join('\n');
+  const S = { live: true, status: { a1: 'working', a2: 'done', 'sx__w1': 'working' }, run: {}, waitOn: {}, lastAct: { main: now - 600000, 'sx__main': now - 600000 }, seen: { a1: now - 60000, a2: now - 30000, 'sx__w1': now - 900000 }, gone: new Set(), speakers: new Set(), act: {}, orderTs: {},
+    agents: { main: { id: 'main' }, a1: { id: 'a1', name: 'wounds' }, a2: { id: 'a2', name: 'grips' }, 'sx__main': { id: 'sx__main', lead: true }, 'sx__w1': { id: 'sx__w1', name: 'figure route' }, user: { id: 'user' }, p_x: { id: 'p_x', type: 'peer' } } };
+  const f = new Function('scope', 'with (scope) { ' + src + '\nreturn { agentState }; }')(pageScope({ S, L: (fr, en) => en, VANISH_MS: 600000, nameOf: (id) => S.agents[id].name || id, atTail: () => true, NEEDS_OK: /^$/, ASKS: /^$/, fmtShort: () => '' }));
+  assert.deepEqual([f.agentState('main', now).k, f.agentState('main', now).txt], ['waiting', '⏳ waiting on wounds'], "gladiator 15:20: the Claude lead's turn ended while two sub-agents wrote: waiting, and they show");
+  assert.equal(f.agentState('sx__main', now).k, 'done', 'another lead whose only worker went quiet 15 min ago: finished');
+  S.seen['sx__w1'] = now - 5000; assert.equal(f.agentState('sx__main', now).k, 'waiting', 'its worker wrote 5 s ago: waiting');
+});
+test("everything: the screen moves to a clearly busier project only after the 20 s hold, says why, then holds that project's call", () => {
+  const now = Date.now(), gg = { key: '/w/gladiator-game', name: 'gladiator-game' }, ms = { key: '/w/MarketSimulator', name: 'MarketSimulator' }, calls = [];
+  const rows = [{ proj: '-w-glad', id: 'glad-claude', state: 'working', mtime: now - 5000, group: gg, subActive: 1, title: 'Combat' }, { proj: '-w-ms', id: 'ms-claude', state: 'waiting', mtime: now - 20000, group: ms, subActive: 6, title: 'Review the news gate' }];
+  const S = { live: true, pin: '', cur: { proj: '-w-glad', id: 'glad-claude' }, group: gg, members: [{ proj: '-w-glad', id: 'glad-claude' }], autoPin: null, switchAt: now - 5000 }, prefs = { follow: 'all' };
+  const src = [grab(/const BORDER = [^\n]*/), grab(/const boardKey = [^\n]*/), grab(/const ACT_MS = [^\n]*/), grab(/function projectActivity\(rows, now = Date\.now\(\)\) \{[\s\S]*?\n\}/), grab(/function followTarget\(rows, follow, curKey = '', now = Date\.now\(\)\) \{[\s\S]*?\n\}/), grab(/const inCall = [^\n]*/), grab(/function updateFollow\(rows\) \{[\s\S]*?\n\}/)].join('\n');
+  const { updateFollow } = new Function('scope', 'with (scope) { ' + src + '\nreturn { updateFollow }; }')(pageScope({ S, prefs, FOLLOW_HOLD: 20000, followCurrent: () => calls.push(S.autoPin && S.autoPin.id) }));
+  updateFollow(rows); assert.deepEqual(calls, [], 'within the hold: it stays');
+  S.switchAt = now - 25000; updateFollow(rows); assert.deepEqual([calls, S.switchWhy.why, S.switchWhy.to], [['ms-claude'], 'busy', 'MarketSimulator'], 'after the hold: to MarketSimulator, saying why');
+  Object.assign(S, { cur: { proj: '-w-ms', id: 'ms-claude' }, group: ms, members: [{ proj: '-w-ms', id: 'ms-claude' }], autoPin: null }); calls.length = 0;
+  updateFollow(rows); assert.deepEqual([calls, S.autoPin], [[], { proj: '-w-ms', id: 'ms-claude' }], 'there: the busiest project holds the call, not the most recently written session anywhere');
 });

@@ -12,8 +12,8 @@ Tom's fork: one overview of Claude Code, Codex CLI and Hermes, and the agent-pee
   - The project's workers as a graph in the side panel: tokens as dot area, state as colour, parent and message lines.
   - The team as a compact tile bar.
   - The transcript behind a tab (L).
-- **Header**: a project switcher that says what it follows (*Following everything*, *Following <project>*, *Pinned: <call>*), switches with a 20 s hold and says why. Plus one sound control in words (*Sound on*, *Muted*, *Click anywhere for sound*, *ElevenLabs: …*, *Sound in another window*), echoed in the tab title.
-- **Status in one vocabulary**: a dot and a word (working, needs you, waiting, finished, idle) on the board, the rail, the tiles and the CLI. The model on every tile and row. A sub-agent stays 10 minutes after its own last event.
+- **Header**: a project switcher that says what it follows (*Following everything*, *Following <project>*, *Pinned: <call>*), switches with a 20 s hold and says why. *Everything* follows whoever needs you, else the clearly busiest project (all its sessions and sub-agents), and narrates every live project, naming the other ones. Plus one sound control in words (*Sound on*, *Muted*, *Click anywhere for sound*, *ElevenLabs: …*, *Sound in another window*), echoed in the tab title.
+- **Status in one vocabulary**: a dot and a word (working, needs you, waiting, finished, idle) on the board, the rail, the tiles and the CLI. The model on every tile and row. A sub-agent stays 10 minutes after its own last event; a lead whose sub-agents work is waiting on them, never finished; one-shot runs are not calls.
 - **Who is who**: functional names (thread name, `agent_path` leaf, task, goal); each agent wears its project's shirt with its role; Tom's says `Tom`.
 - **Voice**:
   - ElevenLabs automatically from the Hermes key (`HERMES_HOME`, else the gaming profile, else `~/.hermes`). With a key, no other voice speaks; a line it cannot make is skipped and marked.
