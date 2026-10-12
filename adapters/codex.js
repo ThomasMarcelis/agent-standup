@@ -7,7 +7,7 @@ const path = require('path');
 const os = require('os');
 const peers = require('./peers.js');
 const project = require('./project.js');
-const { assemble } = require('./timeline.js');
+const { assemble, QUIET_MS } = require('./timeline.js');
 
 const clip = peers.clip;
 const HOME = () => process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
@@ -325,7 +325,8 @@ function board(now = Date.now()) {
       else if (t.lastTask === 'complete' || t.lastTask === 'aborted') state = isOpen(meta.id) ? 'turn' : 'idle';
       else { state = age < 10 * 60e3 ? 'working' : 'idle'; if (state === 'working' && t.last) { tool = t.last.name; arg = t.last.arg || ''; } }   // between two calls: the last thing it ran
     }
-    let subActive = 0; const active = []; for (const m of all.slice(1)) { const s = statOf(m); if (s && now - s.mtime < 90e3) { subActive++; if (active.length < 4) active.push(peers.label(human(String(m.agentPath || '').split('/').pop() || m.nickname || 'sub-agent').replace(/ (?:ultra|max|xhigh)$/i, ''), 32)); } }
+    let subActive = 0; const active = []; for (const m of all.slice(1)) { const s = statOf(m); if (s && (now - s.mtime < 90e3 || (now - s.mtime < QUIET_MS && tail(m.file).lastTask !== 'complete'))) { subActive++; if (active.length < 4) active.push(peers.label(human(String(m.agentPath || '').split('/').pop() || m.nickname || 'sub-agent').replace(/ (?:ultra|max|xhigh)$/i, ''), 32)); } }
+    if (subActive && /^(turn|idle)$/.test(state)) { state = 'waiting'; ageMs = now - mtime; }   // the lead's turn ended while its sub-agents still work: the call is theirs, not over
     return { proj: '_codex', id: meta.id, title: titleOf(meta), mtime, state, tool, arg, ageMs, subActive, active, subTotal: all.length - 1, ...(t.model ? { model: t.model, effort: t.effort || '' } : headModel(meta.file)), source: 'codex', project: meta.cwd, group: project.groupOf(meta.cwd), ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(t.peers, now)), oneshot: meta.originator === 'codex_exec' && all.length === 1 };   // a `codex exec` run with no agents of its own: a one-shot job
   });
 }

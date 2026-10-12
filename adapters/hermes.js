@@ -47,6 +47,20 @@ const COLS = 'id, source, title, started_at, ended_at, end_reason, last_activity
 const COLS0 = COLS.replace('last_activity_at', 'null as last_activity_at').replace('display_name', 'null as display_name').replace('chat_id, thread_id', 'null as chat_id, null as thread_id');
 // The project a Hermes session belongs to: the Discord thread it runs in (profile + thread), the repo of its folder for command-line runs, or the profile.
 const undot = (t) => (t ? String(t).replace(/\s*·\s*/g, ', ') : t);   // Hermes names a cron run "task · Oct 12 08:42": no middle dot on screen
+// A conversation with no folder of its own (a Discord thread) works in a project: the one of the sessions it messages (its last 40 peer messages, 3 points each) and of
+// the repositories its tools touch (absolute paths in its last 200 calls, 1 point each, less the older the call); the strongest wins (Tom: the gladiator thread belongs in the gladiator call, and
+// so for every project, with no project named here). With neither, it stays its own thread. Cached by the conversation's last activity.
+const workMemo = new Map(), PATHS = /\/(?:home|Users)\/[\w.-]+(?:\/[\w.-]+){1,11}/g;
+function workGroupOf(db, s) {
+  const k = s.id + '|' + (s.last_activity_at || s.started_at || 0), hit = workMemo.get(k); if (hit !== undefined) return hit;
+  const n = new Map(), add = (g, c) => { if (g && g.key && !g.hermes && !g.other) n.set(g.key, { g, c: ((n.get(g.key) || {}).c || 0) + c }); };
+  let rows = []; try { rows = q(db, "select content, tool_calls from messages where session_id=? and (content like '%peer_message%' or tool_calls like '%send_peer%') order by id desc limit 40", s.id); } catch {}
+  for (const h of peers.tailPeers(rows.map((r) => (r.content || '') + ' ' + (r.tool_calls || '')).join('\n')).hits) add(h.addr && (peers.peerAgent(h.addr) || {}).group, 3);
+  let calls = []; try { calls = q(db, "select tool_calls from messages where session_id=? and tool_calls is not null and tool_calls != '' order by id desc limit 200", s.id); } catch {}
+  calls.forEach((r, i) => { for (const m of new Set(String(r.tool_calls).match(PATHS) || [])) add(project.groupOf(m), 0.5 ** (i / 25)); });   // a repo it reads or writes; what it works on now weighs more (half every 25 calls back)
+  const best = [...n.values()].sort((a, b) => b.c - a.c)[0], v = best ? best.g : null; workMemo.set(k, v); if (workMemo.size > 400) workMemo.delete(workMemo.keys().next().value); return v;
+}
+const placeOf = (db, p, s) => { const g = groupOf(p, s); return g && g.hermes && !s.cwd ? workGroupOf(db, s) || g : g; };   // a thread in the project it works in; a session with a folder by its folder
 const groupOf = (p, s) => (s.thread_id || s.chat_id ? project.hermesGroup(p.name, s.thread_id || s.chat_id, undot(s.title) || (s.display_name ? String(s.display_name).split(' / ').pop() : '')) : s.cwd ? project.groupOf(s.cwd) : project.hermesGroup(p.name));   // the thread, named by the conversation's title
 const NOT_KIDS = "source not in ('subagent', 'healthcheck')";
 const recent = (db, since, limit) => tryq(db, [
@@ -169,7 +183,7 @@ function timeline(proj, id) {
     const ks = parseSession(db, k, k.id, []); states.push(ks);
     if (k.ended_at) st.raw.push({ ts: mtimeOf(k), agent: 'main', kind: 'agentdone', child: k.id });
   }
-  return { ...assemble({ id, proj, agents, states, childByTool: st.childByTool }), group: groupOf(p, s), title: titleOf(db, s) };
+  return { ...assemble({ id, proj, agents, states, childByTool: st.childByTool }), group: placeOf(db, p, s), title: titleOf(db, s) };
 }
 
 // ---- board, liveness, cache keys
@@ -195,7 +209,7 @@ function boardRow(db, p, s, now) {
     else if (last && last.role === 'assistant' && last.finish_reason === 'stop') state = 'turn';
     else { state = age < 10 * 60e3 ? 'working' : 'idle'; if (state === 'working' && lastCall) { tool = lastCall.name; arg = lastCall.arg || ''; } }   // between two calls: the last thing it ran
   }
-  return { proj: p.proj, id: s.id, title: titleOf(db, s), mtime, state, tool, arg, ageMs, subActive: kids.filter((k) => !k.ended_at).length, subTotal: kids.length, ...modelOf(db, s), source: 'hermes', project: projectOf(s), group: groupOf(p, s), peers: seen.names, msgs: seen.n, oneshot: /^(cron|webhook|healthcheck|tool)$/.test(s.source || '') };
+  return { proj: p.proj, id: s.id, title: titleOf(db, s), mtime, state, tool, arg, ageMs, subActive: kids.filter((k) => !k.ended_at).length, subTotal: kids.length, ...modelOf(db, s), source: 'hermes', project: projectOf(s), group: placeOf(db, p, s), peers: seen.names, msgs: seen.n, oneshot: /^(cron|webhook|healthcheck|tool)$/.test(s.source || '') };
 }
 const exists = (proj, id) => { const db = dbOf(proj); if (!db || !SAFE.test(id)) return false; try { return !!one(db, id); } catch { return false; } };
 function mtime(proj, id) {

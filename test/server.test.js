@@ -52,3 +52,29 @@ test('ElevenLabs needs no setup: started as agent-standup from any folder, with 
   const none = await run(home({ '.hermes/.env': 'OTHER=1\n' }));
   assert.equal(none.key, false); assert.match(none.error, /no ELEVENLABS_API_KEY in .*profiles\/gaming\/\.env or .*\.hermes\/\.env/, 'without a key it says where it looked');
 });
+
+test("a call is the project's: a Claude lead, a Codex thread and a Hermes session of one project are one call, each under its own lead; guests are other projects only", () => {
+  const { mergeCall, callMates } = require('../server.js'), G = { key: '/w/gladiator-game', name: 'gladiator-game' };
+  const claude = { proj: '-w-gladiator-game', id: 'c1', tl: { id: 'c1', title: 'Combat simulation realism gaps', group: G, agents: [{ id: 'main', name: 'Claude', role: 'Lead', type: 'main', model: 'claude-opus-5-5' }, { id: 'a1', name: 'wounds', type: 'subagent' },
+    { id: 'p_hermes_h1', name: 'hermes:gaming:h1', type: 'peer', link: { proj: '_hermes-gaming', id: 'h1' } }, { id: 'p_claude_x', name: 'marketsimulator-3e', type: 'peer', link: { proj: '-w-MarketSimulator', id: 'x' }, group: { key: '/w/MarketSimulator' } },
+    { id: 'p_old', name: 'gladiator-game-c3', type: 'peer', link: { proj: '-w-gladiator-game', id: 'old' }, group: G }],
+    events: [{ ts: 10, agent: 'main', kind: 'msg', to: 'p_hermes_h1', msgId: 'm1', text: 'The armour numbers are in.' }, { ts: 30, agent: 'p_claude_x', kind: 'msg', to: 'main', msgId: 'm2', text: 'From another project.' }] } };
+  const codex = { proj: '_codex', id: '01a12cbd-82fd-7253-9633-522e7ef9434f', tl: { title: 'Reorient', group: G, agents: [{ id: 'main', name: 'Codex', role: 'Lead', type: 'main', model: 'gpt-6-astra' }, { id: 'w1', name: 'buckler writer', type: 'worker' }, { id: 'p_claude_c1', name: 'gladiator-c1', type: 'peer', link: { proj: '-w-gladiator-game', id: 'c1' } }],
+    events: [{ ts: 15, agent: 'main', kind: 'order', to: 'w1', title: 'buckler_writer' }, { ts: 20, agent: 'w1', kind: 'tools', tools: [{ name: 'exec_command', arg: 'python3 make.py' }] }, { ts: 25, agent: 'main', kind: 'msg', to: 'p_claude_c1', msgId: 'm3', text: 'Buckler done.' }] } };
+  const hermes = { proj: '_hermes-gaming', id: 'h1', tl: { title: 'Plan gladiator roguelike autobattler', group: G, agents: [{ id: 'main', name: 'Hermes', role: 'Lead', type: 'main' }, { id: 'p_claude_c1', name: 'gladiator-c1', type: 'peer', link: { proj: '-w-gladiator-game', id: 'c1' } }],
+    events: [{ ts: 11, agent: 'p_claude_c1', kind: 'msg', to: 'main', msgId: 'm1', text: 'The armour numbers are in.' }] } };
+  const tl = mergeCall(claude, [codex, hermes]), X = 'sf9434f__', H = 'sh1__';
+  assert.deepEqual(tl.agents.map((a) => [a.id, a.lead || false, (a.team || {}).source || '']), [['main', false, 'claude'], ['a1', false, 'claude'], ['p_claude_x', false, ''], ['p_old', false, ''], [X + 'main', true, 'codex'], [X + 'w1', false, 'codex'], [H + 'main', true, 'hermes']], 'every session under its own lead; the other project stays a guest');
+  assert.deepEqual(tl.agents.filter((a) => a.type === 'peer').map((a) => [a.id, !!a.kin]), [['p_claude_x', false], ['p_old', true]], 'a past session of this project is kin, never a guest');
+  assert.deepEqual(mergeCall(codex, [{ ...claude, tl: { ...claude.tl, agents: [{ id: 'main', role: 'Lead', type: 'main' }] } }]).agents.find((a) => a.lead).name, 'Claude', 'a lead with no name of its own is named by its harness');
+  assert.ok(!tl.agents.some((a) => a.id === 'p_hermes_h1' || a.id === 'p_claude_c1'), 'a session of the call is not a guest of it');
+  const msgs = tl.events.filter((e) => e.kind === 'msg').map((e) => [e.msgId, e.agent, e.to]);
+  assert.deepEqual(msgs, [['m1', 'main', H + 'main'], [ 'm3', X + 'main', 'main'], ['m2', 'p_claude_x', 'main']], 'one message from two logs is kept once, between the leads; in time order');
+  assert.deepEqual(tl.events.filter((e) => e.kind === 'order').map((e) => [e.agent, e.to]), [[X + 'main', X + 'w1']]);
+  assert.ok(tl.events.every((e) => typeof e.sess === 'string' && Number.isInteger(e.si)), 'every event knows its session and its place in it');
+  assert.deepEqual(tl.members.map((m) => [m.id, m.lead, m.n]), [['c1', 'main', 2], [codex.id, X + 'main', 3], ['h1', H + 'main', 1]]);
+  const now = Date.now(), row = (proj, id, state, ago, extra = {}) => ({ proj, id, state, mtime: now - ago * 60e3, group: G, ...extra });
+  const rows = [row('-w-gladiator-game', 'c1', 'working', 0), row('_codex', codex.id, 'turn', 3), row('_hermes-gaming', 'h1', 'waiting', 30), row('-w-gladiator-game', 'old', 'idle', 45), row('-w-gladiator-game', 'gone', 'idle', 2, { stopped: true }),
+    row('_hermes-gaming', 'cron', 'done', 1, { oneshot: true }), { ...row('-w-MarketSimulator', 'x', 'working', 0), group: { key: '/w/MarketSimulator', name: 'MarketSimulator' } }];
+  assert.deepEqual(callMates('-w-gladiator-game', 'c1', G, rows, now).map((r) => r.id), [codex.id, 'h1'], 'live sessions of the same project (working, or written in the last 10 min); not stopped, not a finished one-shot, not another project');
+});

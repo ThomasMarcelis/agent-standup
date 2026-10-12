@@ -3,14 +3,15 @@
 //   raw kinds: user, say, tool, results, agentcall {toolId, title, text, bg}, agentdone {toolId | child}, usage, compact,
 //              msg {dir:'out', to|target, name, text, state, msgId} / {dir:'in', from, name, text, msgId}
 const peers = require('./peers.js');
+const QUIET_MS = 10 * 60e3;   // a sub-agent silent this long without a completion record is finished: a build or a render can write nothing for minutes
 
 function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}, pathOf = {}, finishedIds = [], own = () => '', now = Date.now() }) {   // own(address or name): the agent of this session it belongs to, if any
   const finished = new Set(finishedIds);
   const doneTs = {};
   for (const st of states) for (const e of st.raw) if (e.kind === 'agentdone') { const to = e.child || childByTool[e.toolId]; if (to && agents[to]) { finished.add(to); doneTs[to] = Math.max(doneTs[to] || 0, e.ts || 0); } }
-  for (const st of states) if (doneTs[st.agent] && agents[st.agent].mtime && now - agents[st.agent].mtime <= 240000 && st.raw.some((e) => (e.ts || 0) > doneTs[st.agent])) finished.delete(st.agent);   // done once, then given more work and busy again: not finished
+  for (const st of states) if (doneTs[st.agent] && agents[st.agent].mtime && now - agents[st.agent].mtime <= QUIET_MS && st.raw.some((e) => (e.ts || 0) > doneTs[st.agent])) finished.delete(st.agent);   // done once, then given more work and busy again: not finished
   let recentUntil = 0;
-  for (const a of Object.values(agents)) if (a.id !== 'main' && a.type !== 'peer') { if (a.mtime && now - a.mtime <= 240000) recentUntil = Math.max(recentUntil, a.mtime + 241000); else if (a.mtime && now - a.mtime > 240000) finished.add(a.id); }   // silent for 4 min counts as finished
+  for (const a of Object.values(agents)) if (a.id !== 'main' && a.type !== 'peer') { if (a.mtime && now - a.mtime <= QUIET_MS) recentUntil = Math.max(recentUntil, a.mtime + QUIET_MS + 1000); else if (a.mtime && now - a.mtime > QUIET_MS) finished.add(a.id); }   // silent for 10 min counts as finished
   const events = [], parent = {}, doneSeen = new Set(), book = peers.nameBook(states);
   const target = (st, e) => {   // a native message between agents of this session: a thread id, an absolute agent path, or a name relative to the sender (its child, its sibling, or under the lead)
     const t = String(e.target || ''); if (!t || t === '/root' || t === 'main') return 'main';
@@ -40,7 +41,7 @@ function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}
       else if (i === lastSay) events.push({ ...e, kind: 'report', to: null });
       else events.push(e);
     });
-    if (st.agent !== 'main' && finished.has(st.agent) && lastSay < 0 && !doneSeen.has(st.agent) && agents[st.agent]) { doneSeen.add(st.agent); events.push({ ts: st.raw.length ? st.raw[st.raw.length - 1].ts : agents[st.agent].mtime || 0, agent: st.agent, kind: 'finish', to: 'main' }); }   // finished by silence without a completion record read: done
+    if (st.agent !== 'main' && finished.has(st.agent) && (lastSay < 0 || st.raw.some((e, i) => i > lastSay && e.kind === 'tool')) && !doneSeen.has(st.agent) && agents[st.agent]) { doneSeen.add(st.agent); events.push({ ts: st.raw.length ? st.raw[st.raw.length - 1].ts : agents[st.agent].mtime || 0, agent: st.agent, kind: 'finish', to: 'main' }); }   // finished by silence without a completion record read: done
   }
   for (const e of events) if (e.kind === 'report' && e.to === null) e.to = parent[e.agent] || 'main';
   events.sort((a, b) => a.ts - b.ts);
@@ -54,4 +55,4 @@ function assemble({ id, proj, agents, states, childByTool = {}, childByPath = {}
   const real = merged.find((e) => e.kind !== 'usage' && e.kind !== 'finish' && e.kind !== 'compact'), first = real ? real.ts : 0, last = merged.length ? merged[merged.length - 1].ts : 0;
   return { id, proj, agents: Object.values(agents), events: merged.map((e) => ({ ...e, t: Math.max(0, e.ts - first) })), durationMs: last - first, recentUntil };
 }
-module.exports = { assemble };
+module.exports = { assemble, QUIET_MS };

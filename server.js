@@ -140,6 +140,40 @@ function timelineEntry(proj, id) {
   tlCache.delete(key); tlCache.set(key, entry);
   trimCache(); return entry;
 }
+// ---- A call is a project's (Tom: "a call is per PROJECT, not per session"): every live session placed in the project of the one opened (a Claude lead, a Codex thread,
+// a Hermes thread) joins it with all its agents; guests are only sessions of other projects. The session opened stays "main"; another session's agents get its short id in
+// front ("s0a56b7__main" is that session's lead). Every event carries its session (sess) and its index in it (si), so the page asks only for what is new in each.
+const CALL_LIVE_MS = 10 * 60e3, CALL_MAX = 6, callCache = new Map();
+function callMates(proj, id, group, rows, now = Date.now()) {   // the other live sessions of the same project, the most recent first
+  if (!group || group.other || !group.key) return [];
+  return rows.filter((r) => r.group && r.group.key === group.key && !(r.proj === proj && r.id === id) && !r.stopped && !(r.oneshot && !/^(working|waiting|blocked)$/.test(r.state)) && (/^(working|waiting|blocked)$/.test(r.state) || now - r.mtime < CALL_LIVE_MS))
+    .sort((a, b) => b.mtime - a.mtime).slice(0, CALL_MAX - 1);
+}
+const callPrefix = (id) => 's' + String(id).replace(/[^0-9a-z]/gi, '').slice(-6) + '__';   // safe in an element id and a CSS selector (#t-s0a56b7__main)
+function mergeCall(main, mates) {   // main, mates: { proj, id, tl }; one timeline for the call, each session's agents under its own lead, a message seen in two logs kept once
+  const all = [main, ...mates], lead = new Map(all.map((m, k) => [m.proj + '/' + m.id, k ? callPrefix(m.id) + 'main' : 'main']));
+  const sessOf = (a) => a && a.type === 'peer' && a.link && lead.get(a.link.proj + '/' + a.link.id);   // a peer that is a session of this call is that session's lead, not a guest
+  const agents = [], seen = new Set(), events = [], msgs = new Set();
+  all.forEach((m, k) => {
+    const pre = k ? callPrefix(m.id) : '', map = new Map(), team = { proj: m.proj, id: m.id, title: m.tl.title || '', source: m.proj.startsWith('_codex') ? 'codex' : m.proj.startsWith('_hermes') ? 'hermes' : 'claude' };
+    for (const a of m.tl.agents) map.set(a.id, sessOf(a) || (a.type === 'peer' ? a.id : pre + a.id));   // a guest keeps its id: the same guest of two sessions is one tile
+    for (const a of m.tl.agents) { const nid = map.get(a.id); if (sessOf(a) || seen.has(nid)) continue; seen.add(nid); agents.push(a.type === 'peer' ? (a.group && main.tl.group && a.group.key === main.tl.group.key ? { ...a, kin: true } : a) : { ...a, id: nid, team, ...(k && a.id === 'main' ? { lead: true, name: a.name || { claude: 'Claude', codex: 'Codex', hermes: 'Hermes' }[team.source] } : {}) }); }   // a session of this project that is not live is kin, not a guest; another lead is named by its harness
+    m.tl.events.forEach((e, si) => {
+      if (e.kind === 'msg' && e.msgId) { if (msgs.has(e.msgId)) return; msgs.add(e.msgId); }   // the sender's and the receiver's copy of one message
+      const r = { ...e, sess: m.id, si }; if (r.agent != null) r.agent = map.get(r.agent) || pre + r.agent; if (r.to != null && typeof r.to === 'string') r.to = map.get(r.to) || (k && !/^p_|^x_/.test(r.to) ? pre + r.to : r.to); events.push(r);
+    });
+  });
+  if (mates.length) events.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  return { ...main.tl, agents, events, members: all.map((m) => ({ proj: m.proj, id: m.id, title: m.tl.title || '', n: m.tl.events.length, lead: lead.get(m.proj + '/' + m.id) })) };
+}
+function callEntry(proj, id) {   // the call of a session: its timeline merged with its project's other live sessions, rebuilt only when one of them changed
+  const me = timelineEntry(proj, id), mates = proj === '_demo' ? [] : callMates(proj, id, me.tl.group, boardRows()).map((r) => { try { return { proj: r.proj, id: r.id, e: timelineEntry(r.proj, r.id) }; } catch { return null; } }).filter((m) => m && m.e && m.e.tl);
+  const parts = [me, ...mates.map((m) => m.e)], key = proj + '/' + id, hit = callCache.get(key);
+  if (hit && hit.parts.length === parts.length && hit.parts.every((p, i) => p === parts[i])) return hit;
+  const tl = mergeCall({ proj, id, tl: me.tl }, mates.map((m) => ({ proj: m.proj, id: m.id, tl: m.e.tl })));
+  const c = { parts, tl, rev: parts.map((p) => p.rev).join('.'), sig: [key, ...mates.map((m) => m.proj + '/' + m.id)].sort().join(' ') };
+  callCache.delete(key); callCache.set(key, c); if (callCache.size > 12) callCache.delete(callCache.keys().next().value); return c;
+}
 function trimCache() {
   let total = 0; for (const e of tlCache.values()) total += entryBytes(e);
   while (tlCache.size > MAX_CACHED_SESSIONS || (tlCache.size > 1 && total > MAX_CACHE_BYTES())) {   // free the memory of sessions nobody is looking at any more
@@ -508,12 +542,12 @@ async function luna(instructions, text, schema, ms = 15000) {
 }
 // Live speech triage: the lines waiting to be heard go in one batch, the model says which to drop and writes at most two short sentences to say
 // (it may merge related items). The page keeps the last word: it never drops a needs-you item, never sends a stale one, and has its own policy when this fails.
-const TRIAGE_SYS = 'You choose what Tom hears from a live feed of his AI agents at work. What matters to him, in order: anything that needs him (needs_you), results and reports, decisions and blockers, messages between agents; routine progress is low value, and the session he is viewing matters more than others. Each item has an id, its age in seconds, a kind (needs_you, report, message, order), its project, the agent (lead or sub-agent, and its role) and its text. You also get what was already said in the last minutes: do not repeat it. Tom wants everything narrated: cover every item, merging related ones; drop an item only when it repeats what was already said, or when the queue is longer than two lines can carry (then keep the most important). Return JSON: "drop" lists the ids left out; "say" has at most 2 lines, most important first, each ONE short spoken sentence of at most 22 words in the language of the items, content only: no names, no greetings, no "the agent says", no labels, no markdown, no paths or ids. The one exception: a message item between agents has a route (2 to 4 words, project and role); a line about such a message starts with that route exactly as given, a colon, then the content ("To gladiator Hermes: the armour numbers are in."), and says no other name, title or session name. Write it as a neutral line about the work, never as the agent speaking: no I, we or you (\"Pushing to production is waiting for approval\", not \"May I push to production?\"). A line may merge related items: list all their ids. Never drop a needs_you item. When something must go, results, decisions, problems and requests go before progress; newer before older.';
+const TRIAGE_SYS = 'You narrate a live feed of Tom\'s AI agents at work, all day long: he wants to hear almost everything, and only a real backlog should thin it out. Each item has an id, its age in seconds, a kind, its project, the agent (lead or sub-agent, and its role) and its text. Kinds: needs_you (an agent needs him), report, tests (a test run\'s result), commit, finish (a sub-agent finished), message (between agents), order (a task given to a sub-agent), work (what an agent is doing right now; a hint in brackets may show its command, for the wording only). You also get what was already said in the last minutes: do not repeat it. Say almost every item, merging related ones; drop an item only when it repeats what was already said, duplicates another item, or when the queue is longer than the lines allowed can carry (then keep, in this order: needs_you, reports and tests, decisions and problems, messages, commits, finishes and orders, then work; newer before older; the session he is viewing first). Return JSON: "drop" lists the ids left out; "say" has at most the number of lines allowed, most important first, each ONE short spoken sentence in the language of the items: at most 16 words when more than 2 lines are allowed, else at most 22. Content only: no greetings, no "the agent says", no labels, no markdown, no paths, ids or commands. A work, tests, commit, finish or order item already says who in its text ("Gladiator lead is running tests"): keep that who as given and name nobody else. The one exception for messages: a message item between agents has a route (2 to 4 words, project and role); a line about such a message starts with that route exactly as given, a colon, then the content ("To gladiator Hermes: the armour numbers are in."), and says no other name, title or session name. Write it as a neutral line about the work, never as the agent speaking: no I, we or you (\"Pushing to production is waiting for approval\", not \"May I push to production?\"). A line may merge related items: list all their ids. Never drop a needs_you item.';
 const TRIAGE_SCHEMA = { type: 'object', additionalProperties: false, required: ['drop', 'say'], properties: { drop: { type: 'array', items: { type: 'integer' } }, say: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['ids', 'line'], properties: { ids: { type: 'array', items: { type: 'integer' } }, line: { type: 'string' } } } } } };
-function triageInput({ items, said, viewing } = {}) {   // the text the model gets: what Tom is viewing, what was already said, the queue ('' when empty)
-  const one = (x, n) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, n);
-  const list = (Array.isArray(items) ? items : []).slice(0, 20).map((it) => `${+it.id || 0} (${Math.round(+it.age || 0)} s, ${one(it.kind, 12) || 'message'}, project ${one(it.project, 60) || '?'}, ${it.lead ? 'lead' : 'sub-agent'} ${one(it.role, 60)}${it.route ? ', route "' + one(it.route, 60) + '"' : ''}): ${one(it.text, 1500)}`);
-  return list.length ? `Tom is viewing: ${one(viewing, 120) || '?'}\nAlready said (oldest first):\n${(Array.isArray(said) ? said : []).slice(-12).map((x) => '- ' + one(x, 200)).join('\n') || '- nothing yet'}\n\nQueue:\n` + list.join('\n') : '';
+function triageInput({ items, said, viewing, max } = {}) {   // the text the model gets: what Tom is viewing, what was already said, how many lines, the queue ('' when empty)
+  const one = (x, n) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, n), lines = Math.max(1, Math.min(4, Math.round(+max) || 2));
+  const list = (Array.isArray(items) ? items : []).slice(0, 20).map((it) => `${+it.id || 0} (${Math.round(+it.age || 0)} s, ${one(it.kind, 12) || 'message'}, project ${one(it.project, 60) || '?'}, ${it.lead ? 'lead' : 'sub-agent'} ${one(it.role, 60)}${it.route ? ', route "' + one(it.route, 60) + '"' : ''}): ${one(it.text, 1500)}${it.hint ? ' [' + one(it.hint, 120) + ']' : ''}`);
+  return list.length ? `Tom is viewing: ${one(viewing, 120) || '?'}\nAlready said (oldest first):\n${(Array.isArray(said) ? said : []).slice(-12).map((x) => '- ' + one(x, 200)).join('\n') || '- nothing yet'}\n\nLines allowed: ${lines}\n\nQueue:\n` + list.join('\n') : '';
 }
 function triage(req) { const text = triageInput(req); return text ? luna(TRIAGE_SYS, text, TRIAGE_SCHEMA, 20000) : Promise.resolve({ drop: [], say: [] }); }
 const summaries = new Map();   // text → Promise<string>
@@ -731,11 +765,16 @@ function start(port = PORT) {
       if (!SAFE.test(proj) || !SAFE.test(sid) || proj === '..' || sid === '..' || proj.length > 200 || sid.length > 200) { res.writeHead(400); return res.end('bad request'); }
       const src = sourceOf(proj);
       if (proj !== '_demo' && !(src ? src.exists(proj, sid) : fs.existsSync(path.join(ROOT, proj, sid + '.jsonl')))) return json({ error: 'session not found' }, 404);
-      const entry = proj === '_demo' ? { tl: require('./demo.js')(), rev: 1 } : timelineEntry(proj, sid), tl = entry.tl;   // built-in fictional session
-      const after = url.searchParams.get('after');
+      const entry = proj === '_demo' ? { tl: require('./demo.js')(), rev: 1, sig: '' } : callEntry(proj, sid), tl = entry.tl;   // built-in fictional session; else the project's call
+      const after = url.searchParams.get('after'), cur = url.searchParams.get('cur');
+      if (cur != null) {   // what is new in each session of the call since the page's cursor ("id:n,id:n"); a member that joined or left changes sig and the page reloads
+        const at = Object.fromEntries(cur.split(',').map((x) => x.split(':')).filter((x) => x.length === 2).map(([k, n]) => [k, +n || 0]));
+        const fresh = tl.events.filter((e) => e.si >= (at[e.sess] ?? Infinity)), grown = tl.events.filter((e) => e.kind === 'tools' && at[e.sess] > 0 && e.si === at[e.sess] - 1);   // a beat already sent may have grown
+        return json({ id: tl.id, agents: tl.agents, group: tl.group, title: tl.title, members: tl.members, total: tl.events.length, rev: entry.rev, sig: entry.sig, events: fresh, grown });
+      }
       if (after == null) {   // the whole timeline: serialize once per version, send gzip-compressed when the browser allows it (12 MB → ~1.5 MB)
         const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
-        if (gz ? !entry.gz : !entry.json) { const j = JSON.stringify({ ...tl, rev: entry.rev }); if (gz) entry.gz = zlib.gzipSync(j, { level: 5 }); else entry.json = j; entry.bytes = j.length; trimCache(); }   // keep only the encoding that is served; its size counts against the budget
+        if (gz ? !entry.gz : !entry.json) { const j = JSON.stringify({ ...tl, rev: entry.rev, sig: entry.sig }); if (gz) entry.gz = zlib.gzipSync(j, { level: 5 }); else entry.json = j; entry.bytes = j.length; trimCache(); }   // keep only the encoding that is served; its size counts against the budget
         res.writeHead(200, { 'content-type': 'application/json', ...(gz ? { 'content-encoding': 'gzip' } : {}), vary: 'accept-encoding' });
         return res.end(gz ? entry.gz : entry.json);
       }
@@ -755,7 +794,7 @@ function start(port = PORT) {
   } catch (e) { if (res.headersSent) return res.destroy(); json({ error: String(e.message || e) }, 500); }
   }).listen(port, '127.0.0.1', function () { console.log(`Agent Standup → http://localhost:${this.address().port}`); });
 }
-module.exports = { tts, elevenStats, elevenHome: HERMES_PROFILE, elevenSetup, start, currentSession, shutdown, findClaude, bundledClaude, boardRows, placement, charactersDir, listCharacters, triageInput, TRIAGE_SYS, TRIAGE_SCHEMA, SUMMARY_URL, SUMMARY_MODEL };   // the triage pieces: for the offline evaluation of thinking levels
+module.exports = { tts, elevenStats, elevenHome: HERMES_PROFILE, elevenSetup, mergeCall, callMates, start, currentSession, shutdown, findClaude, bundledClaude, boardRows, placement, charactersDir, listCharacters, triageInput, TRIAGE_SYS, TRIAGE_SCHEMA, SUMMARY_URL, SUMMARY_MODEL };   // the triage pieces: for the offline evaluation of thinking levels
 if (require.main === module) {
   start().on('error', (e) => {
     console.error(e.code === 'EADDRINUSE' ? `Port ${PORT} is already in use (maybe Agent Standup is already running, e.g. inside VS Code). Try: PORT=4790 node server.js` : String(e));

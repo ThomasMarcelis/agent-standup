@@ -83,7 +83,7 @@ test('voice director: stale lines are never sent, needs-you is never dropped, a 
   const ok = tri.applyTriage(items, { drop: [2, 3], say: [{ ids: [1], line: 'All 412 tests pass after the **auth race** fix.' }, { ids: [99], line: 'invented' }, { ids: [3], line: 'third line' }] });
   assert.deepEqual(ok.map((o) => [o.line, o.items.map((it) => it.id)]), [['All 412 tests pass after the auth race fix.', [1]], ['third line', [3]], ['Waiting for approval to push to production.', [2]]]);   // unknown ids ignored, max 2 from the model, the dropped needs-you put back
   assert.equal(tri.applyTriage(items, 'not json'), null); assert.equal(tri.applyTriage(items, { say: 'x' }), null); assert.equal(tri.applyTriage(items, null), null);
-  assert.deepEqual(tri.localPick(items).map((o) => o.items[0].id), [2, 1]);   // fallback: what needs Tom first, then the most important of the rest: two lines
+  assert.deepEqual(tri.localPick(items).map((o) => o.items[0].id), [2, 1, 3]);   // fallback: what needs Tom first, then the rest by importance: a short queue is said whole
   assert.deepEqual(tri.localPick(items.filter((it) => it.kind !== 'needs_you')).map((o) => o.items[0].id), [1, 3]);   // the report before the message
 });
 
@@ -210,7 +210,8 @@ test('no chatter level (Tom, round 5): the setting is gone, a saved Quiet is mig
   assert.ok(!/chatSel|Chatter between agents/.test(html), 'no chatter setting in the page');
   const prefs = { chat: 'quiet' }; new Function('prefs', grab(/if \(!prefs\.chatOnce\) [^\n]*/))(prefs); assert.deepEqual(prefs, { chatOnce: true });
   const now = Date.now(), it = (id, kind, ago) => ({ id, kind, ev: { ts: now - ago }, text: 'Line ' + id + '.' });
-  assert.equal(tri.localPick([it(1, 'message', 3000), it(2, 'report', 2000), it(3, 'order', 1000)]).length, 2, 'without the model, two lines, not one');
+  assert.equal(tri.localPick([it(1, 'message', 3000), it(2, 'report', 2000), it(3, 'order', 1000)]).length, 3, 'without the model, a short queue is said whole');
+  assert.equal(tri.localPick(Array.from({ length: 12 }, (_, i) => it(i + 1, 'message', 1000 + i))).length, 2, 'a backlog keeps two lines, the most important');
 });
 
 test('denoise: a peer is named by what it is, never by an inbox id (a Hermes thread by its title, a Codex thread by its words)', () => {

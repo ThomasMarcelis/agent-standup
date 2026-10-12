@@ -149,7 +149,7 @@ const srv = require('../server.js');
 test('triage: a message item reaches Luna with its route, and the rule says to start the line with it', () => {
   assert.match(srv.triageInput({ items: [{ id: 1, age: 3, kind: 'message', project: 'gladiator-game', lead: true, role: 'Claude, Lead', route: 'To Hermes', text: 'The armour numbers are in.' }], said: [], viewing: 'gladiator-game' }), /route "To Hermes"\): The armour numbers are in\./);
   assert.match(srv.TRIAGE_SYS, /starts with that route exactly as given/);
-  assert.match(srv.TRIAGE_SYS, /Tom wants everything narrated/); assert.match(srv.TRIAGE_SYS, /drop an item only when it repeats what was already said, or when the queue is longer than two lines can carry/);
+  assert.match(srv.TRIAGE_SYS, /he wants to hear almost everything/); assert.match(srv.TRIAGE_SYS, /drop an item only when it repeats what was already said, duplicates another item, or when the queue is longer than the lines allowed can carry/);
 });
 test('server: at start, a system voice an older version kept under an ElevenLabs name is dropped, real ElevenLabs audio is kept', () => {
   assert.ok(!fs.existsSync(path.join(ttsDir, 'old-stand-in.mp3'))); assert.ok(fs.existsSync(path.join(ttsDir, 'real.mp3')));
@@ -298,7 +298,7 @@ test('follow mode: an automatic switch waits out the hold when this call merely 
   assert.equal(followReason({ follow: 'g:/w/gl', followed: 'gladiator-game', why: 'busy', toTitle: 'Respond to greeting' }), 'Following gladiator-game: Respond to greeting is the most active');
   assert.equal(followReason({ follow: 'all', why: 'pin' }), 'Following everything: the pinned call ended');
   const notes = [], loads = [], S = { cur: { proj: 'p', id: 'combat' }, title: 'gladiator-game, Combat simulation realism gaps', pin: '', autoPin: null, switchAt: Date.now(), events: [], userPaused: true }, prefs = { follow: 'all' };
-  const src = [grab(/function followReason\(r\) \{[\s\S]*?\n\}/), grab(/async function followCurrent\(\) \{[\s\S]*?\n\}/)].join('\n');
+  const src = [grab(/function followReason\(r\) \{[\s\S]*?\n\}/), grab(/const inCall = [^\n]*/), grab(/async function followCurrent\(\) \{[\s\S]*?\n\}/)].join('\n');
   const scope = pageScope({ S, prefs, Q: new URLSearchParams(''), FOLLOW_HOLD: 20000, L: (fr, en) => en, fetch: async () => ({ json: async () => ({ proj: '_codex', id: 'busy' }) }),
     loadSession: async (proj, id) => { loads.push(id); S.cur = { proj, id }; S.group = { key: '/w/ms', name: 'MarketSimulator' }; S.title = 'MarketSimulator, Build Act 2 environments'; return true; }, noteSwitch: (t) => notes.push(t), $: () => ({ classList: { add() {}, remove() {} } }) });
   const { followCurrent } = new Function('scope', 'with (scope) { ' + src + '\nreturn { followCurrent }; }')(scope);
@@ -386,4 +386,58 @@ test('sound: no setup: a Hermes key makes ElevenLabs the voice whatever was save
   assert.equal(load({ vstyle: 'natural', elevenOnce: true, soundOnce: true }, true).prefs.vstyle, 'elevenlabs', 'with a key, every time');
   assert.deepEqual([load({ vstyle: 'natural', elevenOnce: true, soundOnce: true, muted: true }, true).prefs.muted], [true], 'a mute chosen since is kept');
   assert.equal(load({ vstyle: 'natural', elevenOnce: true }, false).prefs.vstyle, 'natural', 'without a key, the voice chosen in the settings');
+});
+
+// ---- more chatter (Tom: "I just expected a bit more chatter"; he wants it narrated 24/7, thinned only when there is too much): real content, never invented banter
+function beatEnv(over = {}) {
+  const src = [grab(/\nconst base = [^\n]*/), grab(/function cmdLabel\(text\) \{[\s\S]*?\n\}/), grab(/function cmdVerb\(cmd\) \{[\s\S]*?\n\}/), grab(/function plainAct\(tool, arg\) \{[\s\S]*?\n\}/), grab(/const projWord = [^\n]*/),
+    grab(/function party\(p\) \{[\s\S]*?\n\}/), grab(/const TRIAGE_WAIT = [\s\S]*?\/\/ ---- end triage policy/), grab(/function whoDoes\(id\) \{[\s\S]*?\n\}/), grab(/const DULL = [^\n]*/), grab(/const dullAct = [^\n]*/), grab(/const verbAct = [^\n]*/), grab(/const ing = [^\n]*/),
+    grab(/function commitOf\(t\) \{[\s\S]*?\n\}/), grab(/function testsOf\(out\) \{[\s\S]*?\n\}/), grab(/function beatOf\(e\) \{[\s\S]*?\n\}/), grab(/const STATUS_MS = [^\n]*/), grab(/function statusLine\(rows, now = Date\.now\(\)\) \{[\s\S]*?\n\}/),
+    grab(/function statusNext\(now = Date\.now\(\)\) \{[\s\S]*?\n\}/), grab(/const SPEECH_MAX = [^\n]*/), grab(/function clipSpeech\(t, cap\) \{[\s\S]*?\n\}/)].join('\n');
+  const S = { agents: { main: { id: 'main', name: 'Codex', role: 'Codex, Lead' }, k1: { id: 'k1', name: 'kettle hat', role: 'worker' }, k2: { id: 'k2', name: 'buckler writer', role: 'worker' } }, group: { key: '/w/gladiator-game', name: 'gladiator-game' }, cur: { proj: '_codex', id: 'glad' }, pin: '' };
+  const env = { S, prefs: { follow: 'all' }, D: { quietAt: 0, statusSaid: [], pending: null }, L: (fr, en) => en, speechOf: (e) => e.text || '', speakable: (t) => t, boardMemo: { rows: [] }, boardKey: (r) => r.group.key, niceProj: (p) => p, LIVE_MS: 300000, warmLines: (l) => l, ...over };
+  return new Function('scope', 'with (scope) { ' + src + '\nreturn { beatOf, testsOf, commitOf, triageItems, applyTriage, localPick, statusLine, statusNext, maxLines }; }')(pageScope(env));
+}
+test('chatter: an event is worth a line in plain words: what an agent is doing, a sub-agent starting or finishing, a commit, a test result', () => {
+  const b = beatEnv(), tools = (agent, name, arg) => ({ agent, kind: 'tools', ts: 1, tools: [{ name, arg }] });
+  assert.deepEqual(b.beatOf(tools('main', 'exec_command', 'dotnet test Gladiator.Sim.Tests --filter Combat')), { kind: 'work', act: 'Running tests', text: 'Gladiator lead is running tests', hint: 'dotnet test Gladiator.Sim.Tests --filter Combat' });
+  assert.equal(b.beatOf(tools('k1', 'apply_patch', 'straps.py')).text, 'The kettle hat sub-agent is editing straps.py');
+  assert.equal(b.beatOf(tools('main', 'exec_command', 'sed -n 1,80p server.js')), null, 'reading or searching is not news');
+  assert.equal(b.beatOf(tools('main', 'followup_task', '')), null, 'a tool with no plain doing is not a line');
+  assert.equal(b.beatOf(tools('main', 'exec_command', 'git commit -m "Wounds: pain shifts surrender to real injuries"')).text, 'Gladiator lead committed: Wounds: pain shifts surrender to real injuries');
+  assert.equal(b.beatOf(tools('main', 'Bash', "git commit -q -F - <<'EOF'\nOne sound control in words\n\nmore\nEOF")).kind, 'commit');
+  assert.equal(b.beatOf({ agent: 'main', kind: 'order', ts: 1, to: 'k2', title: 'buckler_writer', label: true, text: 'task "buckler_writer" (worker)' }).text, 'Gladiator lead started a sub-agent: buckler writer');
+  assert.equal(b.beatOf({ agent: 'k1', kind: 'finish', ts: 1, to: 'main' }).text, 'The kettle hat sub-agent finished');
+  assert.deepEqual(b.beatOf({ agent: 'main', kind: 'msg', ts: 1, text: 'The armour numbers are in.' }), { kind: 'message', text: 'The armour numbers are in.' }, 'what an agent wrote stays its own words');
+  assert.equal(b.beatOf({ agent: 'main', kind: 'results', ts: 1, items: [{ out: 'ℹ tests 78\nℹ pass 78\nℹ fail 0' }] }).text, 'Gladiator lead: all 78 tests pass');
+  for (const [out, said] of [['Tests:       2 failed, 76 passed, 78 total', '2 of 78 tests failed'], ['===== 25 passed, 1 warning in 1.20s =====', 'all 25 tests pass'], ['Passed!  - Failed:     0, Passed:   120, Skipped: 0, Total: 120', 'all 120 tests pass'],
+    ['Failed!  - Failed:     3, Passed:   117, Skipped: 0', '3 of 120 tests failed'], ['test result: ok. 12 passed; 0 failed; 0 ignored', 'all 12 tests pass'], ['Saved closeup.png', '']]) assert.equal(b.testsOf(out), said, out);
+});
+test('chatter: the queue keeps only the newest of what an agent is doing (an older one is past), for 20 s; a short queue is said in up to 4 lines, a backlog in 2', () => {
+  const b = beatEnv(), now = 1.79e12, done = new WeakSet(), ev = (agent, ago, arg) => ({ agent, kind: 'tools', ts: now - ago * 1000, tools: [{ name: 'exec_command', arg }] });
+  const evs = [ev('main', 25, 'npm test'), ev('main', 12, 'npm run build'), { agent: 'main', kind: 'report', ts: now - 6000, text: 'Done.' }, ev('k1', 4, 'python3 make_parts.py'), ev('main', 3, 'npm test')];   // in time order, as they come
+  const items = b.triageItems(evs, done, now, new Set(), {}, b.beatOf);
+  assert.deepEqual(items.map((it) => [it.kind, it.agent, it.age]), [['report', 'main', 6], ['work', 'k1', 4], ['work', 'main', 3]]);
+  assert.ok(done.has(evs[1]) && done.has(evs[0]), 'superseded beats are handled, never said later'); assert.ok(!done.has(evs[2]), 'the report waits to be picked');
+  assert.deepEqual([b.maxLines(3), b.maxLines(8), b.maxLines(9)], [4, 4, 2]);
+  const say = (n) => Array.from({ length: n }, (_, i) => ({ ids: [i + 1], line: 'Line ' + (i + 1) + '.' })), mk = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1, kind: 'work', ev: { ts: now }, text: 'x' }));
+  assert.equal(b.applyTriage(mk(5), { drop: [], say: say(5) }).length, 4); assert.equal(b.applyTriage(mk(12), { drop: [], say: say(5) }).length, 2);
+});
+test('chatter: after 20 s of quiet while agents work, one status line from the real board, in the scope followed, never the same line twice', () => {
+  const now = Date.now(), row = (name, state, tool, arg, ago, sub = 0) => ({ id: name, proj: '-w-' + name, group: { key: '/w/' + name, name }, state, tool, arg, mtime: now - ago * 1000, subActive: sub });
+  const rows = [row('gladiator-game', 'working', 'exec_command', 'dotnet test', 5, 4), row('MarketSimulator', 'working', 'apply_patch', 'Ledger.cs', 9), row('agent-standup', 'blocked', '', '', 30), row('twin-folder', 'done', '', '', 20), row('old-thing', 'working', 'Bash', 'ls', 900)];
+  const b = beatEnv({ boardMemo: { rows } });
+  assert.equal(b.statusLine(rows, now), 'Agent standup needs you; gladiator is running tests, with 4 sub-agents; MarketSimulator is editing Ledger.cs.');
+  const p = beatEnv({ boardMemo: { rows }, prefs: { follow: 'g:/w/MarketSimulator' } }); assert.equal(p.statusLine(rows, now), 'MarketSimulator is editing Ledger.cs.', 'following a project: that project only');
+  const D = { quietAt: 0, statusSaid: [], pending: null }, s = beatEnv({ boardMemo: { rows }, D });
+  s.statusNext(now); assert.ok(D.pending, 'said'); D.pending = null; s.statusNext(now + 30000); assert.equal(D.pending, null, 'the same state again: nothing new to say');
+  assert.equal(beatEnv().statusLine([row('x', 'done', '', '', 5)], now), '', 'nobody working: silence');
+  assert.equal(beatEnv().statusLine([row('gladiator-game', 'working', 'followup_task', '', 5, 2)], now), 'Gladiator is working, with 2 sub-agents.', 'a bare tool name is not a doing ("is followup task")');
+  const a = beatEnv().statusLine([row('MarketSimulator', 'working', 'Bash', 'npm test', 2), row('gladiator-game', 'working', 'Bash', 'npm test', 9)], now), c = beatEnv().statusLine([row('MarketSimulator', 'working', 'Bash', 'npm test', 9), row('gladiator-game', 'working', 'Bash', 'npm test', 2)], now);
+  assert.equal(a, c, 'the same work in another order is the same line: not said again');
+});
+test('chatter: Luna is told to say almost everything, how many lines it may use, and the command behind a work beat for the wording only', () => {
+  const t = srv.triageInput({ items: [{ id: 1, age: 2, kind: 'work', project: 'gladiator-game', lead: true, role: 'Codex, Lead', text: 'Gladiator lead is running tests', hint: 'dotnet test --filter Combat' }], said: [], viewing: 'gladiator-game', max: 4 });
+  assert.match(t, /Lines allowed: 4/); assert.match(t, /Gladiator lead is running tests \[dotnet test --filter Combat\]/);
+  assert.match(srv.TRIAGE_SYS, /Kinds: needs_you.*tests.*commit.*finish.*work/); assert.match(srv.TRIAGE_SYS, /for the wording only/); assert.match(srv.TRIAGE_SYS, /no paths, ids or commands/);
 });

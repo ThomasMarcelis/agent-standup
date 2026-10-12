@@ -163,6 +163,10 @@
   body.replay #gantt { display:block }
   aside { display:none; width:320px; flex:none; border-left:1px solid var(--line); background:var(--panel); flex-direction:column; min-height:0 }
   body.log aside { display:flex } body.board aside { display:none }   /* the board is about all sessions: no transcript of the one followed behind it */
+  #wgraph { display:none; width:340px; flex:none; flex-direction:column; min-height:0; border-left:1px solid var(--line); background:var(--panel) }   /* the transcript closed: its place shows the project's workers */
+  @media (min-width:1100px) { body:not(.log):not(.board):not(.tree) #wgraph { display:flex } } body.log #wgraph { display:none !important }
+  .wgh { display:flex; align-items:center; border-bottom:1px solid var(--line) } .wgh h2 { flex:1; border-bottom:0 !important } .wtab { margin-right:8px; font-size:11.5px; color:var(--dim); padding:4px 8px; border:1px solid var(--line); border-radius:99px } .wtab:hover { color:var(--text); border-color:var(--accent) }
+  #logside .back { position:absolute; top:7px; left:auto; right:96px; margin:0 } #wg { flex:1; width:100%; min-height:0; display:block } #wgEmpty { padding:10px 14px; font-size:12px } #wgEmpty:empty { display:none }
   #log .row.tools { display:none } body.logtools #log .row.tools { display:block } aside { position:relative } aside .lt { position:absolute; top:7px; right:10px; margin:0 }   /* tool calls folded: the words between agents stay */
   aside h2 { margin:0; padding:11px 14px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); border-bottom:1px solid var(--line) }
   #log { flex:1; overflow:auto }
@@ -319,7 +323,7 @@
   <button class="mi" data-t="roster"><span data-fr="Liste des agents (à gauche)" data-en="Agents list (left)">Liste des agents (à gauche)</span><i class="sw"></i></button>
   <button class="mi" data-t="reactions"><span data-fr="Barre de réactions (👍 👏 ☕)" data-en="Reactions bar (👍 👏 ☕)">Barre de réactions (👍 👏 ☕)</span><i class="sw"></i></button>
   <button class="mi" data-t="banter"><span data-fr="Petites répliques et animations" data-en="Little lines & animations">Petites répliques et animations</span><i class="sw"></i></button>
-  <button class="mi" data-t="vanish"><span data-fr="Retirer les agents terminés (2 min)" data-en="Remove finished agents (2 min)">Retirer les agents terminés (2 min)</span><i class="sw"></i></button>
+  <button class="mi" data-t="vanish"><span data-fr="Retirer les agents terminés (10 min)" data-en="Remove finished agents (10 min)">Retirer les agents terminés (10 min)</span><i class="sw"></i></button>
   <button class="mi" data-t="epi"><span data-fr="Réactions et blagues" data-en="Reactions & jokes">Réactions et blagues</span><i class="sw"></i></button>
   <h4 data-fr="Source" data-en="Source">Source</h4>
   <div class="box"><div class="seg" style="width:100%" id="modeSeg"><button data-m="live" style="flex:1">Live</button><button data-m="replay" style="flex:1">Replay</button><button data-m="demo" style="flex:1">Demo</button></div>
@@ -351,7 +355,8 @@
     <div id="empty"><h2 id="eT"></h2><p id="eP"></p><button class="cta" id="eDemo"></button></div>
     <div id="detail"><div class="hd"><b id="dname"></b><button class="ic" id="dclose">✕</button></div><div id="dbody"></div></div>
   </section>
-  <aside><h2 id="logH">Transcript</h2><button id="logTools" class="cq lt"></button><input id="logQ" type="search" placeholder="Search…" aria-label="Search the transcript" style="margin:0 10px 8px;width:calc(100% - 20px)"><div id="log"></div></aside>
+  <aside id="wgraph" aria-label="Workers"><div class="wgh"><h2 id="wgH" data-fr="Équipe du projet" data-en="Project workers">Project workers</h2><button id="openLog" class="wtab" title="Transcript (L)" data-fr="Transcription ▸" data-en="Transcript ▸">Transcript ▸</button></div><svg id="wg" role="img" aria-label="Workers of this project: the bigger the dot, the more tokens; the thicker the line, the more messages"></svg><div id="wgEmpty" class="dim"></div></aside>
+  <aside id="logside"><h2 id="logH">Transcript</h2><button id="closeLog" class="wtab back" title="Workers (L)">◂</button><button id="logTools" class="cq lt"></button><input id="logQ" type="search" placeholder="Search…" aria-label="Search the transcript" style="margin:0 10px 8px;width:calc(100% - 20px)"><div id="log"></div></aside>
 </main>
 <footer>
   <input id="seek" type="range" min="0" max="0" value="0"><span class="dim" id="pos">0 / 0</span>
@@ -361,6 +366,7 @@
 <div id="card"></div><div id="recap"><div class="box"></div></div>
 
 <script src="/api/prefs.js"></script>
+<script src="/graph.js"></script>
 <script>
 // =====================================================================
 //  helpers, prefs, i18n
@@ -384,6 +390,7 @@ if (!prefs.chatOnce) { delete prefs.chat; prefs.chatOnce = true; }
 // No setup: when the server found a Hermes ElevenLabs key, ElevenLabs is the voice, whatever was saved before (an old style, a system voice); no other voice speaks then
 const ELEVEN_KEY = !!(window.SERVER_VOICES && window.SERVER_VOICES.elevenlabs);
 if (ELEVEN_KEY) prefs.vstyle = 'elevenlabs';
+if (!prefs.graphOnce) { prefs.log = false; prefs.graphOnce = true; }   // Tom never looks at the transcript: it starts closed (once: opening it again sticks), the workers' graph has its place
 if (!prefs.soundOnce) { prefs.voice = true; prefs.muted = false; prefs.soundOnce = true; }   // "voices off" is gone: the sound control's mute is the one switch (once: a window left silent by voice:false speaks again)   // the chatter level is gone: whoever was on Quiet hears everything now
 if (!prefs.notifyChosen) prefs.notify = true;   // “tell me when the agents are done” is on unless the person chose otherwise
 let prefsTimer = null;
@@ -587,7 +594,7 @@ const S = { owner: null, errRun: {}, exQ: [], agents: {}, model: {}, effort: {},
             speakers: new Set(), say: {}, lastTool: {}, level: {}, detail: null, collapsed: new Set(), title: '', idle: false, logTo: 0, trOk: true,
             clock: 0, doneAt: {}, gone: new Set(), leaving: new Set(), demo: false, hold: false };
 if (Q.get('pin')) S.pin = Q.get('pin'); else if (prefs.pin && prefs.pinProj === prefs.proj) S.pin = prefs.pin;   // the pin survives a reload
-const VANISH_MS = 120000;   // a finished agent leaves the call after 2 minutes (playback time)
+const VANISH_MS = 10 * 60e3;   // a finished agent leaves the call 10 minutes after its own last event (live: by the clock; replay: at the playhead)
 // Live: how far the call is behind the real session, and what to do about it (speak faster, say less, skip decoration) so it keeps the rhythm of the real conversation
 const lagMs = (i = S.idx) => {   // how much newer the newest event of the session is than the one being played: 0 when the call is up to date, however long the session has been idle
   if (!S.live || !S.events.length) return 0; const e = S.events[Math.max(0, Math.min(i, S.events.length - 1))]; let last = S.events.length - 1; while (last > 0 && !S.events[last].ts) last--;
@@ -1008,11 +1015,11 @@ function addTile(p) {
   $('#stage').appendChild(d);
 }
 // Guests: the peers of a current exchange (a message either way within GUEST_MS of now, live, or of the playhead in a replay). Older contacts stay in the
-// transcript and the agent detail, not on the call.
+// transcript and the agent detail, not on the call. A session of this project that is not live (kin) is no guest: guests are other projects.
 const GUEST_MS = 10 * 60e3;
 function guestsAt(evs, idx, ref, agents) {
   const g = new Map();
-  for (let k = 0; k <= idx && k < evs.length; k++) { const e = evs[k]; if (e.kind !== 'msg') continue; for (const id of [e.agent, e.to]) if (agents[id] && agents[id].type === 'peer') { const x = g.get(id) || { id, n: 0, last: 0 }; x.n++; x.last = Math.max(x.last, e.ts || 0); g.set(id, x); } }
+  for (let k = 0; k <= idx && k < evs.length; k++) { const e = evs[k]; if (e.kind !== 'msg') continue; for (const id of [e.agent, e.to]) if (agents[id] && agents[id].type === 'peer' && !agents[id].kin) { const x = g.get(id) || { id, n: 0, last: 0 }; x.n++; x.last = Math.max(x.last, e.ts || 0); g.set(id, x); } }
   return [...g.values()].filter((x) => ref - x.last <= GUEST_MS).sort((a, b) => b.last - a.last);
 }
 function renderGuests() {
@@ -1071,23 +1078,23 @@ function paintStatus() {
   $('#seek').value = S.idx; $('#pos').textContent = `${Math.min(S.idx + 1, S.events.length)} / ${S.events.length}`;
 }
 const applyStatus = (ev) => {
+  for (const id of ev.kind === 'order' ? [ev.agent, ev.to] : [ev.agent]) if (id && ev.ts) S.seen[id] = Math.max(S.seen[id] || 0, ev.ts);   // each agent's own last event: what "finished long ago" is measured from
   if (ev.kind === 'msg') for (const id of [ev.agent, ev.to]) if (S.agents[id] && S.agents[id].type === 'peer' && !S.status[id]) S.status[id] = 'peer';   // a peer joins the call when the first message passes
   if (ev.kind === 'order') { (S.waitOn[ev.agent] = S.waitOn[ev.agent] || new Set()).add(ev.to); S.orderTs[ev.to] = ev.ts || 0; S.status[ev.to] = 'working'; delete S.doneAt[ev.to]; S.gone.delete(ev.to); S.leaving.delete(ev.to); if (!ev.bg && ev.toolId) S.run[ev.agent] = { id: ev.toolId, ts: ev.ts, start: performance.now(), name: 'Agent' }; const t = $('#t-' + ev.to); if (t) t.classList.remove('vanishing'); }
-  if ((ev.kind === 'tools' || ev.kind === 'say') && ev.agent !== 'main' && S.status[ev.agent] === 'done') { S.status[ev.agent] = 'working'; delete S.doneAt[ev.agent]; S.gone.delete(ev.agent); S.leaving.delete(ev.agent); }   // a finished agent that works again (a follow-up) is back
+  if ((ev.kind === 'tools' || ev.kind === 'say') && ev.agent !== 'main' && S.agents[ev.agent] && S.agents[ev.agent].type !== 'peer' && S.status[ev.agent] !== 'working') { S.status[ev.agent] = 'working'; delete S.doneAt[ev.agent]; S.gone.delete(ev.agent); S.leaving.delete(ev.agent); }   // an agent that works is in the call: back after it finished (a follow-up), or never ordered in what was read (its spawn record is older than the lead's read budget)
   if (ev.kind === 'finish') { if (S.waitOn[ev.to]) S.waitOn[ev.to].delete(ev.agent); if (S.status[ev.agent] !== 'done') { S.status[ev.agent] = 'done'; S.doneAt[ev.agent] = S.clock; } delete S.run[ev.agent]; const lr = S.run[ev.to]; if (lr && /^(Task|Agent)$/.test(lr.name) && !(S.waitOn[ev.to] && S.waitOn[ev.to].size)) delete S.run[ev.to]; }
   if (ev.kind === 'report') { if (S.waitOn[ev.to]) S.waitOn[ev.to].delete(ev.agent); S.status[ev.agent] = 'done'; S.doneAt[ev.agent] = S.clock; delete S.run[ev.agent]; }
 };
 function recomputeStatus(upTo) {
-  S.term = {}; S.todos = {}; S.run = {}; S.act = {}; S.usage = {}; S.errs = {}; S.lastAct = {}; S.waitOn = {}; S.orderTs = {}; S.prevState = {}; S.lastTool = {}; S.mainBusyAt = 0; S.ctx = {}; S.model = {}; S.effort = {}; S.compacts = {}; S.ctxWarned = {}; S.rep = {}; S.loops = {}; S.recomputing = true; document.querySelectorAll('.tile').forEach((t) => { clearTimeout(t._byeT); t.classList.remove('bye'); }); hidePresent();
-  S.status = {}; S.tc = {}; S.doneAt = {}; S.gone.clear(); S.leaving.clear(); document.querySelectorAll('.tile.vanishing').forEach((t) => t.classList.remove('vanishing')); const doneIdx = {}; document.querySelectorAll('.ticker').forEach((x) => { x.classList.remove('on'); x.innerHTML = ''; });
+  S.term = {}; S.todos = {}; S.run = {}; S.act = {}; S.usage = {}; S.errs = {}; S.lastAct = {}; S.seen = {}; S.waitOn = {}; S.orderTs = {}; S.prevState = {}; S.lastTool = {}; S.mainBusyAt = 0; S.ctx = {}; S.model = {}; S.effort = {}; S.compacts = {}; S.ctxWarned = {}; S.rep = {}; S.loops = {}; S.recomputing = true; document.querySelectorAll('.tile').forEach((t) => { clearTimeout(t._byeT); t.classList.remove('bye'); }); hidePresent();
+  S.status = {}; S.tc = {}; S.doneAt = {}; S.gone.clear(); S.leaving.clear(); document.querySelectorAll('.tile.vanishing').forEach((t) => t.classList.remove('vanishing')); document.querySelectorAll('.ticker').forEach((x) => { x.classList.remove('on'); x.innerHTML = ''; });
   for (let i = 0; i < upTo; i++) {
     const e = S.events[i]; applyStatus(e); tally(e); if (e.kind === 'tools') S.tc[e.agent] = (S.tc[e.agent] || 0) + e.tools.length;
     if (i >= upTo - 160) { if (e.kind === 'tools') e.tools.forEach((t) => pushTerm(e.agent, t)); else if (e.kind === 'results') applyResults(e, true); }
-    if (e.kind === 'report' || e.kind === 'finish') doneIdx[e.agent] = i; if (e.kind === 'order') delete doneIdx[e.to];
   }
   S.recomputing = false; later('tok', renderTokens, 50); later('badges', renderBadges, 50);
-  const now = S.events[Math.max(0, upTo - 1)];   // agents that finished long before this point are already gone
-  if (prefs.vanish && now) for (const id in doneIdx) if (now.t - S.events[doneIdx[id]].t >= VANISH_MS) S.gone.add(id);
+  const now = S.events[Math.max(0, upTo - 1)], ref = S.live ? Date.now() : (now && now.ts) || 0;   // agents whose own last event is long before this point are already gone
+  if (prefs.vanish && now) for (const id in S.status) if (S.status[id] === 'done' && ref - (S.seen[id] || 0) >= VANISH_MS) S.gone.add(id);
 }
 function syncUI() {
   $('#bPlay').textContent = S.playing ? '⏸' : '▶';
@@ -1099,7 +1106,7 @@ function syncUI() {
 
 // ---------- tool ticker, shared screen, flying messages ----------
 // ---------- what each agent is doing: tool calls with their real outputs ----------
-S.term = {}; S.todos = {}; S.run = {}; S.act = {}; S.usage = {}; S.errs = {}; S.lastAct = {}; S.waitOn = {}; S.orderTs = {}; S.prevState = {}; S.ctx = {}; S.model = {}; S.effort = {}; S.compacts = {}; S.ctxWarned = {}; S.rep = {}; S.loops = {}; S.present = null; S.camFor = null; let presentTimer = null;
+S.term = {}; S.todos = {}; S.run = {}; S.act = {}; S.usage = {}; S.errs = {}; S.lastAct = {}; S.seen = {}; S.waitOn = {}; S.orderTs = {}; S.prevState = {}; S.ctx = {}; S.model = {}; S.effort = {}; S.compacts = {}; S.ctxWarned = {}; S.rep = {}; S.loops = {}; S.present = null; S.camFor = null; let presentTimer = null;
 const later = (k, fn, ms = 160) => { later.p = later.p || {}; if (later.p[k]) return; later.p[k] = setTimeout(() => { later.p[k] = 0; fn(); }, ms); };   // coalesce bursts of repaints
 const fmtTok = (n) => (n < 1000 ? String(n) : n < 1e6 ? (n / 1000).toFixed(n < 1e4 ? 1 : 0) + 'k' : (n / 1e6).toFixed(1) + 'M');   // 3.4M, 398k
 const tokTotal = (u) => (u ? u.i + u.o + u.w : 0);   // headline = input + output + cache writes; cache reads are cheap and shown separately
@@ -1351,7 +1358,8 @@ setInterval(() => {   // live "running…" counters
 }, 250);
 
 // What the shared screen shows for an agent: terminal history with outputs, or an editor (file read / diff).
-const mediaUrl = (agent, tool, n) => `/api/media?proj=${encodeURIComponent(S.cur.proj)}&id=${encodeURIComponent(S.cur.id)}&agent=${encodeURIComponent(agent)}&tool=${encodeURIComponent(tool)}&n=${n}`;
+const mediaUrl = (agent, tool, n) => { const t = (S.agents[agent] || {}).team, own = t && t.id !== S.cur.id, a = own ? String(agent).replace(/^s[0-9a-z]{1,6}__/i, '') : agent;   // another session of the call: its picture is in its own transcript
+  return `/api/media?proj=${encodeURIComponent(own ? t.proj : S.cur.proj)}&id=${encodeURIComponent(own ? t.id : S.cur.id)}&agent=${encodeURIComponent(a)}&tool=${encodeURIComponent(tool)}&n=${n}`; };
 function termModel(id) {
   const buf = S.term[id] || [], last = buf[buf.length - 1], lines = [], more = (n) => ({ c: 'dim', t: `… +${n} ${L('lignes', 'lines')}` });
   const pic = S.cur && buf.slice(-12).reverse().find((e) => e.img), fresh = pic && performance.now() - pic.picAt < (S.live ? 8000 : 2500 / spd());   // a picture a tool returned (screenshot, image file) stays up for a few seconds whatever comes next, then for the next few calls: a screenshot is usually followed by a click or two
@@ -1463,7 +1471,8 @@ function vanish(id) {
 setInterval(() => {
   if (!S.playing) return; S.clock += 500 * spd();
   if (!prefs.vanish) return;
-  for (const id in S.doneAt) if (S.status[id] === 'done' && !S.gone.has(id) && S.clock - S.doneAt[id] >= VANISH_MS) vanish(id);
+  const e = S.events[Math.min(S.idx, S.events.length - 1)], ref = S.live ? Date.now() : (e && e.ts) || 0;   // 10 minutes after the agent's own last event, not after its report
+  for (const id in S.doneAt) if (S.status[id] === 'done' && !S.gone.has(id) && !S.speakers.has(id) && ref - (S.seen[id] || 0) >= VANISH_MS) vanish(id);
 }, 500);
 
 // ---------- speaking tiles ----------
@@ -1912,28 +1921,36 @@ async function voiceLine(ev) {   // what the voice reads for a line: short lines
 // heard go to the server in one batch (/api/triage, a small model through codex-lb) with what was already said and the session on screen; it drops what
 // is not worth saying and writes at most two short sentences, merging related items. Rules it cannot break: an item that needs Tom is never dropped,
 // nothing older than its window is sent or said, one voice at a time and never cut. On an error, or after TRIAGE_WAIT, a local pick is used instead.
-const TRIAGE_WAIT = 20000, KEEP_MS = 45000, KEEP_LONG_MS = 120000, TKIND = { report: 'report', msg: 'message', order: 'order', say: 'message' }, TPRIO = { needs_you: 5, report: 4, message: 3, order: 2 };
-const keepOf = (it) => (it.kind === 'needs_you' || it.kind === 'report' ? KEEP_LONG_MS : KEEP_MS);
-function triageItems(evs, done, now, needs = new Set(), agents = {}) {   // the newest lines not yet handled, inside their window (up to 20)
-  const out = [], seenNeed = new Set();
+// Tom wants it narrated all day: almost every item is said, and only a real backlog thins it out. Beside what the agents write (reports, messages, briefs), an event can be
+// worth a line in plain words (beatOf, made by the page from the real event): what an agent is doing now, a sub-agent starting or finishing, a commit, a test run's result.
+const TRIAGE_WAIT = 20000, KEEP_MS = 45000, KEEP_LONG_MS = 120000, WORK_MS = 20000, TKIND = { report: 'report', msg: 'message', order: 'order', say: 'message' };
+const TPRIO = { needs_you: 6, report: 5, tests: 5, message: 4, commit: 3, finish: 3, order: 2, work: 1, status: 0 };
+const keepOf = (it) => (it.kind === 'needs_you' || it.kind === 'report' ? KEEP_LONG_MS : it.kind === 'work' ? WORK_MS : KEEP_MS);   // what an agent is doing is news for 20 s only
+const maxLines = (n) => (n <= 8 ? 4 : 2);   // a short queue is said nearly whole, in up to 4 short lines; a backlog keeps 2, the most important
+const plainBeat = (e) => (TKIND[e.kind] ? { kind: TKIND[e.kind], text: speechOf(e) } : null);
+function triageItems(evs, done, now, needs = new Set(), agents = {}, beat = plainBeat) {   // the newest lines not yet handled, inside their window (up to 20)
+  const out = [], seenNeed = new Set(), seenWork = new Set();
   for (let k = evs.length - 1; k >= 0 && out.length < 20; k--) {
-    const e = evs[k]; if (!e.ts || now - e.ts > KEEP_LONG_MS) break; if (done.has(e) || !TKIND[e.kind]) continue;
-    const need = needs.has(e.agent) && !seenNeed.has(e.agent); if (need) seenNeed.add(e.agent);   // the latest line of an agent that needs Tom
-    const a = agents[e.agent] || {}, it = { ev: e, kind: need ? 'needs_you' : TKIND[e.kind], age: Math.round((now - e.ts) / 1000), text: speechOf(e), agent: e.agent, lead: e.agent === 'main', role: [a.name, a.role].filter(Boolean).join(', ') };
-    if (it.text && now - e.ts <= keepOf(it)) out.unshift(it);
+    const e = evs[k]; if (!e.ts || now - e.ts > KEEP_LONG_MS) break; if (done.has(e)) continue;
+    const b = beat(e); if (!b || !b.text) continue;
+    if (b.kind === 'work') { if (seenWork.has(e.agent)) { done.add(e); continue; } seenWork.add(e.agent); }   // what an agent is doing: only the newest, an older one is past
+    const need = !!TKIND[e.kind] && needs.has(e.agent) && !seenNeed.has(e.agent); if (need) seenNeed.add(e.agent);   // the latest line of an agent that needs Tom
+    const a = agents[e.agent] || {}, it = { ev: e, kind: need ? 'needs_you' : b.kind, age: Math.round((now - e.ts) / 1000), text: b.text, agent: e.agent, lead: e.agent === 'main', role: [a.name, a.role].filter(Boolean).join(', ') };
+    if (b.hint) it.hint = b.hint; if (b.act) it.act = b.act;
+    if (now - e.ts <= keepOf(it)) out.unshift(it);
   }
   out.forEach((it, n) => (it.id = n + 1)); return out;
 }
 function applyTriage(items, res) {   // the model's answer, held to the rules; null when it is not usable
   if (!res || typeof res !== 'object' || !Array.isArray(res.say) || !Array.isArray(res.drop)) return null;
   const byId = new Map(items.map((it) => [it.id, it])), out = [];
-  for (const x of res.say) { if (out.length >= 2) break; if (!x || typeof x.line !== 'string' || !Array.isArray(x.ids)) continue; const its = x.ids.map((id) => byId.get(id)).filter(Boolean), line = withRoute(speakable(x.line), its); if (its.length && line) out.push({ line, items: its }); }
+  for (const x of res.say) { if (out.length >= maxLines(items.length)) break; if (!x || typeof x.line !== 'string' || !Array.isArray(x.ids)) continue; const its = x.ids.map((id) => byId.get(id)).filter(Boolean), line = withRoute(speakable(x.line), its); if (its.length && line) out.push({ line, items: its }); }
   for (const it of items) if (it.kind === 'needs_you' && !out.some((o) => o.items.includes(it))) out.push({ line: clipSpeech(it.text, 200), items: [it] });   // never dropped, whatever the model said
   return out;
 }
-function localPick(items) {   // without the model: everything that needs Tom, then the most important of the rest (the newest among equals), two lines in all, each cut at a sentence
-  const need = items.filter((it) => it.kind === 'needs_you'), rest = items.filter((it) => it.kind !== 'needs_you').sort((a, b) => TPRIO[b.kind] - TPRIO[a.kind] || b.ev.ts - a.ev.ts);
-  return [...need, ...rest.slice(0, Math.max(0, 2 - need.length))].map((it) => ({ line: withRoute(clipSpeech(it.text, 200), [it]), items: [it] }));
+function localPick(items) {   // without the model: everything that needs Tom, then the most important of the rest (the newest among equals), as many lines as the queue allows, each cut at a sentence
+  const need = items.filter((it) => it.kind === 'needs_you'), rest = items.filter((it) => it.kind !== 'needs_you').sort((a, b) => (TPRIO[b.kind] || 0) - (TPRIO[a.kind] || 0) || b.ev.ts - a.ev.ts);
+  return [...need, ...rest.slice(0, Math.max(0, maxLines(items.length) - need.length))].map((it) => ({ line: withRoute(clipSpeech(it.text, 200), [it]), items: [it] }));
 }
 // A line about messages between agents starts with the route of its first message, exactly as the page made it (2 to 4 words): what the model put before a colon is
 // replaced when it is a lead-in, so the route is never a title, a session name or a sentence. Other lines stay content only.
@@ -1944,7 +1961,7 @@ function withRoute(line, its) {
   return r + ': ' + body;
 }
 // ---- end triage policy
-const D = { done: new WeakSet(), said: [], pending: null, speaking: false };
+const D = { done: new WeakSet(), said: [], pending: null, speaking: false, beat: new Map(), quietAt: Date.now(), statusSaid: [] };
 // eleven_v4_turbo takes about 1 s per line (flash 0.25 s), Luna about 3.5 s per batch, and neither waits for the other. The next batch is decided as soon as there is
 // something to decide, even while lines are being said; a line is made the moment it is picked, so it is usually ready when the voice is free. A line that would be
 // stale before it is made is not made (nor paid for), and one that is stale by the time its audio exists is not played.
@@ -1970,19 +1987,73 @@ async function speakQueue(lines, io) {   // io: { synthMs, fresh(line, ahead), s
 }
 async function decide(items) {
   if (prefs.vstyle !== 'animal' && prefs.vstyle !== 'sims') try {   // gibberish voices need no words chosen
-    const body = { items: items.map(({ ev, ...x }) => ({ ...x, project: teamOf(S.group).short || niceProj((S.cur || {}).proj || '') })), said: D.said.filter((x) => Date.now() - x.at < 120000).map((x) => x.line), viewing: S.title };
+    const body = { items: items.map(({ ev, act, ...x }) => ({ ...x, project: teamOf(S.group).short || niceProj((S.cur || {}).proj || '') })), said: D.said.filter((x) => Date.now() - x.at < 120000).map((x) => x.line), viewing: S.title, max: maxLines(items.length) };
     const res = await Promise.race([fetch('/api/triage', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json()), sleep(TRIAGE_WAIT).then(() => null)]);
     const out = applyTriage(items, res); if (out) return warmLines(out);
   } catch {}
   return warmLines(localPick(items));
 }
-function collect() { const items = triageItems(S.events, D.done, Date.now(), new Set(S.needs || []), S.agents); items.forEach((it) => { D.done.add(it.ev); if (it.ev.kind === 'msg' && it.kind !== 'needs_you') it.route = routeOf(it.ev); }); return items; }
+function collect() {
+  const items = triageItems(S.events, D.done, Date.now(), new Set(S.needs || []), S.agents, beatOf).filter((it) => { if (it.kind !== 'work' || D.beat.get(it.agent) !== it.act) return true; D.done.add(it.ev); return false; });   // still doing what was said: nothing new
+  items.forEach((it, n) => { it.id = n + 1; D.done.add(it.ev); if (it.ev.kind === 'msg' && it.kind !== 'needs_you') it.route = routeOf(it.ev); }); return items;
+}
+// Who, in a line about what an agent does: "Gladiator lead", "the kettle hat sub-agent", "Astra"
+function whoDoes(id) {
+  const a = S.agents[id], p = party(a); if (!p) return ''; const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
+  if (id === 'main' || a.lead || a.type === 'peer') return cap([p.proj, p.role].filter(Boolean).join(' '));   // "Gladiator lead", "Gladiator Hermes" (another session of the call)
+  const n = String(a.name || '').trim(); return n && n.split(/\s+/).length <= 3 && !/^agent [0-9a-f]{4}$/.test(n) ? L(`Le sous-agent ${n}`, `The ${n} sub-agent`) : L('Un sous-agent', 'A sub-agent');
+}
+const DULL = () => [L('Cherche dans les fichiers', 'Searching files'), L('Cherche un outil', 'Looking for a tool'), L('Met à jour sa todo', 'Updating todo list'), L('Attend', 'Waiting'), L('attend une commande', 'waiting on a command'), L('Envoie un message', 'Sending a message'), L('Lance un sous-agent', 'Starting a sub-agent')];
+const dullAct = (act) => !act || act.startsWith(L('Lit ', 'Reading ')) || DULL().includes(act);   // looking around, waiting, or said by its own item (the message, the brief)
+const verbAct = (act) => L(true, /^\w+ing\b/.test(act || ''));   // "Running tests", not a tool's bare name ("Followup task"): only a doing can follow "is"
+const ing = (act) => (act === L('Recherche sur le web', 'Web search') ? L('cherche sur le web', 'searching the web') : act.charAt(0).toLowerCase() + act.slice(1));
+function commitOf(t) {   // a commit's message, first line: git commit -m "…" or a message written in a heredoc
+  const a = String((t && t.arg) || ''); if (!/\bgit\b[^\n]*\bcommit\b/.test(a)) return '';
+  const m = /\s-m\s+(["'])([\s\S]*?)\1/.exec(a) || /<<-?\s*['"]?(\w+)['"]?\n([^\n]+)/.exec(a); return m ? clipSpeech(m[2].split('\n')[0].trim(), 140) : '';
+}
+function testsOf(out) {   // a test run's result from its output (node, jest, pytest, cargo, dotnet): "all 78 tests pass", "3 of 78 tests failed"
+  const o = String(out || ''), last = (re) => { let v = null; for (const m of o.matchAll(re)) v = +m[1]; return v; };
+  const pass = last(/ℹ pass (\d+)/g) ?? last(/\bPassed:\s*(\d+)/g) ?? last(/(\d+) passed/g), fail = last(/ℹ fail (\d+)/g) ?? last(/\bFailed:\s*(\d+)/g) ?? last(/(\d+) failed/g);
+  if (pass == null || (pass === 0 && !fail)) return ''; const all = pass + (fail || 0);
+  return fail ? L(`${fail} tests sur ${all} échouent`, `${fail} of ${all} tests failed`) : L(`les ${pass} tests passent`, `all ${pass} tests pass`);
+}
+function beatOf(e) {   // the line an event is worth: its own words, or, in plain words from the event itself, what the agent is doing, starting, finishing, committing or what its tests said
+  const own = plainBeat(e); if (own && own.text && !e.label) return own;
+  const who = whoDoes(e.agent); if (!who) return null;
+  if (e.kind === 'order') { const n = e.title || (S.agents[e.to] || {}).name; return n ? { kind: 'order', text: `${who} ${L('lance un sous-agent', 'started a sub-agent')}: ${String(n).replace(/[_-]+/g, ' ')}` } : null; }
+  if (e.kind === 'finish') return { kind: 'finish', text: `${who} ${L('a terminé', 'finished')}` };
+  if (e.kind === 'results') { for (const it of e.items || []) { const r = testsOf(it.out); if (r) return { kind: 'tests', text: `${who}: ${r}` }; } return null; }
+  if (e.kind !== 'tools') return null;
+  for (const t of e.tools || []) { const c = commitOf(t); if (c) return { kind: 'commit', text: `${who} ${L('a fait un commit', 'committed')}: ${c}` }; }
+  const t = (e.tools || []).find((x) => { const a = plainAct(x.name, x.arg); return !dullAct(a) && verbAct(a); }); if (!t) return null;
+  const act = plainAct(t.name, t.arg), cmd = /^(Bash|exec_command|shell|terminal|local_shell|exec)$/.test(t.name) ? cmdLabel(String(t.arg || '').split('\n')[0]).slice(0, 100) : '';
+  return { kind: 'work', act, text: L(`${who} : ${ing(act)}`, `${who} is ${ing(act)}`), hint: cmd };   // the command only as a hint for the wording ("the combat tests"), never read out
+}
+// Nothing said for STATUS_MS while agents work: one line on what is going on now across what the call follows, from the board's real state, never the same line twice in 10 min
+const STATUS_MS = 20000;
+function statusLine(rows, now = Date.now()) {
+  const f = prefs.follow || 'all', scope = S.pin ? rows.filter((r) => S.cur && r.id === S.cur.id) : f.startsWith('g:') ? rows.filter((r) => boardKey(r) === f.slice(2)) : rows;
+  const busy = scope.filter((r) => /^(working|blocked)$/.test(r.state) && now - r.mtime < LIVE_MS && !(r.oneshot && (!r.group || r.group.other))).sort((a, b) => (b.state === 'blocked') - (a.state === 'blocked') || b.mtime - a.mtime);
+  if (!busy.length) return '';
+  const name = (r) => projWord(r.group) || (r.group && r.group.hermes ? 'Hermes' : niceProj(r.proj)) || L('un appel', 'a call');
+  const top = busy.slice(0, 3).sort((a, b) => (b.state === 'blocked') - (a.state === 'blocked') || name(a).localeCompare(name(b)));   // the 3 most recent, in a steady order: the line changes only when the work does
+  const part = (r) => { const a = r.tool && plainAct(r.tool, r.arg), act = r.state === 'blocked' ? L('vous attend', 'needs you') : a && verbAct(a) ? ing(a) : L('travaille', 'working'), subs = r.subActive > 1 ? L(`, avec ${r.subActive} sous-agents`, `, with ${r.subActive} sub-agents`) : '';
+    return r.state === 'blocked' ? `${name(r)} ${act}` : L(`${name(r)} : ${act}`, `${name(r)} is ${act}`) + subs; };
+  const shown = top.map(part), more = busy.length - shown.length, line = shown.join('; ') + (more > 0 ? L(`, et ${more} autres appels travaillent`, `, and ${more} more calls are busy`) : '') + '.';
+  return line.charAt(0).toUpperCase() + line.slice(1);
+}
+function statusNext(now = Date.now()) {   // a status line as a batch of one, said by the lead's voice, fresh like any line
+  D.quietAt = now; D.statusSaid = D.statusSaid.filter((x) => now - x.at < 600000);
+  const line = statusLine(boardMemo.rows || [], now); if (!line || D.statusSaid.some((x) => x.line === line)) return;
+  D.statusSaid.push({ at: now, line }); D.pending = { cur: S.cur, p: Promise.resolve(warmLines([{ line, items: [{ ev: { ts: now, agent: 'main' }, kind: 'status', agent: 'main' }] }])) };
+}
 // The route of a message between agents, in project and role (at most ROUTE_MAX words): "To gladiator Hermes", "MarketSimulator lead, from Codex", "To the lead".
 // The project is left out when both ends are in the project on screen; the sender is named only when it is not the lead of the call on screen.
 const projWord = (g) => { if (!g || g.other || g.hermes) return ''; const n = String(g.name || ''), w = n.split(/[-_\s]+/)[0]; return w.length >= 4 && !/^(agent|agents|the|app|web|api|test|demo)$/i.test(w) ? w : n.replace(/[-_]+/g, ' '); };
 function party(p) {
   if (!p) return null; const peer = p.type === 'peer', run = /^Hermes/.test(p.role || '') ? 'Hermes' : /^Codex/.test(p.role || '') ? 'Codex' : /^Claude/.test(p.role || '') ? 'Claude' : '';
   const named = peer && /^[A-Z][a-z]{2,15}$/.test(p.name);   // a peer with a name of its own ("Astra") needs no project
+  if (p.lead && p.id !== 'main') return { proj: projWord(S.group), role: p.name || run || L('chef', 'lead'), own: false, the: p.name || L('l’autre chef', 'the other lead') };   // another session of this project's call: its harness ("Hermes"), like a named peer
   return { proj: named ? '' : projWord(peer ? p.group : S.group), role: p.id === 'main' ? L('chef', 'lead') : p.id === 'user' ? 'Tom' : peer ? (named ? p.name : run || L('un pair', 'a peer')) : L('sous-agent', 'sub-agent'), own: !peer && p.id !== 'user', the: p.id === 'main' ? L('le chef', 'the lead') : L('le sous-agent', 'the sub-agent') };
 }
 function routeOf(ev) {
@@ -2000,7 +2071,8 @@ function decideNext() { if (!D.pending) { const items = collect(); if (items.len
 async function directorStep() {   // called every 300 ms and not awaited: deciding goes on while a batch is said, one batch is said at a time
   if (!S.live || !S.playing || !S.cur || !prefs.voice || AUD.off()) { D.pending = null; return; }
   if (soundHeld()) { collect(); D.pending = null; return; }   // the browser holds the sound until a click: nothing is queued, so nothing old is said once it plays
-  decideNext(); if (D.speaking || !D.pending) return;
+  decideNext(); if (!D.speaking && !D.pending && Date.now() - D.quietAt > STATUS_MS) statusNext();
+  if (D.speaking || !D.pending) return;
   const { cur, p } = D.pending, tok = S.token; D.speaking = true;
   try {
     const lines = await p; if (D.pending && D.pending.p === p) D.pending = null; if (S.cur !== cur) return;   // another session meanwhile: its lines are not this one's
@@ -2009,7 +2081,8 @@ async function directorStep() {   // called every 300 ms and not awaited: decidi
     const fresh = (ln, ahead) => S.cur === cur && S.playing && S.token === tok && freshIn(ln, ahead);   // stale, another session, or a switch waiting for the voice: not said
     await speakQueue(lines, { synthMs: synthMs(), fresh, say: async (ln) => {
       const id = S.agents[ln.items[0].agent] ? ln.items[0].agent : 'main';
-      startTalk(id, ln.line, ''); const r = await speakLine(ln.line, S.agents[id], true, S.token, FR(), () => fresh(ln, 0)); stopTalk(id);
+      startTalk(id, ln.line, ''); const r = await speakLine(ln.line, S.agents[id], true, S.token, FR(), () => fresh(ln, 0)); stopTalk(id); D.quietAt = Date.now();
+      for (const it of ln.items) if (it.kind === 'work') D.beat.set(it.agent, it.act);   // said: the same work again is not news
       if (r && r.skipped) markUnsaid(ln.items.map((it) => it.ev), r.skipped);   // skipped, not said by another voice
     } });
   } finally { D.speaking = false; }
@@ -2054,6 +2127,9 @@ function showMoment(i) {
 //  data: live follow + replay
 // =====================================================================
 const voiceBusy = () => S.speakers.size > 0 || AUD.live.size > 0 || !!(synth && synth.speaking);   // a voice is sounding: its audio, not only the speaking flag (a silent beat of the same agent clears that)
+// A call is a project's: the server merges the project's live sessions into the one opened (members), and the page asks each of them for what is new (a cursor per session)
+const callOf = (d) => { S.members = d.members || null; S.sig = d.sig || ''; S.cursor = d.members ? Object.fromEntries(d.members.map((m) => [m.id, m.n])) : null; S.msgIds = new Set(d.events.filter((e) => e.msgId).map((e) => e.msgId)); };
+const inCall = (r) => !!r && !!S.cur && (S.members ? S.members.some((m) => m.id === r.id && m.proj === r.proj) : r.id === S.cur.id && r.proj === S.cur.proj);
 async function loadSession(proj, id) {   // every switch comes here (a click on a call, the board, the switcher, a guest; following; a rewrite): the line being said is finished first
   const mine = (S.loadN = (S.loadN || 0) + 1); await finishLine(); if (mine !== S.loadN) return false;   // numbered before the wait: the last switch asked is the one that goes ahead
   pause('switch');
@@ -2062,7 +2138,7 @@ async function loadSession(proj, id) {   // every switch comes here (a click on 
   const again = [S.cur, S.last].some((c) => c && c.proj === proj && c.id === id), keepDetail = again && S.detail, joined = S.joinAt;   // the same session rebuilt (a live rewrite): the room stays as it was
   if (!again) { $('#pbody').innerHTML = ''; hidePresent(true); S.dividers = []; }   // another session: its screen, not the last one's
   S.term = {}; S.camFor = null; S.focus = null; S.agents = {}; for (const k in nameBook) delete nameBook[k]; S.group = data.group || null; [{ id: 'user' }, ...data.agents].forEach((a) => (S.agents[a.id] = persona(a)));
-  S.events = data.events; S.rev = data.rev; S.group = data.group || null; S.joinAt = again && joined ? joined : Date.now(); S.idx = 0; S.status = {}; S.tc = {}; S.cur = { proj, id }; S.logTo = 0; S.detail = null; $('#detail').classList.remove('on');
+  S.events = data.events; S.rev = data.rev; S.group = data.group || null; callOf(data); S.joinAt = again && joined ? joined : Date.now(); S.idx = 0; S.status = {}; S.tc = {}; S.cur = { proj, id }; S.logTo = 0; S.detail = null; $('#detail').classList.remove('on');
   const opt = $('#sessions').selectedOptions[0]; S.title = [S.group && !S.group.other ? (S.group.hermes ? S.group.name.split(', ')[0] : S.group.name) : niceProj(proj), S.live ? (data.title || '') : (opt && opt.dataset.title) || data.title || ''].filter(Boolean).join(', ');   // a Hermes thread's group name is its title: said once   // project, session: so it is clear where this call belongs
   if (proj === '_demo') S.events.forEach((e) => { if (e.fr) trMem.set(baseText(e), e.fr); });   // the demo ships its own French
   paintSubtitle(); recomputeStatus(0); buildStage(); renderHighlights(); setFocus('main'); renderLog(true); computeGantt(); layout(); paintStatus(); prefetchTr(0); if (keepDetail && S.agents[keepDetail]) openDetail(keepDetail); return true;
@@ -2077,7 +2153,7 @@ function modeLabel(m) {   // m: { pinned, follow, project, call, followed }
 function paintSubtitle() {   // the header: what the call follows, and the project (its colour on the swatch and the stripe) and call on screen
   const team = teamOf(S.group), b = $('.brand b'), inCall = !!(S.cur && S.cur.proj !== '_demo' && team.short), f = prefs.follow || 'all';
   document.documentElement.style.setProperty('--proj', inCall && !document.body.classList.contains('board') ? GCOL(team.key) : 'var(--line)');
-  const s = $('#subtitle'), sum = inCall && S.projSum && S.projSum[team.key], own = (S.title || '').replace(inCall ? team.short + ', ' : '\u0000', '');
+  const more = S.members && S.members.length > 1 ? S.members.length - 1 : 0, s = $('#subtitle'), sum = inCall && S.projSum && S.projSum[team.key], own = (S.title || '').replace(inCall ? team.short + ', ' : '\u0000', '') + (more ? L(`, +${more} session${more > 1 ? 's' : ''}`, `, +${more} session${more > 1 ? 's' : ''}`) : '');   // the call is the project's: the other sessions in it
   const followed = f.startsWith('g:') ? (((boardMemo.rows || []).find((r) => boardKey(r) === f.slice(2)) || {}).group || {}).name : '';
   const m = S.live && !S.demo ? modeLabel({ pinned: !!S.pin, follow: f, project: inCall ? team.short : '', call: own, followed }) : { icon: '', main: inCall ? team.short : 'Agent Standup', sub: own };
   $('#pmi').textContent = m.icon; b.textContent = m.main; b.style.color = ''; s.textContent = m.sub;
@@ -2144,7 +2220,7 @@ async function followCurrent() {   // a switch lets the line being said finish (
   if (auto && cur.id !== auto.id) S.autoPin = null;
   if (!cur.id) { $('#empty').classList.add('on'); return false; } $('#empty').classList.remove('on');
   if (S.pin && cur.id !== S.pin) { S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; savePrefs(); S.switchWhy = { why: 'pin' }; }   // the pinned session is gone: follow the latest one instead of staying silently pinned
-  if (S.cur && S.cur.id === cur.id && S.cur.proj === cur.proj) { S.switchWhy = null; return false; }
+  if (S.cur && inCall(cur)) { S.switchWhy = null; return false; }   // this session, or another session of the project's call: already here
   const why = prev && (S.switchWhy || { why: 'quiet', from: prevTitle }); S.switchWhy = null;
   if (prev && why.why === 'quiet' && Date.now() - (S.switchAt || 0) < FOLLOW_HOLD) return false;   // this call went quiet: another busy one takes over after the hold, not at once
   if (prev) S.switchAt = Date.now();
@@ -2161,10 +2237,13 @@ setInterval(async () => {
   try {
     const switched = await followCurrent(); if (S.offline) { S.offline = false; syncUI(); }
     if (switched || !S.cur) return;
-    const d = await (await fetch(`/api/session?proj=${encodeURIComponent(S.cur.proj)}&id=${S.cur.id}&after=${S.events.length}`)).json();
-    if (d.error) return; if (d.total < S.events.length || (d.rev != null && S.rev != null && d.rev !== S.rev)) { const e = S.events[Math.min(S.idx, S.events.length - 1)]; S.last = { ...S.cur, ts: (e && e.ts) || 0 }; S.cur = null; return; }   // transcript was rewritten, or events were inserted before what we have: reload next tick
+    const q = S.cursor ? 'cur=' + encodeURIComponent(Object.entries(S.cursor).map(([k, n]) => k + ':' + n).join(',')) : 'after=' + S.events.length;
+    const d = await (await fetch(`/api/session?proj=${encodeURIComponent(S.cur.proj)}&id=${S.cur.id}&${q}`)).json();
+    if (d.error) return; if ((S.cursor && d.sig !== S.sig) || (!S.cursor && d.total < S.events.length) || (d.rev != null && S.rev != null && d.rev !== S.rev)) { const e = S.events[Math.min(S.idx, S.events.length - 1)]; S.last = { ...S.cur, ts: (e && e.ts) || 0 }; S.cur = null; return; }   // transcript was rewritten, events were inserted before what we have, or a session joined or left the call: reload next tick
     const mine = S.events[S.events.length - 1];   // consecutive tool calls share one beat: the last one we have may have grown since we got it
     if (d.last && mine && mine.kind === 'tools' && d.last.kind === 'tools' && d.last.tools.length > mine.tools.length) { const extra = d.last.tools.slice(mine.tools.length); mine.tools.push(...extra); if (S.idx >= S.events.length - 1 && S.playing) { tickTools({ agent: mine.agent, tools: extra }); S.tc[mine.agent] -= 0; paintStatus(); } }
+    for (const g of d.grown || []) { const m = S.events.findLast((e) => e.sess === g.sess && e.si === g.si); if (m && m.kind === 'tools' && g.tools.length > m.tools.length) { const extra = g.tools.slice(m.tools.length); m.tools.push(...extra); if (S.playing) { tickTools({ agent: m.agent, tools: extra }); paintStatus(); } } }   // a beat of any session of the call that grew
+    if (S.cursor && d.members) { for (const m of d.members) S.cursor[m.id] = m.n; d.events = (d.events || []).filter((e) => !e.msgId || !S.msgIds.has(e.msgId)); d.events.forEach((e) => e.msgId && S.msgIds.add(e.msgId)); }   // one message from two logs is said once
     if (!d.events || !d.events.length) return;
     for (const a of d.agents) if (!S.agents[a.id]) { S.agents[a.id] = persona(a); addTile(S.agents[a.id]); }
     const from = S.events.length; S.events = S.events.concat(d.events); $('#seek').max = S.events.length - 1; trNew(from); warmTTS(from); renderLog(false); paintStatus();
@@ -2241,7 +2320,7 @@ const LIVE_MS = 5 * 60e3, OLD_MS = 60 * 60e3;
 function railSplit(rows, curId, now = Date.now()) {
   const needs = [], live = [], quiet = [];
   for (const r of rows) {
-    const here = r.id === curId, busy = /^(working|waiting|blocked)$/.test(r.state), age = now - r.mtime;
+    const here = curId instanceof Set ? curId.has(r.id) : r.id === curId, busy = /^(working|waiting|blocked)$/.test(r.state), age = now - r.mtime;   // the call's sessions (a set) or one session
     if (!here && !busy && (r.stopped || r.state === 'done' || r.oneshot || age > OLD_MS)) continue;   // a one-off that ended is not shown at all
     const stray = r.oneshot && (!r.group || r.group.other);   // a one-off outside any project ("Reply with PONG-3969"): quiet even while it runs
     if (r.state === 'blocked') needs.push(r); else if (here || (!stray && (busy || age < LIVE_MS))) live.push(r); else quiet.push(r);
@@ -2261,7 +2340,7 @@ const dividerHtml = (d) => `<div class="row divider">⇄ ${esc(d.text)} <span cl
 function updateFollow(rows) {   // whether the rail is on screen or not (the tree, a narrow window), a followed project keeps its call current
   const follow = prefs.follow || 'all', cur = S.cur || {}, t = !S.pin && followTarget(rows, follow);
   if (!S.pin) {   // follow: switch with a hold so the call does not flicker between sessions
-    const there = t && cur.id === t.id, hold = Date.now() - (S.switchAt || 0) < FOLLOW_HOLD;
+    const there = t && (cur.id === t.id || inCall(t)), hold = Date.now() - (S.switchAt || 0) < FOLLOW_HOLD;   // a session of this call is already on screen
     if (t && !there && !hold) { S.autoPin = { proj: t.proj, id: t.id }; S.switchWhy = { why: t.state === 'blocked' ? 'needs' : 'busy', to: t.group ? t.group.name : t.title, toTitle: t.title }; followCurrent(); }
     else if (!t && S.autoPin && !hold) { S.autoPin = null; followCurrent(); }   // nothing needs Tom any more: back to the most active session
   }
@@ -2278,10 +2357,10 @@ async function renderCalls() {
   const follow = prefs.follow || 'all', cur = S.cur || {};
 
   const groups = new Map(); for (const r of rows) { const k = boardKey(r); if (!groups.has(k)) groups.set(k, { key: k, name: railGroup(r), rows: [] }); groups.get(k).rows.push(r); }
-  const row = (r, proj) => { const n = (r.subTotal || 0) + 1, here = cur.id === r.id;   // two lines: the title in full; one status word and what it is doing
+  const row = (r, proj) => { const n = (r.subTotal || 0) + 1, here = inCall(r);   // two lines: the title in full; one status word and what it is doing
     return `<button class="crow${here ? ' cur' : ''}" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" title="${esc(r.title)}"${here ? ` aria-current="true"` : ''}><span class="cn"><b>${proj ? `<span style="color:${GCOL(boardKey(r))}">${esc(railGroup(r))}</span> ` : ''}${esc(r.title)}</b>${S.pin && S.pin === r.id ? `<span class="cpin" role="button" tabindex="0" title="${esc(L('Désépingler : suivre à nouveau', 'Unpin: follow again'))}">📌 ${L('désépingler', 'unpin')}</span>` : ''}</span><span class="ca">${sHtml(r.state, callStatus(r))}<small>${esc([rowModel(r), n > 1 ? `${n} ${L('agents', 'agents')}` : ''].filter(Boolean).join(', '))}</small></span></button>`; };
   let html = `<div class="ch"><h3>${L('Appels', 'Calls')}</h3><button class="cmin" title="${esc(L('Replier', 'Fold'))}">${box.classList.contains('min') ? '▸' : '▾'}</button></div>`;   // what to follow is picked in the header
-  const { needs, live, quiet } = railSplit(rows, cur.id), mine = cur.id && rows.find((r) => r.id === cur.id), first = mine ? boardKey(mine) : '';
+  const { needs, live, quiet } = railSplit(rows, new Set((S.members || [cur]).map((m) => m.id))), mine = cur.id && rows.find((r) => r.id === cur.id), first = mine ? boardKey(mine) : '';
   html += '<div class="clist">';
   if (needs.length) html += `<div class="cg needs">${L('Vous attend', 'Needs you')}</div>` + needs.map((r) => row(r, true)).join('');   // across every project, on top
   const lg = new Map(); for (const r of live) { const k = boardKey(r); if (!lg.has(k)) lg.set(k, []); lg.get(k).push(r); }
@@ -2516,6 +2595,19 @@ $('#tok').onclick = () => openRecap();
 $('#bMenu').onclick = (e) => { e.stopPropagation(); $('#menu').classList.toggle('on'); };
 document.addEventListener('click', (e) => { if (!e.target.closest('#menu') && !e.target.closest('#bMenu')) $('#menu').classList.remove('on'); });
 $('#bLog').onclick = () => { document.body.classList.toggle('log'); $('#bLog').classList.toggle('on'); prefs.log = document.body.classList.contains('log'); savePrefs(); };
+$('#openLog').onclick = $('#closeLog').onclick = () => { $('#bLog').click(); setTimeout(paintGraph, 0); };   // the slim tab: the transcript and the workers share one place
+// The project's workers where the transcript was (Tom: "every worker a dot, the bigger the dot the more tokens they've been burning ... the connections between them bigger
+// as they message each other more"): every agent of the call, its tokens as the dot's area, its state as the colour, sub-agents tied to who started them, messages as lines.
+let WG = null;
+function paintGraph() {
+  const box = $('#wgraph'); if (!window.WorkerGraph || !box || getComputedStyle(box).display === 'none') return;
+  $('#wgEmpty').textContent = S.cur ? '' : L('Aucun appel en cours', 'No call on screen'); if (!S.cur) return;
+  if (!WG) WG = WorkerGraph.createGraph($('#wg'), { onClick: (id) => { if (!S.agents[id]) return; setFocus(id); openDetail(id); } });
+  const now = S.live ? Date.now() : (S.events[Math.min(S.idx, S.events.length - 1)] || {}).ts || Date.now(), agents = Object.values(S.agents).filter((a) => a.id !== 'user' && !a.kin && !S.gone.has(a.id));   // a past session of this project is no guest dot either
+  const status = {}, tokens = {}, labels = {}; for (const a of agents) { status[a.id] = agentState(a.id, now).k; tokens[a.id] = S.usage[a.id] ? tokTotal(S.usage[a.id]) : 0; labels[a.id] = a.id === 'main' || a.lead ? a.name : nameOf(a.id); }   // a lead by its harness (Codex, Claude, Hermes), like its tile
+  WG.update(WorkerGraph.graphData({ agents, events: S.live ? S.events : S.events.slice(0, S.idx + 1), status, tokens, labels, now }));
+}
+setInterval(paintGraph, 1500);
 if (prefs.log == null ? innerWidth >= 1280 : prefs.log) { document.body.classList.add('log'); $('#bLog').classList.add('on'); }   // wide: the transcript has its place from the start
 $('#bMute').onclick = toggleSound;
 $('#bPlay').onclick = togglePlay;

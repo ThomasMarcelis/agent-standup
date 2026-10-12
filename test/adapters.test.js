@@ -263,3 +263,35 @@ test('hermes: a cron run named "task · Oct 12 08:42" shows without the middle d
   const row = hermes.board().find((r) => r.id === 'cron_f8403df27592_20261012_084203'); assert.equal(row.title, 'agent-standup fork supervisor, Oct 12 08:42');
   assert.equal(peers.peerAgent('uds:/run/user/1000/cc-socks/hermes-500ca2206db14c889c88fe388b08a64c.sock', 'uds:/run/user/1000/cc-socks/hermes-500ca2206db14c889c88fe388b08a64c.sock').name, 'hermes-500ca2206db14c889c88fe388b08a64c');   // a send that names its peer by the address: never the address on the tile
 });
+
+test('hermes: a Discord thread with no folder is placed in the project of the sessions it messages (the gladiator thread in the gladiator call)', async () => {
+  const repo = path.join(tmp, 'work', 'gladiator-game'); fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+  const sess = path.join(tmp, 'claude', 'sessions'); fs.mkdirSync(sess, { recursive: true }); fs.writeFileSync(path.join(sess, '424299.json'), JSON.stringify({ sessionId: 'glad-lead', name: 'gladiator-game-70', cwd: repo })); peers.rememberLive();
+  const { DatabaseSync } = require('node:sqlite'), db = new DatabaseSync(path.join(tmp, 'hermes', 'profiles', 'gaming', 'state.db')), now = Date.now() / 1000;
+  db.prepare('insert into sessions (id, source, title, started_at, last_activity_at, model, thread_id, chat_id) values (?,?,?,?,?,?,?,?)').run('thread1', 'discord', 'Plan gladiator roguelike autobattler', now - 600, now - 30, 'claude-opus-5-5', '1555982387538563123', '1555982387538563123');
+  const send = JSON.stringify([{ id: 'c1', type: 'function', function: { name: 'send_peer', arguments: JSON.stringify({ to: 'uds:/run/user/1000/cc-socks/424299.sock', message: 'Armour numbers?' }) } }]);
+  db.prepare('insert into messages (id, session_id, role, content, tool_calls, timestamp, active, compacted) values (?,?,?,?,?,?,?,?)').run(99101, 'thread1', 'assistant', '', send, now - 40, 1, 0);
+  db.prepare('insert into messages (id, session_id, role, content, timestamp, active, compacted) values (?,?,?,?,?,?,?)').run(99102, 'thread1', 'user', 'Plan the next fight', now - 30, 1, 0);
+  db.close(); await new Promise((r) => setTimeout(r, 1300));   // the board's memo
+  const want = require('../adapters/project.js').groupOf(repo), row = hermes.board().find((r) => r.id === 'thread1');
+  assert.ok(want && want.key && !want.other, 'the fixture repo is a project'); assert.equal(row.group.key, want.key); assert.ok(!row.group.hermes, 'placed in the project, not its own thread');
+  assert.equal(hermes.timeline('_hermes-gaming', 'thread1').group.key, want.key, 'and its call is that project');
+  fs.unlinkSync(path.join(sess, '424299.json'));
+});
+
+test('hermes: placement is generic: a thread is placed by the repo it works in when it messages nobody; a thread with neither stays its own; two projects never mix', async () => {
+  const fourd = path.join(tmp, 'work', '4dgame'); fs.mkdirSync(path.join(fourd, '.git'), { recursive: true }); fs.mkdirSync(path.join(fourd, 'src'), { recursive: true });
+  const { DatabaseSync } = require('node:sqlite'), db = new DatabaseSync(path.join(tmp, 'hermes', 'profiles', 'gaming', 'state.db')), now = Date.now() / 1000;
+  const ins = db.prepare('insert into sessions (id, source, title, started_at, last_activity_at, model, thread_id, chat_id) values (?,?,?,?,?,?,?,?)'), msg = db.prepare('insert into messages (id, session_id, role, content, tool_calls, timestamp, active, compacted) values (?,?,?,?,?,?,?,?)');
+  ins.run('thread4d', 'discord', 'Create a 4D space movement game', now - 900, now - 20, 'claude-opus-5-5', '1557656903218364456', '1557656903218364456');
+  for (let i = 0; i < 3; i++) msg.run(99201 + i, 'thread4d', 'assistant', '', JSON.stringify([{ id: 'c' + i, type: 'function', function: { name: 'terminal', arguments: JSON.stringify({ command: `cd ${fourd} && npm test`, workdir: path.join(fourd, 'src') }) } }]), now - 60 + i, 1, 0);
+  ins.run('threadchat', 'discord', 'Find high-paying jobs', now - 900, now - 25, 'claude-opus-5-5', '1546443210497204335', '1546443210497204335');
+  msg.run(99301, 'threadchat', 'user', 'Any news?', null, now - 30, 1, 0);
+  db.close(); await new Promise((r) => setTimeout(r, 1300));
+  const rows = hermes.board(), four = rows.find((r) => r.id === 'thread4d'), chat = rows.find((r) => r.id === 'threadchat'), glad = rows.find((r) => r.id === 'thread1');
+  assert.equal(four.group.key, require('../adapters/project.js').groupOf(fourd).key, 'the repo its tools work in');
+  assert.ok(chat.group.hermes && chat.group.key.endsWith(':1546443210497204335'), 'no peer, no repo: its own thread');
+  const { callMates } = require('../server.js'), byKey = (g) => rows.filter((r) => r.group && r.group.key === g.key).map((r) => r.id);
+  assert.notEqual(four.group.key, glad.group.key, 'two projects'); assert.deepEqual(byKey(four.group), ['thread4d']);
+  assert.deepEqual(callMates('-w-other', 'x', four.group, rows).map((r) => r.id), ['thread4d'], "the 4D game's call has its own thread"); assert.ok(!callMates('-w-other', 'x', four.group, rows).some((r) => r.id === 'thread1'), 'and not the other project');
+});

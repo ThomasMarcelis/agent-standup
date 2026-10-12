@@ -126,7 +126,7 @@ function tailPeers(text) {   // every message in the tail, with its time when th
   for (const line of lines) {   // arrivals: a name, and the address it writes from; one per record (a message queued while busy is also in the queue's own records: skipped)
     const m = line.includes('"type":"queue-operation"') ? null : /<(?:cross-session-message|peer_message) from=\\*"([^"\\]+)\\*"(?: (?:from-name|reply_to)=\\*"([^"\\]+)\\*")?/.exec(line); if (!m) continue;
     const a = parseAddress(m[1]) || parseAddress(m[2] || ''), nm = (parseAddress(m[1]) ? m[2] || '' : m[1]).replace(/^claude:/, '');
-    const name = NAME.test(nm) ? nm : a ? peerAgent(a.addr).name : ''; if (!name) continue; hits.push({ name, ts: tsOf(line) }); if (a) byAddr.set(a.key, name);
+    const name = NAME.test(nm) ? nm : a ? peerAgent(a.addr).name : ''; if (!name) continue; hits.push({ name, ts: tsOf(line), addr: a ? a.addr : '' }); if (a) byAddr.set(a.key, name);
   }
   // sends: Claude's SendMessage input and Codex's send_peer arguments are plain JSON, Hermes's arguments are a JSON string inside JSON (a list_peers listing is neither)
   // one record counts a target once (a Codex send_peer echoes its target in the result), and a list_peers listing names targets nobody was sent anything
@@ -135,7 +135,7 @@ function tailPeers(text) {   // every message in the tail, with its time when th
     const seen = new Set();   // a Hermes tool_call batch carries several sends in one record, its arguments escaped inside a string
     for (const m of line.matchAll(/\\*"to\\*"\s*:\s*\\*"(uds:[^"\\]+)/g)) {
       const a = parseAddress(m[1]); if (!a || seen.has(a.key)) continue; seen.add(a.key);
-      hits.push({ name: byAddr.get(a.key) || peerAgent(a.addr).name, ts: tsOf(line) });
+      hits.push({ name: byAddr.get(a.key) || peerAgent(a.addr).name, ts: tsOf(line), addr: a.addr });
     }
   }
   return { hits };
