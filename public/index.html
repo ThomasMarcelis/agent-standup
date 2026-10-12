@@ -26,6 +26,7 @@
   .pbtn { display:flex; align-items:center; gap:9px; min-width:0; padding:3px 10px 3px 8px; border:1px solid transparent; border-radius:10px; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; transition:background .12s, border-color .12s }
   .pbtn:hover, .pbtn:focus-visible, .pbtn[aria-expanded="true"] { background:var(--panel2); border-color:var(--line); outline:none } .pbtn > div { min-width:0 }
   .psw { width:10px; height:10px; border-radius:3px; flex:none; background:var(--proj, var(--line)) } .psw.all { background:conic-gradient(#7c9cff, #58d68d, #f0a020, #ff7ab6, #7c9cff) }
+  .pvo { font-size:11px; color:var(--dim); white-space:nowrap } .pvo:empty { display:none } .vo { margin-left:6px; color:var(--dim); font-weight:400; opacity:.8 }   /* a project's voice: small, muted */
   .pmi { font-size:13px; line-height:1 } .pmi:empty { display:none } .brand b { max-width:380px; display:block } #log .row.divider { font-size:11.5px; color:var(--dim); text-align:center; border-bottom:1px dashed var(--line); padding:5px 14px }
   .pchev { color:var(--dim); font-size:11px; transition:transform .12s } .pbtn[aria-expanded="true"] .pchev { transform:rotate(180deg) }
   #pmenu { position:fixed; top:50px; left:48px; z-index:30; width:390px; max-width:calc(100vw - 24px); max-height:min(70vh, 560px); overflow:auto; padding:6px; background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:0 18px 50px rgba(0,0,0,.55); opacity:0; transform:translateY(-6px) scale(.98); transform-origin:top left; pointer-events:none; visibility:hidden; transition:opacity .12s, transform .12s, visibility 0s .12s; scrollbar-width:thin; scrollbar-color:#3a4060 transparent }
@@ -301,7 +302,7 @@
 </head>
 <body>
 <header>
-  <div class="brand"><div class="logo">🎥</div><button id="pbtn" class="pbtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="pmenu"><i class="psw"></i><span id="pmi" class="pmi" aria-hidden="true"></span><div><b>Agent Standup</b><small id="subtitle"></small></div><span class="pchev" aria-hidden="true">▾</span></button></div>
+  <div class="brand"><div class="logo">🎥</div><button id="pbtn" class="pbtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="pmenu"><i class="psw"></i><span id="pmi" class="pmi" aria-hidden="true"></span><div><b>Agent Standup</b><small id="subtitle"></small></div><span id="pvo" class="pvo"></span><span class="pchev" aria-hidden="true">▾</span></button></div>
   <span id="pill">REPLAY</span><button id="tok" class="tok" style="display:none"></button><button id="ctxp" class="ctxp" style="display:none"></button><span id="board" aria-live="polite"></span>
   <div class="sp"></div>
   <div class="seg" id="viewSeg"><button data-v="call" class="on" data-fr="Appel" data-en="Call">Appel</button><button data-v="tree" data-fr="Arbre" data-en="Tree">Arbre</button><button data-v="board" data-fr="Sessions" data-en="Sessions">Sessions</button></div>
@@ -323,6 +324,7 @@
   <button class="mi" data-t="music"><span data-fr="Musique d’ambiance (radio FIP)" data-en="Office music (FIP radio)">Musique d’ambiance (radio FIP)</span><i class="sw"></i></button>
   <div class="box" id="musicBox" style="display:none"><select id="station"></select><input id="musicVol" type="range" min="0" max="1" step="0.05" style="width:100%" aria-label="Music volume"></div>
   <div class="box" id="vstyleBox"><select id="vstyle"></select></div>
+  <div class="box" id="pvBox" style="display:none"><label for="pvSel" id="pvLbl" class="dim" style="display:block;font-size:11.5px;margin-bottom:4px"></label><select id="pvSel" style="width:100%"></select></div>
   <div class="box" id="kokoroBox" style="display:none"><button class="btn" id="kokoroInstall" style="width:100%"></button><div class="hint" id="kokoroHint" style="padding:2px 0 6px"></div></div>
   <h4 data-fr="Affichage" data-en="Display">Affichage</h4>
   <button class="mi" data-t="roster"><span data-fr="Liste des agents (à gauche)" data-en="Agents list (left)">Liste des agents (à gauche)</span><i class="sw"></i></button>
@@ -680,7 +682,8 @@ const AUD = {
     let c; try { c = this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return; }
     c.onstatechange = paintSound; paintSound();   // allowed already, or held back until a click
     this.sfx = c.createGain(); this.amb = c.createGain(); this.amb.connect(this.sfx); this.voice = c.createGain(); this.music = c.createGain(); this.rec = c.createMediaStreamDestination();
-    [this.sfx, this.voice].forEach((g) => { g.connect(c.destination); g.connect(this.rec); });
+    this.comp = c.createDynamicsCompressor(); [['threshold', -12], ['knee', 8], ['ratio', 3], ['attack', 0.005], ['release', 0.2]].forEach(([k, v]) => (this.comp[k].value = v));   // a safety net after each clip's own gain
+    this.voice.connect(this.comp); [this.sfx, this.comp].forEach((g) => { g.connect(c.destination); g.connect(this.rec); });
     this.music.gain.value = 0; this.music.connect(c.destination);   // radio music is for your ears only: it is never part of video exports
     const len = c.sampleRate * 4, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0); let last = 0;   // office room tone
     for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.5; }
@@ -804,6 +807,34 @@ function rankVoices(list) {   // list of names → best distinct voices first
   [...list].sort((a, b) => voiceScore(b) - voiceScore(a)).forEach((n) => { const base = n.replace(/\s*\(.*$/, ''); if (voiceScore(n) > -100 && !seen.has(base)) { seen.add(base); out.push(n); } });
   return out.slice(0, 5);
 }
+// ---- Even loudness (Tom: "the messages should be a bit volume normalized"): each clip's loudness is measured once, over its 50 ms blocks louder than LOUD_GATE, and a gain
+// brings it to LOUD_TARGET, capped so its peak stays under LOUD_PEAK (and never more than 18 dB up); the compressor on the voice output catches the rest.
+const LOUD_TARGET = -20, LOUD_PEAK = -1, LOUD_GATE = -50;   // dBFS
+function loudnessOf(data, rate) {
+  const n = Math.max(1, Math.round(rate * 0.05)); let sum = 0, cnt = 0, peak = 0;
+  for (let i = 0; i < data.length; i += n) { const m = Math.min(data.length, i + n); let ms = 0; for (let j = i; j < m; j++) { const x = data[j]; ms += x * x; if (x > peak) peak = x; else if (-x > peak) peak = -x; } ms /= m - i; if (10 * Math.log10(ms || 1e-12) > LOUD_GATE) { sum += ms; cnt++; } }
+  return { db: cnt ? 10 * Math.log10(sum / cnt) : -Infinity, peak };
+}
+const normGain = (m) => (isFinite(m.db) ? Math.min(Math.pow(10, (LOUD_TARGET - m.db) / 20), m.peak > 0 ? Math.pow(10, LOUD_PEAK / 20) / m.peak : Infinity, 8) : 1);
+const gainOf = (buf) => (buf.__gain != null ? buf.__gain : (buf.__gain = normGain(loudnessOf(buf.getChannelData(0), buf.sampleRate))));   // once per clip: the cache keeps the decoded clip and its gain
+// ---- One voice per project (Tom: "I have no idea what voice is what tbh, maybe it's better voice per project"): every agent of a project, leads and sub-agents of all its
+// sessions and harnesses, speaks in the project's voice. A project keeps the voice it got first (saved per voice pool); a new one takes a voice no other live project has.
+const projKeyOf = (p) => (p && p.projKey) || (p && p.type === 'peer' && p.group && p.group.key) || (S.group && S.group.key) || 'default';
+const voicePool = (fr) => (TTS.engine === 'elevenlabs' ? 'elevenlabs' : TTS.engine + ':' + (fr ? 'fr' : 'en'));
+const liveProjectKeys = () => new Set((boardMemo.rows || []).filter((r) => r.group && !r.group.other && !r.oneshot && Date.now() - r.mtime < LIVE_MS).map((r) => boardKey(r)));
+function projectVoice(key, pool, poolKey, live = liveProjectKeys()) {
+  if (!pool.length) return null; const all = (prefs.projVoice = prefs.projVoice || {}), book = (all[poolKey] = all[poolKey] || {});
+  if (book[key] && pool.includes(book[key])) return book[key];
+  const taken = new Set(Object.entries(book).filter(([k]) => k !== key && live.has(k)).map(([, v]) => v)), given = new Set(Object.values(book));
+  book[key] = pool.find((v) => !taken.has(v) && !given.has(v)) || pool.find((v) => !taken.has(v)) || pool[hash(key) % pool.length]; savePrefs(); return book[key];   // first come, first served
+}
+const projVoiceName = (key) => { const v = key && (TTS.pool.en.length || TTS.pool.fr.length) ? TTS.voiceFor({ projKey: key }) : ''; return v ? voiceName(v) : ''; };
+function paintVoicePick() {   // ⚙: the voice of the project on screen, from the voices in use
+  const box = $('#pvBox'), key = S.group && !S.group.other ? S.group.key : '', pool = TTS.pool[FR() ? 'fr' : 'en'] || []; box.style.display = key && pool.length ? '' : 'none'; if (!key || !pool.length) return;
+  const cur = TTS.voiceFor({ projKey: key }), h = pool.map((v) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(voiceName(v))}</option>`).join('');
+  $('#pvLbl').textContent = L('Voix de ', 'Voice of ') + (S.group.hermes ? S.group.name.split(', ')[0] : S.group.name); if ($('#pvSel')._h !== h) { $('#pvSel').innerHTML = h; $('#pvSel')._h = h; } $('#pvSel').value = cur;
+}
+const voiceName = (v) => { const e = ((TTS.eleven || {}).voices || []).find((x) => x.name === v); return e ? String(e.label || v).split(/\s*[-,]\s*/)[0] : String(v || ''); };   // "Adam", not an id
 const TTS_WAIT = 10000, TTS_RETRY = 30000;   // the server gives a whole line 8 s (its slot, a try, a 429 retry); a line that could not be made fails at once for 30 s instead of being waited for twice
 // Why ElevenLabs could not speak, in a word or two: "no key", "quota", "error 401", "busy (429)", "timeout".
 const soundHeld = () => !!AUD.ctx && AUD.ctx.state !== 'running';   // created before any gesture on the page: the browser keeps it silent until one
@@ -846,7 +877,7 @@ const TTS = {
       const d = await (await fetch('/api/voices')).json(); this.platform = d.platform || ''; if (!d.available) return; this.server = true;
       for (const l of ['fr', 'en']) this.pool[l] = rankVoices(d.voices.filter((v) => v.locale.startsWith(l + '_')).map((v) => v.name)); } catch (e) { if (this.engine === 'elevenlabs') this.setDown(L('indisponible', 'unavailable') + ', ' + elevenWhy(e)); }
   },
-  voiceFor(p, fr = FR()) { const pool = this.pool[fr ? 'fr' : 'en']; return pool.length ? (p.id === 'main' ? pool[0] : pool[(p.vi >>> 2) % pool.length]) : null; },
+  voiceFor(p, fr = FR()) { return projectVoice(projKeyOf(p), this.pool[fr ? 'fr' : 'en'], voicePool(fr)); },   // the project's voice, whoever speaks
   rate() { return Math.round(Math.max(120, Math.min(330, 178 * (S.live ? 1.12 * lagFactor() : +$('#speed').value))) / 10) * 10; },
   buf(text, voice, rate) {
     const key = this.engine + '|' + voice + '|' + (this.engine === 'elevenlabs' ? 0 : rate) + '|' + text;   // ElevenLabs makes one file per line whatever the pace: a line warmed at one pace is a hit at another
@@ -934,7 +965,7 @@ async function speakServer(text, p, gain, token, fr = FR(), still) {
   const voice = TTS.voiceFor(p, fr); if (!voice) throw new Error('no voice');
   const buf = await TTS.buf(speakable(text), voice, TTS.rate()); if (token !== S.token || (still && !still())) return;   // a line that went stale while it was being made is not played
   const c = AUD.ctx, src = c.createBufferSource(); src.buffer = buf;
-  const an = c.createAnalyser(); an.fftSize = 256; const g = c.createGain(); g.gain.value = gain; let stops = [];
+  const an = c.createAnalyser(); an.fftSize = 256; const g = c.createGain(); g.gain.value = gain * gainOf(buf); let stops = [];   // every line at the same loudness, whatever the voice
   if (prefs.vstyle !== 'cartoon') src.connect(an); else { const ch = fxChain(c, src, fxFor(p)); stops = ch.stops; ch.node.connect(an); }   // only the cartoon style runs the voice through effects
   an.connect(g); g.connect(AUD.voice);
   const data = new Uint8Array(an.fftSize);
@@ -949,7 +980,7 @@ function speakBrowser(text, p, token, fr = FR()) {   // fallback where no server
   if (ELEVEN_KEY) return Promise.resolve(false);
   return new Promise((resolve) => {
     const vs = synth.getVoices().filter((v) => v.lang.toLowerCase().startsWith(fr ? 'fr' : 'en')); if (!vs.length) return resolve(false);
-    const ranked = rankVoices(vs.map((v) => v.name)), voice = vs.find((v) => v.name === (p.id === 'main' ? ranked[0] : ranked[(p.vi >>> 2) % ranked.length])) || vs[0];
+    const ranked = rankVoices(vs.map((v) => v.name)), mine = projectVoice(projKeyOf(p), ranked, 'browser:' + (fr ? 'fr' : 'en')), voice = vs.find((v) => v.name === mine) || vs[0];   // the project's voice
     const parts = speakable(text).match(/[^.!?;:]+[.!?;:]*/g) || [text]; synth.cancel(); let i = 0, done = false, started = false;
     const fin = (ok) => { if (!done) { done = true; resolve(ok); } };
     setTimeout(() => { if (!started) { synth.cancel(); fin(false); } }, 2500);   // engine never started (e.g. inside a webview)
@@ -957,7 +988,7 @@ function speakBrowser(text, p, token, fr = FR()) {   // fallback where no server
     const next = () => {
       if (i >= parts.length || done || token !== S.token) return fin(true);
       const part = parts[i++].trim(); if (!part) return next();
-      const u = new SpeechSynthesisUtterance(part); u.lang = fr ? 'fr-FR' : 'en-US'; u.voice = voice; u.pitch = prefs.vstyle === 'natural' ? 0.95 + ((p.vi >>> 5) % 5) * 0.03 : p.id === 'main' ? 0.8 : [1.5, 0.6, 1.2, 1.7, 0.9, 0.5, 1.35][(p.vi >>> 3) % 7]; u.rate = Math.min(1.7, 0.97 * spd());
+      const u = new SpeechSynthesisUtterance(part); u.lang = fr ? 'fr-FR' : 'en-US'; u.voice = voice; u.pitch = prefs.vstyle === 'natural' ? 0.95 + (hash(projKeyOf(p)) % 5) * 0.03 : [1.5, 0.6, 1.2, 1.7, 0.9, 0.5, 1.35][hash(projKeyOf(p)) % 7]; u.rate = Math.min(1.7, 0.97 * spd());
       u.onstart = () => (started = true); u.onend = () => setTimeout(next, 120); u.onerror = () => fin(started); synth.speak(u);
     };
     next();
@@ -1998,11 +2029,12 @@ const D = { done: new WeakSet(), said: [], pending: null, speaking: false, beat:
 // stale before it is made is not made (nor paid for), and one that is stale by the time its audio exists is not played.
 const SYNTH_MS = { elevenlabs: 1200 }, synthMs = () => SYNTH_MS[TTS.engine] || 400;   // a little over what making one line takes
 const freshIn = (ln, ahead) => { const core = ln.items.filter((it) => it.kind !== 'work'); return (core.length ? core : ln.items).every((it) => Date.now() + ahead - it.ev.ts <= keepOf(it)); };   // a merged line is as fresh as its content: one item out of date makes it stale, but a work beat (20 s) never takes a needs-you or a message down with it
+const voiceOf = (ln) => (ln.items[0].far ? { id: 'far', vi: 0, projKey: ln.items[0].far } : S.agents[ln.items[0].agent] || S.agents.main);   // a line about another project speaks in its project's voice
 function warmLines(lines) {
   const at = Date.now(); lines.forEach((ln) => (ln.at = at));
   if (!S.live || !prefs.voice || AUD.off() || !TTS.server || !AUD.ctx || prefs.vstyle === 'animal' || prefs.vstyle === 'sims') return lines;
   return lines.filter((ln) => {
-    const p = S.agents[ln.items[0].agent] || S.agents.main, v = p && TTS.voiceFor(p); if (!v) return true;
+    const p = voiceOf(ln), v = p && TTS.voiceFor(p); if (!v) return true;
     if (!freshIn(ln, synthMs())) return false;
     ln.ready = TTS.buf(speakable(ln.line), v, TTS.rate()).catch(() => {}).then(() => { ln.made = true; });   // the same text and voice speakServer asks for: a cache hit
     return true;
@@ -2131,8 +2163,8 @@ async function directorStep() {   // called every 300 ms and not awaited: decidi
     if (S.cur === cur) decideNext();   // the next batch is decided while these lines are said
     const fresh = (ln, ahead) => S.cur === cur && S.playing && S.token === tok && freshIn(ln, ahead);   // stale, another session, or a switch waiting for the voice: not said
     await speakQueue(lines, { synthMs: synthMs(), fresh, say: async (ln) => {
-      const id = S.agents[ln.items[0].agent] ? ln.items[0].agent : 'main';
-      startTalk(id, ln.line, ''); const r = await speakLine(ln.line, S.agents[id], true, S.token, FR(), () => fresh(ln, 0)); stopTalk(id); D.quietAt = Date.now();
+      const far = !!ln.items[0].far, id = S.agents[ln.items[0].agent] ? ln.items[0].agent : 'main';   // another project's line has no tile here: only its voice
+      if (!far) startTalk(id, ln.line, ''); const r = await speakLine(ln.line, far ? voiceOf(ln) : S.agents[id], true, S.token, FR(), () => fresh(ln, 0)); if (!far) stopTalk(id); D.quietAt = Date.now();
       for (const it of ln.items) if (it.kind === 'work') D.beat.set(it.agent, it.act);   // said: the same work again is not news
       if (r && r.skipped) markUnsaid(ln.items.map((it) => it.ev), r.skipped);   // skipped, not said by another voice
     } });
@@ -2209,6 +2241,7 @@ function paintSubtitle() {   // the header: what the call follows, and the proje
   const followed = f.startsWith('g:') ? (((boardMemo.rows || []).find((r) => boardKey(r) === f.slice(2)) || {}).group || {}).name : '';
   const m = S.live && !S.demo ? modeLabel({ pinned: !!S.pin, follow: f, project: inCall ? team.short : '', call: own, followed }) : { icon: '', main: inCall ? team.short : 'Agent Standup', sub: own };
   $('#pmi').textContent = m.icon; b.textContent = m.main; b.style.color = ''; s.textContent = m.sub;
+  const vn = inCall && !S.demo ? projVoiceName(S.group.key) : ''; $('#pvo').textContent = vn ? L('voix ', 'voice ') + vn : ''; $('#pvo').title = vn ? `${team.short}: ${L('voix', 'voice')} ${vn}` : ''; paintVoicePick();   // the voice this project speaks in
   $('#pbtn').title = [m.main, m.sub, sum, L('Choisir ce que suit l’appel', 'Choose what the call follows')].filter(Boolean).join('\n'); }
 // ---- the header is a project switcher: every project with something going on and its counts; picking one follows it and opens its most urgent or most active call
 let boardMemo = { at: 0, rows: [] };
@@ -2226,9 +2259,9 @@ setInterval(async () => { if (S.live && !document.hidden && !document.body.class
 let pmQuiet = false;
 function renderProjects(rows) {
   const list = projectCounts(rows), f = prefs.follow || 'all', cur = !S.pin && f.startsWith('g:') ? f.slice(2) : '', all = !S.pin && f === 'all', busy = list.filter((p) => p.calls), quiet = list.filter((p) => !p.calls);   // the check marks the mode in use, not the project the call happens to be in
-  const row = (p) => `<button class="prow" role="option" data-k="${esc(p.key)}" aria-selected="${p.key === cur}"><i class="psw" style="background:${GCOL(p.key)}"></i><span class="pn"><b>${esc(p.name)}</b><small>${esc(projLine(p))}</small></span>${p.needs ? '<i class="sdot needs"></i>' : ''}${p.key === cur ? '<span class="pck">✓</span>' : ''}</button>`;
+  const row = (p) => `<button class="prow" role="option" data-k="${esc(p.key)}" aria-selected="${p.key === cur}"><i class="psw" style="background:${GCOL(p.key)}"></i><span class="pn"><b>${esc(p.name)}</b><small>${esc(projLine(p))}${((v) => (v ? `<span class="vo">${esc(L('voix ', 'voice ') + v)}</span>` : ''))(projVoiceName(p.key))}</small></span>${p.needs ? '<i class="sdot needs"></i>' : ''}${p.key === cur ? '<span class="pck">✓</span>' : ''}</button>`;
   const pinRow = S.pin ? `<button class="prow" role="option" data-k="__pin" aria-selected="true"><span class="pmi">📌</span><span class="pn"><b>${esc(L('Épinglé : ', 'Pinned: ') + ((S.title || '').split(', ').slice(1).join(', ') || S.title || ''))}</b><small>${esc(teamOf(S.group).short || '')}</small></span><span class="pck">✓</span></button>` : '';
-  $('#pmenu').innerHTML = pinRow + `<button class="prow" role="option" data-k="" aria-selected="${all}"><i class="psw all"></i><span class="pn"><b>${L('Tout', 'Everything')}</b><small>${L('l’appel le plus actif, ou celui qui vous attend', 'the most active call, or one that needs you')}</small></span>${all ? '<span class="pck">✓</span>' : ''}</button><hr>`
+  $('#pmenu').innerHTML = pinRow + `<button class="prow" role="option" data-k="" aria-selected="${all}"><i class="psw all"></i><span class="pn"><b>${L('Tout', 'Everything')}</b><small>${L('le projet le plus actif, ou celui qui vous attend', 'the busiest project, or one that needs you')}</small></span>${all ? '<span class="pck">✓</span>' : ''}</button><hr>`
     + busy.map(row).join('') + (quiet.length ? (pmQuiet ? quiet.map(row).join('') : `<button class="prow pq">＋ ${quiet.length} ${L('inactives', 'quiet')}</button>`) : '');
 }
 async function openProjects() {
@@ -2423,7 +2456,7 @@ async function renderCalls() {
   html += '<div class="clist">';
   if (needs.length) html += `<div class="cg needs">${L('Vous attend', 'Needs you')}</div>` + needs.map((r) => row(r, true)).join('');   // across every project, on top
   const lg = new Map(); for (const r of live) { const k = boardKey(r); if (!lg.has(k)) lg.set(k, []); lg.get(k).push(r); }
-  let last = ''; for (const [k, rs] of [...lg.entries()].sort((a, b) => (b[0] === first) - (a[0] === first))) { const name = railGroup(rs[0]); if (name !== last) html += `<div class="cg" style="--pc:${GCOL(k)}">${esc(name)}</div>`; last = name; html += rs.map((r) => row(r)).join(''); }   // the call on screen's project first; a project with nothing live has no header
+  let last = ''; for (const [k, rs] of [...lg.entries()].sort((a, b) => (b[0] === first) - (a[0] === first))) { const name = railGroup(rs[0]), vn = projVoiceName(k); if (name !== last) html += `<div class="cg" style="--pc:${GCOL(k)}">${esc(name)}${vn ? `<span class="vo">${esc(L('voix ', 'voice ') + vn)}</span>` : ''}</div>`; last = name; html += rs.map((r) => row(r)).join(''); }   // the call on screen's project first; a project with nothing live has no header
   html += (callsOpen.has('_quiet') ? quiet.map((r) => row(r, true)).join('') : '') + '</div>' + (quiet.length ? `<button class="cq">${callsOpen.has('_quiet') ? '−' : '＋'} ${quiet.length} ${L('inactives', 'quiet')}</button>` : '');
   if (box._h !== html) { box._h = html; box.innerHTML = html; const l = box.querySelector('.clist'); if (l) { const more = () => l.classList.toggle('more', l.scrollHeight - l.scrollTop - l.clientHeight > 4); l.onscroll = more; more(); } }
 }
@@ -2654,6 +2687,7 @@ $('#tok').onclick = () => openRecap();
 $('#bMenu').onclick = (e) => { e.stopPropagation(); $('#menu').classList.toggle('on'); };
 document.addEventListener('click', (e) => { if (!e.target.closest('#menu') && !e.target.closest('#bMenu')) $('#menu').classList.remove('on'); });
 $('#bLog').onclick = () => { document.body.classList.toggle('log'); $('#bLog').classList.toggle('on'); prefs.log = document.body.classList.contains('log'); savePrefs(); };
+$('#pvSel').onchange = () => { const key = S.group && S.group.key; if (!key) return; const all = (prefs.projVoice = prefs.projVoice || {}), pk = voicePool(FR()); (all[pk] = all[pk] || {})[key] = $('#pvSel').value; savePrefs(); paintSubtitle(); $('#calls')._h = ''; renderCalls(); };   // a choice sticks
 $('#openLog').onclick = $('#closeLog').onclick = () => { $('#bLog').click(); setTimeout(paintGraph, 0); };   // the slim tab: the transcript and the workers share one place
 // The project's workers where the transcript was (Tom: "every worker a dot, the bigger the dot the more tokens they've been burning ... the connections between them bigger
 // as they message each other more"): every agent of the call, its tokens as the dot's area, its state as the colour, sub-agents tied to who started them, messages as lines.

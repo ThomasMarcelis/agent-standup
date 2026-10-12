@@ -74,6 +74,14 @@ A silent state also prefixes the tab's title. One click, or M, goes from any sil
 - **Routes**: messages between agents start with a short spoken route ("Gladiator lead, from Codex").
 - **Debugging**: `?debug=voice` logs every line's start and stop.
 
+**One voice per project**:
+- Every agent of a project speaks in the project's voice: leads and sub-agents, Claude, Codex and Hermes alike. In *Everything*, a line about another project is heard in that project's voice.
+- A project keeps the voice it got first, across restarts (saved in the settings). A new project gets a voice no other live project has, while there are enough voices.
+- The voice's name is shown small next to the project: in the header (*voice Roger*), the switcher and the rail's project headers.
+- To change it: ⚙ › Sound › *Voice of <project>*. The choice sticks.
+
+**Even loudness**: each clip is measured once when it is decoded (RMS over its non-silent 50 ms blocks) and brought to -20 dBFS. The gain is capped so the peak stays under -1 dBFS and never goes past 18 dB up. A gentle compressor on the voice output catches the rest. On ten real ElevenLabs voices, the spread went from 10.3 dB to 1.7 dB.
+
 ## Where the data comes from
 
 All read-only; nothing is written to any agent store.

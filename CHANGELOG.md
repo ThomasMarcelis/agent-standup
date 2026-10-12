@@ -19,6 +19,8 @@ Tom's fork: one overview of Claude Code, Codex CLI and Hermes, and the agent-pee
   - ElevenLabs automatically from the Hermes key (`HERMES_HOME`, else the gaming profile, else `~/.hermes`). With a key, no other voice speaks; a line it cannot make is skipped and marked.
   - The sound plays only when an agent newly needs you.
   - The live director (`gpt-6-luna` via codex-lb) says almost everything, up to 4 lines a batch, about content: what each agent is doing and why, sub-agent starts and finishes, commits, test results, and a status line after 20 s of quiet. Generic lines are never said, needs-you is never dropped, nothing stale, never cut mid-line.
+  - One voice per project, for every agent of it (all harnesses), kept across restarts; live projects get different voices. Its name is shown in the header, the switcher and the rail; ⚙ › Sound › *Voice of <project>* changes it.
+  - Even loudness: each clip is brought to -20 dBFS, its peak capped at -1 dBFS, with a gentle compressor behind. Ten ElevenLabs voices went from a 10.3 dB spread to 1.7 dB.
 - **CLI**: `agent-standup` (bin/agent-standup.js) serves on 4747; `status` and `statusline` use the app's words.
 - **Removed**: the Join gate, the chatter level, the *Agent voices* switch, the rail's follow select, the tile tool strip and ✗ badge, the bare mute button, invented first names.
 - No coffee or support links.

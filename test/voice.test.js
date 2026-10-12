@@ -352,18 +352,18 @@ test('sound: the control paints its state and a silent state prefixes the tab ti
   AUD.live.clear(); AUD.ctx.state = 'suspended'; paintSound(); assert.deepEqual([b.className, doc.title], ['snd held', '⚠ ● 2 working']);
 });
 test('sound: ElevenLabs chosen, voices turned on from voice:false: the first line goes to /api/tts and the browser voice never speaks', async () => {
-  const urls = [], spoken = [], S = { token: 1, level: {}, owner: 'me', live: true }, prefs = { voice: false, vstyle: 'elevenlabs' };
+  const urls = [], spoken = [], S = { token: 1, level: {}, owner: 'me', live: true, group: { key: '/w/gladiator-game' } }, prefs = { voice: false, vstyle: 'elevenlabs' };
   const node = () => ({ connect: (d) => d, fftSize: 0, gain: { value: 1 }, getByteTimeDomainData() {} });
-  const ctx = { state: 'running', resume: async () => {}, createGain: node, createAnalyser: node, decodeAudioData: async () => ({ duration: 0.02 }),
+  const ctx = { state: 'running', resume: async () => {}, createGain: node, createAnalyser: node, decodeAudioData: async () => ({ duration: 0.02, sampleRate: 8000, getChannelData: () => new Float32Array(160).fill(0.05) }),
     createBufferSource: () => ({ ...node(), playbackRate: { value: 1 }, start() { setTimeout(() => this.onended && this.onended(), 20); }, stop() {} }) };
   const AUD = { ctx, muted: false, live: new Set(), voice: node(), init() {}, off() { return this.muted; } };
   const fetch = async (u) => { urls.push(String(u)); return /\/api\/voices/.test(u) ? { json: async () => ({ available: true, voices: [{ name: 'adam' }] }) } : { status: 200, ok: true, headers: { get: () => '' }, arrayBuffer: async () => new ArrayBuffer(8) }; };
   const synth = { speaking: false, speak: (u) => { if (u.text) spoken.push(u.text); }, cancel() {}, getVoices: () => [{ name: 'espeak', lang: 'en-US' }] };
   const scope = pageScope({ S, prefs, AUD, fetch, synth, CID: 'me', EMBED: false, ELEVEN_KEY: true, SpeechSynthesisUtterance: function (t) { this.text = t; }, L: (fr, en) => en, FR: () => false,
-    $: () => null, document: { querySelector: () => null }, performance: { now: () => 1e6 }, savePrefs() {}, applyMute() {}, claimAudio() {}, paintSound() {}, captionRun() {}, vlog() {}, estMs: () => 10, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    $: () => null, document: { querySelector: () => null }, performance: { now: () => 1e6 }, savePrefs() {}, liveProjectKeys: () => new Set(), hash: (x) => x.length, applyMute() {}, claimAudio() {}, paintSound() {}, captionRun() {}, vlog() {}, estMs: () => 10, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     speakable: (t) => t, rankVoices: (v) => v, spd: () => 1, lagFactor: () => 1, fxFor() {}, fxChain() {}, AbortSignal: { timeout: () => undefined }, TTS_WAIT: 10000, TTS_RETRY: 30000, setTimeout: (f, ms) => { const t = setTimeout(f, ms); if (ms > 1000 && t.unref) t.unref(); return t; } });
   const src = [grab(/const soundHeld = [^\n]*/), grab(/const elevenWhy = [^\n]*/), grab(/const TTS = \{[\s\S]*?\n\};/), grab(/function soundState\(s\) \{[\s\S]*?\n\}/), grab(/const talkingNow = [^\n]*/), grab(/const soundNow = [^\n]*/),
-    grab(/function toggleSound\(\) \{[\s\S]*?\n\}/), grab(/async function speakServer\([\s\S]*?\n\}/), grab(/function speakBrowser\([\s\S]*?\n\}/), grab(/async function speakLine\([\s\S]*?\n\}/)].join('\n');
+    grab(/function toggleSound\(\) \{[\s\S]*?\n\}/), grab(/const LOUD_TARGET = [^\n]*/), grab(/function loudnessOf\(data, rate\) \{[\s\S]*?\n\}/), grab(/const normGain = [^\n]*/), grab(/const gainOf = [^\n]*/), grab(/const projKeyOf = [^\n]*/), grab(/const voicePool = [^\n]*/), grab(/function projectVoice\(key, pool, poolKey, live = liveProjectKeys\(\)\) \{[\s\S]*?\n\}/), grab(/async function speakServer\([\s\S]*?\n\}/), grab(/function speakBrowser\([\s\S]*?\n\}/), grab(/async function speakLine\([\s\S]*?\n\}/)].join('\n');
   const { TTS, toggleSound, speakLine } = new Function('scope', 'with (scope) { ' + src + '\nreturn { TTS, toggleSound, speakLine }; }')(scope);
   await TTS.init(); assert.deepEqual([TTS.engine, TTS.server], ['elevenlabs', true]);
   await speakLine('Said while the voices are off.', { id: 'main', vi: 0 }, true, 1); assert.deepEqual([urls.filter((u) => /\/api\/tts/.test(u)), spoken], [[], []], 'voices off: nothing is said or paid for');
@@ -508,4 +508,39 @@ test("everything: the screen moves to a clearly busier project only after the 20
   S.switchAt = now - 25000; updateFollow(rows); assert.deepEqual([calls, S.switchWhy.why, S.switchWhy.to], [['ms-claude'], 'busy', 'MarketSimulator'], 'after the hold: to MarketSimulator, saying why');
   Object.assign(S, { cur: { proj: '-w-ms', id: 'ms-claude' }, group: ms, members: [{ proj: '-w-ms', id: 'ms-claude' }], autoPin: null }); calls.length = 0;
   updateFollow(rows); assert.deepEqual([calls, S.autoPin], [[], { proj: '-w-ms', id: 'ms-claude' }], 'there: the busiest project holds the call, not the most recently written session anywhere');
+});
+
+// ---- round 13 (Tom: "the messages should be a bit volume normalized"; "I have no idea what voice is what tbh, maybe it's better voice per project")
+function voiceEnv(over = {}) {
+  const src = [grab(/const projKeyOf = [^\n]*/), grab(/const voicePool = [^\n]*/), grab(/function projectVoice\(key, pool, poolKey, live = liveProjectKeys\(\)\) \{[\s\S]*?\n\}/), grab(/const voiceOf = [^\n]*/)].join('\n');
+  const env = { S: { group: { key: '/w/gladiator-game' }, agents: {} }, prefs: {}, TTS: { engine: 'elevenlabs' }, savePrefs() {}, hash: (x) => [...x].reduce((a, c) => a + c.charCodeAt(0), 0), ...over };
+  const api = new Function('scope', 'with (scope) { ' + src + '\nreturn { projKeyOf, voicePool, projectVoice, voiceOf }; }')(pageScope(env));
+  return { ...api, env, voiceFor: (p, live = new Set(['/w/gladiator-game', '/w/MarketSimulator'])) => api.projectVoice(api.projKeyOf(p), POOL, api.voicePool(false), live) };
+}
+const POOL = ['adam', 'roger', 'sarah', 'laura'];
+test('voices: one per project, the same every time and after a restart; live projects get different ones; every agent of a project speaks in it', () => {
+  const v = voiceEnv(), glad = v.voiceFor({ id: 'main' });
+  assert.equal(glad, 'adam', 'the first project takes the first voice');
+  assert.deepEqual(['a1', 'se7a982__main', 'se7a982__r1'].map((id) => v.voiceFor({ id })), ['adam', 'adam', 'adam'], 'its lead, its sub-agents, another session of it: one voice');
+  const ms = v.voiceFor({ id: 'p_x', type: 'peer', group: { key: '/w/MarketSimulator' } }); assert.equal(ms, 'roger', 'another live project: another voice (a guest speaks in its own project\'s)');
+  assert.equal(v.voiceFor({ id: 'far', projKey: '/w/MarketSimulator' }), 'roger', 'a line about MarketSimulator in Everything: its voice');
+  assert.equal(v.voiceOf({ items: [{ far: '/w/MarketSimulator', agent: 'x' }] }).projKey, '/w/MarketSimulator');
+  const saved = JSON.parse(JSON.stringify(v.env.prefs)), again = voiceEnv({ prefs: saved, S: { group: { key: '/w/MarketSimulator' }, agents: {} } });
+  assert.deepEqual([again.voiceFor({ id: 'main' }), again.voiceFor({ id: 'p', type: 'peer', group: { key: '/w/gladiator-game' } })], ['roger', 'adam'], 'after a restart (the saved prefs): the same voices');
+  v.env.prefs.projVoice.elevenlabs['/w/gladiator-game'] = 'laura'; assert.equal(v.voiceFor({ id: 'main' }), 'laura', 'a voice chosen in the settings sticks');
+  const full = voiceEnv(); for (const k of ['a', 'b', 'c', 'd']) full.projectVoice('/w/' + k, POOL, 'elevenlabs', new Set(['/w/a', '/w/b', '/w/c', '/w/d', '/w/e']));
+  assert.ok(POOL.includes(full.projectVoice('/w/e', POOL, 'elevenlabs', new Set(['/w/a', '/w/b', '/w/c', '/w/d', '/w/e']))), 'more live projects than voices: one is shared, never none');
+  const sys = voiceEnv({ prefs: saved, TTS: { engine: 'system' } }); assert.equal(sys.projectVoice('/w/gladiator-game', ['fr-a', 'fr-b'], sys.voicePool(true), new Set()), 'fr-a', 'another pool (French system voices) has its own choice');
+  assert.equal(saved.projVoice.elevenlabs['/w/gladiator-game'], 'adam', 'and leaves the ElevenLabs one alone');
+});
+test('loudness: every clip is brought to the same level, never clipped, silence ignored', () => {
+  const src = [grab(/const LOUD_TARGET = [^\n]*/), grab(/function loudnessOf\(data, rate\) \{[\s\S]*?\n\}/), grab(/const normGain = [^\n]*/)].join('\n');
+  const { loudnessOf, normGain, LOUD_TARGET, LOUD_PEAK } = new Function(src + '\nreturn { loudnessOf, normGain, LOUD_TARGET, LOUD_PEAK };')();
+  const rate = 8000, tone = (amp, secs, lead = 0) => { const d = new Float32Array(Math.round(rate * (secs + lead))); for (let i = Math.round(rate * lead); i < d.length; i++) d[i] = amp * Math.sin(i * 0.3); return d; };
+  const after = (d) => { const m = loudnessOf(d, rate), g = normGain(m); return { db: m.db + 20 * Math.log10(g), peak: m.peak * g }; };
+  const quiet = after(tone(0.03, 1)), loud = after(tone(0.6, 1)), late = after(tone(0.1, 1, 2));
+  assert.ok(Math.abs(quiet.db - LOUD_TARGET) < 0.5 && Math.abs(loud.db - LOUD_TARGET) < 0.5, `a quiet and a loud voice meet at the target: ${quiet.db.toFixed(1)} / ${loud.db.toFixed(1)} dB`);
+  assert.ok(Math.abs(late.db - LOUD_TARGET) < 0.5, 'two seconds of silence first do not count');
+  const spiky = new Float32Array(rate).fill(0.01); spiky[100] = 0.9; const s2 = after(spiky); assert.ok(20 * Math.log10(s2.peak) <= LOUD_PEAK + 0.01, 'a clip with a loud peak is raised only until its peak would clip');
+  assert.equal(normGain(loudnessOf(new Float32Array(rate), rate)), 1, 'silence: left alone');
 });
