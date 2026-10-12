@@ -166,6 +166,16 @@
   #wgraph { display:none; width:340px; flex:none; flex-direction:column; min-height:0; border-left:1px solid var(--line); background:var(--panel) }   /* the transcript closed: its place shows the project's workers */
   @media (min-width:1100px) { body:not(.log):not(.board):not(.tree) #wgraph { display:flex } } body.log #wgraph { display:none !important }
   .wgh { display:flex; align-items:center; border-bottom:1px solid var(--line) } .wgh h2 { flex:1; border-bottom:0 !important } .wtab { margin-right:8px; font-size:11.5px; color:var(--dim); padding:4px 8px; border:1px solid var(--line); border-radius:99px } .wtab:hover { color:var(--text); border-color:var(--accent) }
+  @media (max-width:1279px) { #wgraph { width:280px } }
+  /* Tom: the shared screens are the main view (up to 4: 1 full, 2 side by side, 3-4 a 2x2), the workers' graph is the side panel, the tiles a compact bar at the bottom */
+  #screens { display:none } body.gbar:not(.tree):not(.board) #screens { display:grid; flex:1 1 0; min-height:0; gap:10px; padding:10px 12px; grid-template-columns:repeat(var(--sc,1),minmax(0,1fr)); grid-template-rows:repeat(var(--sr,1),minmax(0,1fr)) }
+  body.gbar #present { display:none !important } .swin { display:flex; flex-direction:column; min-height:0; min-width:0; border-radius:10px; overflow:hidden; background:#0d1117; box-shadow:0 0 0 1px var(--line); cursor:pointer }
+  .swin.speaking { box-shadow:0 0 0 2px var(--accent) } .swin.idle { opacity:.55 } .swin .pbar .st { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#c9cede } .swin .pbar .st b { font-weight:600; color:#e9ecf5 } .swin .pbar .st .sm { margin-left:8px; color:var(--dim); font-size:10.5px } .swin .pbar .sb { color:var(--dim); font-size:11px; white-space:nowrap }
+  .swin .sbody { flex:1; min-height:0; overflow:hidden; padding:8px 12px; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; color:#d6dae6 } .swin.editor .sbody { background:#1a1b26; padding:0 } .swin.image .sbody { display:flex; gap:6px; align-items:center; justify-content:center; background:#0b0c11 } .swin.image .sbody img { min-width:0; max-width:100%; max-height:100%; object-fit:contain }
+  #screens .snone { align-self:center; justify-self:center; color:var(--dim); font-size:12.5px }
+  body.gbar #stage { flex:0 0 auto; display:flex; flex-direction:row; align-items:flex-start; overflow-x:auto; overflow-y:hidden; height:116px; padding:8px 12px 0; gap:8px; border-top:1px solid var(--line); scrollbar-width:thin }
+  body.gbar .tile { flex:0 0 156px; height:92px; order:0 } body.gbar .tile.lead { order:-1 } body.gbar .tile.focus { order:0 } body.gbar .tile .bubble, body.gbar .tile .thought, body.gbar .tile .ticker, body.gbar .tile .tbadge, body.gbar .tile .prop, body.gbar .tile .tag .tk, body.gbar .tile .tag .cx, body.gbar .tile .tag b { display:none !important } body.gbar .tile .tag { flex-wrap:nowrap }   /* the shirt says who; the bar keeps the model */
+  body.gbar .tile::after { content:''; position:absolute; top:7px; right:7px; width:8px; height:8px; border-radius:50%; background:var(--dim) } body.gbar .tile.working::after { background:var(--ok) } body.gbar .tile:has(.status.blocked)::after { background:var(--warn) } body.gbar .tile:has(.status.waiting)::after, body.gbar .tile:has(.status.stalled)::after { background:var(--accent) }   /* the rail's dot: one signal */
   #logside .back { position:absolute; top:7px; left:auto; right:96px; margin:0 } #wg { flex:1; width:100%; min-height:0; display:block } #wgEmpty { padding:10px 14px; font-size:12px } #wgEmpty:empty { display:none }
   #log .row.tools { display:none } body.logtools #log .row.tools { display:block } aside { position:relative } aside .lt { position:absolute; top:7px; right:10px; margin:0 }   /* tool calls folded: the words between agents stay */
   aside h2 { margin:0; padding:11px 14px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); border-bottom:1px solid var(--line) }
@@ -347,7 +357,7 @@
   <aside id="side"><div id="calls" aria-label="Calls"></div><nav id="roster" aria-label="Agents"></nav></aside>
   <section id="center">
     <div id="present"><div class="pwin term"><div class="pbar"><i class="r"></i><i class="y"></i><i class="g"></i><span id="ptitle"></span><span id="pbadge"></span></div><div id="pbody"></div></div><div id="ptodo" style="display:none"></div><div id="pcap"></div><div id="pcam" class="tile working"></div></div>
-    <div id="guests" aria-label="On the line"></div><div id="stage"></div><div id="tree"></div><div id="boardv"></div>
+    <div id="guests" aria-label="On the line"></div><div id="screens" aria-label="Shared screens"></div><div id="stage"></div><div id="tree"></div><div id="boardv"></div>
     <div id="reactBar" aria-label="Reactions"><button data-e="👍">👍</button><button data-e="👏">👏</button><button data-e="☕">☕</button><button data-e="🔥">🔥</button><button data-e="🙌">🙌</button></div>
     <div id="hl"></div>
     <canvas id="gantt" height="90"></canvas>
@@ -1037,7 +1047,7 @@ const layout = () => {
   let k = Math.min(2, cols), fr = Math.min(2, maxRows);   // the spotlight (whoever speaks) is two tiles by two at most: it carries the bubble, not the page
   if (nar) { k = cols; fr = cols > 1 ? 2 : 1; }   // side panel: small tiles, a banner-sized spotlight
   st.style.setProperty('--fcols', k); st.style.setProperty('--fr', fr); st.classList.toggle('one', cols === 1);
-  document.body.classList.toggle('narrow', $('#center').clientWidth < 480); document.body.classList.toggle('compact', $('#center').clientWidth < 300); drawGantt();
+  document.body.classList.toggle('narrow', $('#center').clientWidth < 480); document.body.classList.toggle('compact', $('#center').clientWidth < 300); document.body.classList.toggle('gbar', $('#center').clientWidth >= 480); drawGantt();
 };
 new ResizeObserver(layout).observe($('#center'));
 
@@ -1428,6 +1438,39 @@ function showLastScreen() {
   let id = null, ts = 0; for (const k in S.term) { const e = S.term[k][S.term[k].length - 1]; if (e && S.agents[k] && e.ts > ts) { ts = e.ts; id = k; } }
   if (!id) return false; $('#present').classList.add('on'); S.present = id; renderPresent(); hidePresent(false, ts); return true;
 }
+// Up to four shared screens at once: the agents with real activity now (a command running, or their own last event within SCREEN_HOLD), each keeping its place while
+// it lasts; one that goes quiet gives way after the hold. Nothing active: the last screen stays up, dimmed and labelled, so the main view is never a void.
+const SCREEN_HOLD = 20000, screenGrid = (n, w) => ({ max: w >= 760 ? 4 : 2, cols: n >= 3 || (n === 2 && w >= 760) ? 2 : 1 });   // 1 full, 2 side by side (stacked when narrow), 3-4 a 2x2
+function screenPicks(now, max) {
+  const at = (id) => (S.run[id] ? now : S.seen[id] || 0);   // a command still running is activity now
+  const act = Object.keys(S.term).filter((id) => S.term[id].length && S.agents[id] && S.agents[id].type !== 'peer' && !S.gone.has(id) && now - at(id) < SCREEN_HOLD).sort((a, b) => at(b) - at(a));
+  const keep = (S.screens || []).filter((id) => act.includes(id)).slice(0, max), out = keep.concat(act.filter((id) => !keep.includes(id))).slice(0, max);   // a screen keeps its slot; new ones take the free ones
+  return (S.screens = out);
+}
+// Who shares a screen, like the shirts: a lead by its project ("Gladiator lead", "Gladiator Claude"), a sub-agent by its name and whose it is ("Fatigue build, sub-agent of gladiator lead")
+function screenWho(id) {
+  const a = S.agents[id] || {}; if (id === 'main' || a.lead) return whoDoes(id);
+  const lead = String(id).includes('__') ? id.slice(0, id.indexOf('__') + 2) + 'main' : 'main', n = nameOf(id);
+  return `${n.charAt(0).toUpperCase() + n.slice(1)}, ${L('sous-agent de', 'sub-agent of')} ${lc1(whoDoes(S.agents[lead] ? lead : 'main'))}`;
+}
+function renderScreens() {
+  const box = $('#screens'); if (!box || !document.body.classList.contains('gbar') || !S.cur) return;
+  const now = S.live ? Date.now() : (S.events[Math.min(S.idx, S.events.length - 1)] || {}).ts || Date.now(), w = box.clientWidth || $('#center').clientWidth, max = screenGrid(0, w).max;
+  let ids = screenPicks(now, max), idle = false;
+  if (!ids.length) { let best = null, ts = 0; for (const k in S.term) { const e = S.term[k][S.term[k].length - 1]; if (e && S.agents[k] && !S.gone.has(k) && (S.seen[k] || e.ts || 0) > ts) { ts = S.seen[k] || e.ts || 0; best = k; } } if (best) { ids = [best]; idle = true; } }
+  const n = ids.length, cols = screenGrid(n, w).cols; box.style.setProperty('--sc', cols); box.style.setProperty('--sr', Math.ceil(n / cols) || 1);
+  if (!n) { const h = `<div class="snone">${esc(L('Aucun écran partagé pour l’instant', 'No shared screen yet'))}</div>`; if (box._h !== h) { box.innerHTML = h; box._h = h; } return; }
+  if (box._ids !== ids.join(' ')) { box.innerHTML = ids.map((id) => `<div class="swin term" data-a="${esc(id)}"><div class="pbar"><i class="r"></i><i class="y"></i><i class="g"></i><span class="st"></span><span class="sb"></span></div><div class="sbody"></div></div>`).join(''); box._ids = ids.join(' '); box._h = ''; }
+  for (const win of box.querySelectorAll('.swin')) {
+    const id = win.dataset.a, p = S.agents[id], m = termModel(id), who = identityOf(p), shown = m.view === 'image' ? m.imgs.join(' ') : '';
+    win.className = 'swin ' + (m.view === 'term' ? 'term' : m.view) + (idle ? ' idle' : '') + (S.speakers.has(id) ? ' speaking' : '');
+    const wh = screenWho(id), st = win.querySelector('.st'), sh = `<b>${esc(wh)}</b><span class="sm">${esc(who.model)}</span>`; if (st._h !== sh) { st.innerHTML = sh; st._h = sh; } win.title = [wh, harnessOf(p), who.model].filter(Boolean).join('\n'); win.querySelector('.sb').textContent = idle ? L('dernier écran', 'last screen') + ' ' + new Date(S.seen[id] || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : S.run[id] ? L('en cours', 'running') : '';
+    const body = win.querySelector('.sbody'), html = shown ? m.imgs.map((u) => `<img src="${esc(u)}" alt="">`).join('') : (m.view === 'editor' ? `<div class="ptab"><span>${esc(m.tab.file)}</span><em>${esc(m.tab.path)}</em></div>` : '') + m.lines.map((l) => lineHtml(l, m.view)).join('');
+    if (body._h !== html) { body.innerHTML = html; body._h = html; body.scrollTop = m.view === 'term' ? body.scrollHeight : 0; }   // the same content is left in place: no blink, no scroll jump
+  }
+}
+setInterval(renderScreens, 600);
+$('#screens').onclick = (e) => { const w = e.target.closest('.swin'); if (w && S.agents[w.dataset.a]) { setFocus(w.dataset.a); openDetail(w.dataset.a); } };
 // the speaker always gets the spotlight (and keeps it until someone else talks)
 function setFocus(id) {
   if (S.agents[id] && S.agents[id].type === 'peer') return flashGuest(id);   // a guest has no desk to put in the spotlight
@@ -2136,7 +2179,7 @@ async function loadSession(proj, id) {   // every switch comes here (a click on 
   const data = await (await fetch(`/api/session?proj=${encodeURIComponent(proj)}&id=${id}`)).json();
   if (mine !== S.loadN || data.error) return false;
   const again = [S.cur, S.last].some((c) => c && c.proj === proj && c.id === id), keepDetail = again && S.detail, joined = S.joinAt;   // the same session rebuilt (a live rewrite): the room stays as it was
-  if (!again) { $('#pbody').innerHTML = ''; hidePresent(true); S.dividers = []; }   // another session: its screen, not the last one's
+  if (!again) { $('#pbody').innerHTML = ''; hidePresent(true); S.dividers = []; S.screens = []; $('#screens')._ids = ''; }   // another session: its screen, not the last one's
   S.term = {}; S.camFor = null; S.focus = null; S.agents = {}; for (const k in nameBook) delete nameBook[k]; S.group = data.group || null; [{ id: 'user' }, ...data.agents].forEach((a) => (S.agents[a.id] = persona(a)));
   S.events = data.events; S.rev = data.rev; S.group = data.group || null; callOf(data); S.joinAt = again && joined ? joined : Date.now(); S.idx = 0; S.status = {}; S.tc = {}; S.cur = { proj, id }; S.logTo = 0; S.detail = null; $('#detail').classList.remove('on');
   const opt = $('#sessions').selectedOptions[0]; S.title = [S.group && !S.group.other ? (S.group.hermes ? S.group.name.split(', ')[0] : S.group.name) : niceProj(proj), S.live ? (data.title || '') : (opt && opt.dataset.title) || data.title || ''].filter(Boolean).join(', ');   // a Hermes thread's group name is its title: said once   // project, session: so it is clear where this call belongs

@@ -258,7 +258,8 @@ function timeline(proj, id) {
       if (m.agentPath) { childByPath[m.agentPath] = aid; pathOf[aid] = m.agentPath; }
     }
     const st = readNew(m.file, aid, m, peers.readBudget(m === root, all.length - 1)); if (!st) continue; states.push(st); Object.assign(childByTool, st.childByCall); if (st.truncated && agents[aid]) agents[aid].truncated = true;
-    if (agents[aid] && st.model) Object.assign(agents[aid], { model: st.model, effort: st.effort || '' });
+    const mm = st.model ? { model: st.model, effort: st.effort || '' } : headModel(m.file);   // a big rollout read from its tail: its model is in the turn_context near its head
+    if (agents[aid] && mm && mm.model) Object.assign(agents[aid], { model: mm.model, effort: mm.effort || '' });
   }
   // this session's own agent-peers addresses and names: codex-<last 16 hex>, codex:<slug>-<last 4 hex>, codex:<nickname>
   const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, ''), byKey = {}, byName = {}, byTail = {};

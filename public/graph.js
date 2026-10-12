@@ -113,7 +113,7 @@
         if (p.guest) { const dx = p.x - cx, dy = p.y - cy, e = Math.sqrt((dx / rx) ** 2 + (dy / ry) ** 2) || 1; p.vx += (cx + dx / e - p.x) * 0.12 * alpha; p.vy += (cy + dy / e - p.y) * 0.12 * alpha; }   // guests drift to the rim: visitors, not crew
         else if (p.id === 'main') { p.x = cx; p.y = cy; p.vx = p.vy = 0; continue; }   // the call's lead holds the middle: the picture has an anchor, and its crew forms around it
         else { p.vx += (cx - p.x) * 0.03 * alpha; p.vy += (cy - p.y) * 0.03 * alpha; }
-        p.vx *= 0.6; p.vy *= 0.6; p.x = Math.max(p.r + 2, Math.min(W - p.r - 2, p.x + p.vx)); p.y = Math.max(p.r + 2, Math.min(H - p.r - 16, p.y + p.vy));   // the label needs room below its dot
+        p.vx *= 0.6; p.vy *= 0.6; const mx = Math.max(p.r + 2, 48); p.x = Math.max(mx, Math.min(W - mx, p.x + p.vx)); p.y = Math.max(p.r + 2, Math.min(H - p.r - 16, p.y + p.vy));   // the label needs room below its dot, and half its width at either side
       }
       alpha -= alpha * DECAY;
     }

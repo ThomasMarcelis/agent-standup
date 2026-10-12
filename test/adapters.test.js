@@ -295,3 +295,15 @@ test('hermes: placement is generic: a thread is placed by the repo it works in w
   assert.notEqual(four.group.key, glad.group.key, 'two projects'); assert.deepEqual(byKey(four.group), ['thread4d']);
   assert.deepEqual(callMates('-w-other', 'x', four.group, rows).map((r) => r.id), ['thread4d'], "the 4D game's call has its own thread"); assert.ok(!callMates('-w-other', 'x', four.group, rows).some((r) => r.id === 'thread1'), 'and not the other project');
 });
+
+test("codex: a sub-agent read from its tail (a big rollout) still has its model, from the turn_context near its head", () => {
+  const P = '01a12b00-0000-7000-8000-0000000000aa', C = '01a12b00-0000-7000-8000-0000000000cc', d0 = new Date(), dir = path.join(tmp, 'codex', 'sessions', String(d0.getFullYear()), String(d0.getMonth() + 1).padStart(2, '0'), String(d0.getDate()).padStart(2, '0')); fs.mkdirSync(dir, { recursive: true });   // today's folder: the scan lists recent days
+  const r = (o) => JSON.stringify(o) + '\n', at = (n) => new Date(Date.now() - 600e3 + n * 1000).toISOString(), say = (n) => r({ timestamp: at(n), type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'step ' + n + ' ' + 'x'.repeat(200) }] } });
+  fs.writeFileSync(path.join(dir, `rollout-2026-01-04T10-00-00-${P}.jsonl`), r({ timestamp: at(0), type: 'session_meta', payload: { id: P, timestamp: at(0), cwd: '/home/user', originator: 'codex-tui' } }) + r({ timestamp: at(1), type: 'turn_context', payload: { model: 'gpt-6-astra', effort: 'xhigh' } }) + say(2));
+  let child = r({ timestamp: at(3), type: 'session_meta', payload: { id: C, timestamp: at(3), cwd: '/home/user', parent_thread_id: P, thread_source: 'subagent', agent_path: '/root/figure_route', agent_role: 'worker' } }) + r({ timestamp: at(4), type: 'turn_context', payload: { model: 'gpt-6-astra', effort: 'max' } });
+  for (let n = 5; n < 60; n++) child += say(n);
+  fs.writeFileSync(path.join(dir, `rollout-2026-01-04T10-00-03-${C}.jsonl`), child);
+  process.env.AGENT_STANDUP_MAX_MB = String(2048 / 1048576);   // 2 KB: the child's head (and its turn_context) is not read
+  try { const kid = codex.timeline('_codex', P).agents.find((a) => a.id === C); assert.ok(kid && kid.truncated, 'read from its tail'); assert.deepEqual([kid.name, kid.model, kid.effort], ['figure route', 'gpt-6-astra', 'max']); }
+  finally { delete process.env.AGENT_STANDUP_MAX_MB; }
+});

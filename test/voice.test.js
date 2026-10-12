@@ -441,3 +441,19 @@ test('chatter: Luna is told to say almost everything, how many lines it may use,
   assert.match(t, /Lines allowed: 4/); assert.match(t, /Gladiator lead is running tests \[dotnet test --filter Combat\]/);
   assert.match(srv.TRIAGE_SYS, /Kinds: needs_you.*tests.*commit.*finish.*work/); assert.match(srv.TRIAGE_SYS, /for the wording only/); assert.match(srv.TRIAGE_SYS, /no paths, ids or commands/);
 });
+
+// ---- the main view is the shared screens (Tom: "maybe 4 screenshares active at the same time as maximum"), labelled by who shares them
+test('screens: up to 4 at once, picked by real activity, each keeping its place; a quiet one gives way after the hold; labelled by who shares it', () => {
+  const now = 1.79e12, src = [grab(/const SCREEN_HOLD = [^\n]*/), grab(/function screenPicks\(now, max\) \{[\s\S]*?\n\}/), grab(/const lc1 = [^\n]*/), grab(/function screenWho\(id\) \{[\s\S]*?\n\}/)].join('\n');
+  const agents = { main: { id: 'main' }, a: { id: 'a', name: 'fatigue build' }, b: { id: 'b' }, c: { id: 'c' }, d: { id: 'd' }, e: { id: 'e' }, se7a982__main: { id: 'se7a982__main', lead: true }, se7a982__r: { id: 'se7a982__r', name: 'research the 2D fight view' }, p_x: { id: 'p_x', type: 'peer' } };
+  const S = { agents, term: {}, run: {}, seen: {}, gone: new Set(), screens: [] }; for (const id in agents) { S.term[id] = [{ k: 'cmd' }]; S.seen[id] = now - 60000; }
+  const who = { main: 'Gladiator lead', se7a982__main: 'Gladiator Claude' };
+  const f = new Function('scope', 'with (scope) { ' + src + '\nreturn { screenPicks, screenWho, screenGrid }; }')(pageScope({ S, L: (fr, en) => en, nameOf: (id) => agents[id].name || id, whoDoes: (id) => who[id] || id }));
+  Object.assign(S.seen, { a: now - 1000, b: now - 2000, c: now - 3000, d: now - 4000, e: now - 5000, p_x: now }); S.run.main = { name: 'Bash' };   // main runs a long command (no event for a minute); a guest is never a screen
+  assert.deepEqual(f.screenPicks(now, 4), ['main', 'a', 'b', 'c'], 'running first, then the most recent: four at most');
+  S.seen.e = now; assert.deepEqual(f.screenPicks(now, 4), ['main', 'a', 'b', 'c'], 'a newer one waits: the four keep their slots while active');
+  S.seen.b = now - 25000; assert.deepEqual(f.screenPicks(now, 4), ['main', 'a', 'c', 'e'], 'b went quiet past the 20 s hold: it gives way');
+  delete S.run.main; assert.deepEqual(f.screenPicks(now, 2), ['a', 'c'], 'a narrow centre has room for two');
+  assert.deepEqual([1, 2, 3, 4].map((n) => f.screenGrid(n, 900).cols), [1, 2, 2, 2]); assert.deepEqual([f.screenGrid(2, 600).cols, f.screenGrid(0, 600).max, f.screenGrid(0, 900).max], [1, 2, 4], '2 stacked when narrow; 2 or 4 by width');
+  assert.deepEqual(['main', 'a', 'se7a982__main', 'se7a982__r'].map(f.screenWho), ['Gladiator lead', 'Fatigue build, sub-agent of gladiator lead', 'Gladiator Claude', 'Research the 2D fight view, sub-agent of gladiator Claude']);
+});

@@ -52,14 +52,18 @@ const undot = (t) => (t ? String(t).replace(/\s*·\s*/g, ', ') : t);   // Hermes
 // so for every project, with no project named here). With neither, it stays its own thread. Cached by the conversation's last activity.
 const workMemo = new Map(), PATHS = /\/(?:home|Users)\/[\w.-]+(?:\/[\w.-]+){1,11}/g;
 function workGroupOf(db, s) {
-  const k = s.id + '|' + (s.last_activity_at || s.started_at || 0), hit = workMemo.get(k); if (hit !== undefined) return hit;
+  const k = s.id + '|' + (s.last_activity_at || s.started_at || 0), hit = workMemo.get(k); if (hit !== undefined) return hit; if (placing) return null;
+  placing = true; try {
   const n = new Map(), add = (g, c) => { if (g && g.key && !g.hermes && !g.other) n.set(g.key, { g, c: ((n.get(g.key) || {}).c || 0) + c }); };
   let rows = []; try { rows = q(db, "select content, tool_calls from messages where session_id=? and (content like '%peer_message%' or tool_calls like '%send_peer%') order by id desc limit 40", s.id); } catch {}
   for (const h of peers.tailPeers(rows.map((r) => (r.content || '') + ' ' + (r.tool_calls || '')).join('\n')).hits) add(h.addr && (peers.peerAgent(h.addr) || {}).group, 3);
   let calls = []; try { calls = q(db, "select tool_calls from messages where session_id=? and tool_calls is not null and tool_calls != '' order by id desc limit 200", s.id); } catch {}
   calls.forEach((r, i) => { for (const m of new Set(String(r.tool_calls).match(PATHS) || [])) add(project.groupOf(m), 0.5 ** (i / 25)); });   // a repo it reads or writes; what it works on now weighs more (half every 25 calls back)
   const best = [...n.values()].sort((a, b) => b.c - a.c)[0], v = best ? best.g : null; workMemo.set(k, v); if (workMemo.size > 400) workMemo.delete(workMemo.keys().next().value); return v;
+  } finally { placing = false; }
 }
+let placing = false;   // placing a thread resolves its partners' addresses, which builds the address map, which places threads: not twice at once
+const placedOf = (db, p, s) => (placing ? workMemo.get(s.id + '|' + (s.last_activity_at || s.started_at || 0)) || groupOf(p, s) : placeOf(db, p, s));   // an inbox address resolves to the project its thread works in
 const placeOf = (db, p, s) => { const g = groupOf(p, s); return g && g.hermes && !s.cwd ? workGroupOf(db, s) || g : g; };   // a thread in the project it works in; a session with a folder by its folder
 const groupOf = (p, s) => (s.thread_id || s.chat_id ? project.hermesGroup(p.name, s.thread_id || s.chat_id, undot(s.title) || (s.display_name ? String(s.display_name).split(' / ').pop() : '')) : s.cwd ? project.groupOf(s.cwd) : project.hermesGroup(p.name));   // the thread, named by the conversation's title
 const NOT_KIDS = "source not in ('subagent', 'healthcheck')";
@@ -231,7 +235,7 @@ function addressMap() {
   const map = new Map();
   for (const p of profiles()) {
     const db = open(p.db); if (!db) { peers.problem('Hermes ' + p.name, 'its database could not be opened (is node:sqlite available?)'); continue; } let rows = []; try { rows = recent(db, Date.now() / 1000 - 30 * 86400, 80); } catch { continue; }
-    for (const s of rows) { let rs = []; try { rs = q(db, "select content from messages where session_id=? and role='tool' and tool_name='send_peer'", s.id); } catch {} for (const r of rs) { const m = /hermes-([0-9a-f]{32})\.sock/.exec(r.content || ''); if (m) map.set('hermes-' + m[1], { source: 'hermes', proj: p.proj, id: s.id, name: 'hermes:' + p.name + ':' + s.id.slice(-8), cwd: projectOf(s), group: groupOf(p, s) }); } }
+    for (const s of rows) { let rs = []; try { rs = q(db, "select content from messages where session_id=? and role='tool' and tool_name='send_peer'", s.id); } catch {} for (const r of rs) { const m = /hermes-([0-9a-f]{32})\.sock/.exec(r.content || ''); if (m) map.set('hermes-' + m[1], { source: 'hermes', proj: p.proj, id: s.id, name: 'hermes:' + p.name + ':' + s.id.slice(-8), cwd: projectOf(s), group: placedOf(db, p, s) }); } }
   }
   addrMemo = { at: Date.now(), map }; return map;
 }
