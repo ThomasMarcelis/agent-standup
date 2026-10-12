@@ -241,10 +241,11 @@ test('a shirt says its role in whole words, short enough to be read on a small t
 });
 
 test('board card (denoised): who, what now, talks to whom, needs you, in plain words; nothing twice, no raw tool name, id or counter', () => {
-  const src = [grab(/const base = \(f\) =>[^\n]*/), grab(/function cmdLabel\(text\) \{[\s\S]*?\n\}/), grab(/function cmdVerb\(cmd\) \{[\s\S]*?\nfunction activityLabel/).replace(/\nfunction activityLabel$/, ''), grab(/const agoStr = [^\n]*/), grab(/const LIVE_MS = [^\n]*/), grab(/const peerWords = [\s\S]*?\n  return [^\n]*/), grab(/function boardCard\(r\) \{[\s\S]*?\n\}/)].join('\n');
+  const src = [grab(/const base = \(f\) =>[^\n]*/), grab(/function cmdLabel\(text\) \{[\s\S]*?\n\}/), grab(/function cmdVerb\(cmd\) \{[\s\S]*?\nfunction activityLabel/).replace(/\nfunction activityLabel$/, ''), grab(/const agoStr = [^\n]*/), grab(/const LIVE_MS = [^\n]*/), grab(/const peerWords = [\s\S]*?\n  return [^\n]*/), grab(/function modelLabel\(model, effort\) \{[\s\S]*?\n\}/), grab(/const rowModel = [^\n]*/), grab(/function boardCard\(r\) \{[\s\S]*?\n\}/)].join('\n');
   const boardCard = new Function('L', 'esc', 'S', src + '\nreturn boardCard;')((fr, en) => en, (t) => String(t), { act: {} }), now = Date.now();
   const codex = boardCard({ proj: '_codex', id: 'x1', title: 'Respond to greeting', state: 'working', tool: 'exec_command', arg: "python3 - <<'PY'", mtime: now, ageMs: 54000, source: 'codex', subTotal: 5, active: ['materials', 'stair artist'], peers: ['hermes:gaming:218dccb6', 'codex:respond-to-greeting-8d76'], group: { key: 'repo:/w/g', name: 'gladiator-game' } });
-  assert.match(codex, /Running a script/); assert.match(codex, /Codex, 6 agents, working: materials, stair artist/); assert.match(codex, /Talks to Hermes gaming, respond to greeting/);
+  assert.match(codex, /Running a script/);
+  assert.match(boardCard({ proj: '_codex', id: 'x2', title: 'T', state: 'idle', mtime: now - 600e3, source: 'codex', model: 'gpt-6-astra', effort: 'xhigh', subTotal: 0, group: { key: 'k', name: 'p' } }), /<div class="bm">GPT-6 Astra xhigh<\/div>/); assert.match(codex, /Codex, 6 agents, working: materials, stair artist/); assert.match(codex, /Talks to Hermes gaming, respond to greeting/);
   assert.ok(!/exec_command|218dccb6|8d76|✉|👥|gladiator-game|·|54s/.test(codex), 'no raw tool, id, counter, repeated project or timing: ' + codex);
   const herm = boardCard({ proj: '_hermes-default', id: 'h1', title: 'Initialize Codex peer inbox', state: 'blocked', tool: 'clarify', mtime: now, ageMs: 48000, source: 'hermes', group: { key: 'hermes:default:t', name: 'Hermes default, Initialize Codex peer inbox', hermes: true } });
   assert.ok(!/<div class="bt">/.test(herm), 'the thread is the header, not said again on the card'); assert.match(herm, /class="needs">Needs you: asking a question, 48s/); assert.match(herm, /class="bcard needs"/);
@@ -255,4 +256,36 @@ test('the page script parses (a syntax error anywhere would leave the page blank
   assert.doesNotThrow(() => new Function(html.slice(i + 8, j)));   // compiled, not run
   const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
   assert.equal((css.match(/\/\*/g) || []).length, (css.match(/\*\//g) || []).length, 'every CSS comment is closed (an open one hides the rules after it)');
+});
+
+// Tom: "it's for EVERYONE": every tile, guest, row and card says which model it runs on and what it does
+const idsrc = [grab(/const shirtRole = [^\n]*/), grab(/function modelLabel\(model, effort\) \{[\s\S]*?\n\}/), grab(/const harnessOf = [^\n]*/), grab(/const peerModel = [^\n]*/), grab(/function identityOf\(p\) \{[\s\S]*?\n\}/)].join('\n');
+const identity = (S, rows = []) => new Function('S', 'L', 'OWNER', 'boardMemo', idsrc + '\nreturn { identityOf, modelLabel };')(S, (fr, en) => en, 'Tom', { rows });
+test('model labels: short and human, with the effort where it is recorded; nothing for a non-model', () => {
+  const { modelLabel } = identity({ model: {}, effort: {} });
+  const cases = [['claude-opus-5-5', '', 'Opus 5.5'], ['claude-sonnet-5-5', '', 'Sonnet 5.5'], ['claude-haiku-5-5', '', 'Haiku 5.5'], ['claude-fable-5-1', '', 'Fable 5.1'], ['claude-opus-5-5[1m]', 'medium', 'Opus 5.5 medium'],
+    ['claude-3-5-sonnet-20241022', '', 'Sonnet 3.5'], ['claude-opus-4-1-20250805', '', 'Opus 4.1'], ['gpt-6-astra', 'xhigh', 'GPT-6 Astra xhigh'], ['openai/gpt-6-luna', 'medium', 'GPT-6 Luna medium'], ['gpt-6.1-sol', '', 'GPT-6.1 Sol'], ['o3', 'high', 'o3 high'], ['<synthetic>', '', ''], ['', 'high', '']];
+  for (const [m, e, want] of cases) assert.equal(modelLabel(m, e), want, m);
+});
+test('identity: in a mixed call every tile has a model badge and a role (Claude lead and sub-agent, a Codex sub-agent, a Hermes guest, a guest of unknown model, the person)', () => {
+  const S = { cur: { proj: '-home-user-game', id: 's' }, model: { main: 'claude-opus-5-5' }, effort: {}, agents: {} };
+  const tiles = {
+    user: { id: 'user', name: 'You', role: 'Human' },
+    main: { id: 'main', name: 'Claude', role: 'Lead', roleTag: 'lead' },
+    sub: { id: 'a1', name: 'Build parrying decision page', role: 'general-purpose', roleTag: 'Build parrying', model: 'claude-sonnet-5-5' },
+    guest: { id: 'p_hermes_x', type: 'peer', name: 'hermes:gaming:218dccb6', role: 'Hermes gaming, Plan gladiator roguelike autobattler', roleTag: 'Plan gladiator', link: { proj: '_hermes-gaming', id: 'h1' } },
+    blind: { id: 'p_codex_y', type: 'peer', name: 'codex:respond-to-greeting-8d76', role: 'Codex, gladiator-game', roleTag: 'respond to' },
+  };
+  const { identityOf } = identity(S, [{ id: 'h1', model: 'claude-opus-5-5[1m]', effort: 'medium' }]);
+  const got = Object.fromEntries(Object.entries(tiles).map(([k, p]) => [k, identityOf(p)]));
+  assert.deepEqual(Object.fromEntries(Object.entries(got).map(([k, v]) => [k, v.model])), { user: 'You', main: 'Opus 5.5', sub: 'Sonnet 5.5', guest: 'Opus 5.5 medium', blind: 'Codex' });   // a guest of unknown model: its harness, never nothing
+  for (const [k, v] of Object.entries(got)) assert.ok(v.model && v.role, k + ' has a model badge and a role');
+  const codex = identity({ cur: { proj: '_codex', id: 'c' }, model: {}, effort: {}, agents: {} }).identityOf;
+  assert.equal(codex({ id: 'c1', name: 'materials', role: 'worker', roleTag: 'materials', model: 'gpt-6-astra', effort: 'xhigh' }).model, 'GPT-6 Astra xhigh');
+  assert.equal(codex({ id: 'c2', name: 'stair artist', role: 'worker', roleTag: 'stair artist' }).model, 'Codex', 'no model yet: the harness');
+});
+test('names: an unnamed agent is its role or "Sub-agent", never an invented first name or "blank"; a shirt never ends on a small word', () => {
+  assert.ok(/name: a\.name \|\| \(a\.role && !\/\^\(agent\|general-purpose\|sub-agent\|subagent\|blank\|default\)\$\/i/.test(html), 'no invented first names');
+  const shirtRole = new Function(grab(/const shirtRole = [^\n]*/) + '\nreturn shirtRole;')();
+  assert.deepEqual(['Cold read of decision page', 'Research the 2D fight view', 'Research blocking cost and bucklers', 'Build the fight look sample round'].map((t) => shirtRole(t)), ['Cold read', 'Research 2D', 'Research', 'Build fight']);
 });

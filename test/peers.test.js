@@ -95,3 +95,17 @@ test('round 5: a Claude session is running only while a live process owns its re
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   assert.equal(peers.liveClaude(), null, 'no registry on this machine: nothing is marked stopped');
 });
+
+test("claude: each agent's model is the latest its own transcript records; a board row has its session's", async () => {
+  const dir = path.join(process.env.AGENT_STANDUP_PROJECTS, '-home-user-models'), sub = path.join(dir, 'm1', 'subagents'); fs.mkdirSync(sub, { recursive: true });
+  const at = (s) => new Date(Date.now() - s * 1000).toISOString(), a = (id, model, s) => JSON.stringify({ type: 'assistant', timestamp: at(s), cwd: '/w', message: { id, role: 'assistant', model, content: [{ type: 'text', text: 'ok' }], usage: { input_tokens: 10, output_tokens: 2 } } });
+  fs.writeFileSync(path.join(dir, 'm1.jsonl'), [JSON.stringify({ type: 'user', timestamp: at(60), cwd: '/w', message: { role: 'user', content: 'go' } }), a('msg_1', 'claude-sonnet-5-5', 50), a('msg_2', 'claude-opus-5-5', 40), a('msg_3', '<synthetic>', 30)].join('\n') + '\n');
+  fs.writeFileSync(path.join(sub, 'agent-a1.jsonl'), a('msg_s', 'claude-haiku-5-5', 35) + '\n'); fs.writeFileSync(path.join(sub, 'agent-a1.meta.json'), JSON.stringify({ agentType: 'general-purpose', description: 'Check the logs' }));
+  const srv = require('../server.js').start(0); await new Promise((r) => srv.once('listening', r)); const port = srv.address().port;
+  try {
+    const tl = await get(port, '/api/session?proj=-home-user-models&id=m1');
+    assert.deepEqual(tl.agents.filter((x) => x.id === 'main' || x.id === 'a1').map((x) => [x.id, x.model]), [['main', 'claude-opus-5-5'], ['a1', 'claude-haiku-5-5']]);   // changed mid-session: the latest; a <synthetic> line is not a model
+    await new Promise((r) => setTimeout(r, 1300));   // past the board's 1.2 s memo from the test before
+    const row = (await get(port, '/api/board')).find((r) => r.id === 'm1'); assert.ok(row, 'the session is on the board'); assert.equal(row.model, 'claude-opus-5-5');
+  } finally { srv.close(); require('../server.js').shutdown(); fs.rmSync(dir, { recursive: true, force: true }); }
+});

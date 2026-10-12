@@ -44,6 +44,9 @@ test('codex: rollouts become sessions, a board and a timeline with sub-agents, c
   assert.ok(codex.stamp('_codex', PARENT) > 0 && codex.mtime('_codex', PARENT) > 0);
   const tl = codex.timeline('_codex', PARENT), kinds = {}; for (const e of tl.events) kinds[e.kind] = (kinds[e.kind] || 0) + 1;
   assert.equal(tl.agents.find((a) => a.id === 'main').name, 'Codex');
+  assert.deepEqual(['model', 'effort'].map((k) => tl.agents.find((a) => a.id === 'main')[k]), ['gpt-6-astra', 'xhigh']);   // from the latest turn_context
+  assert.deepEqual(['model', 'effort'].map((k) => tl.agents.find((a) => a.id === CHILD)[k]), ['gpt-6-astra', 'xhigh']);   // a sub-agent's own rollout
+  assert.deepEqual([b[0].model, b[0].effort], ['gpt-6-astra', 'xhigh']);
   const child = tl.agents.find((a) => a.id === CHILD); assert.ok(child); assert.deepEqual([child.name, child.role, child.nick], ['oom timeline', 'sub-agent', '/root/oom_timeline, Socrates']);   // its path segment as its name, its kind as the role, its path and the invented nickname aside
   assert.deepEqual(tl.group, { key: '_other', name: 'user', other: true });   // the fixture's cwd (/home/user) is no repository on this machine
   const order = tl.events.find((e) => e.kind === 'order'); assert.deepEqual([order.agent, order.to, order.title], ['main', CHILD, 'oom_timeline']);
@@ -98,7 +101,7 @@ test('hermes: the SQLite store becomes sessions, a board and a timeline with del
   for (const u of f.usage) db.prepare('insert into session_model_usage (session_id, model, task, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens) values (?,?,?,?,?,?,?)').run(u.session_id, u.model, u.task, u.input_tokens, u.output_tokens, u.cache_read_tokens, u.cache_write_tokens);
   db.close();
   const rows = hermes.list(); assert.equal(rows.length, 1); assert.deepEqual([rows[0].proj, rows[0].id, rows[0].agents, rows[0].source, rows[0].title], ['_hermes-gaming', MAIN, kids.length, 'hermes', main.title]);
-  const b = hermes.board(); assert.equal(b.length, 1); assert.equal(b[0].state, 'blocked'); assert.equal(b[0].tool, 'clarify'); assert.ok(b[0].peers.includes('gladiator-game-c3'));
+  const b = hermes.board(); assert.equal(b[0].model, 'claude-opus-5-5[1m]'); assert.equal(b[0].effort, '', 'an older store has no model_config: no effort, still the model'); assert.equal(b.length, 1); assert.equal(b[0].state, 'blocked'); assert.equal(b[0].tool, 'clarify'); assert.ok(b[0].peers.includes('gladiator-game-c3'));
   assert.ok(hermes.exists('_hermes-gaming', MAIN) && !hermes.exists('_hermes-gaming', 'nope') && !hermes.exists('_hermes', MAIN));
   const tl = hermes.timeline('_hermes-gaming', MAIN);
   assert.deepEqual(tl.group, { key: 'hermes:gaming:155598', name: 'Hermes gaming, ' + main.title.slice(0, 48), hermes: true });   // the project of a Hermes conversation: its profile and Discord thread, named by its title
@@ -240,4 +243,15 @@ test('round 5: an adapter that fails or cannot read its store is reported, once,
   assert.equal(seen.length, 1); assert.deepEqual(peers.problems(), { 'Hermes gaming': 'database is locked' });
   peers.problem('Hermes gaming', null); assert.deepEqual(peers.problems(), {});
   const b = codex.board(Date.parse(LAST_TS) + 60e3); assert.deepEqual(b[0].active, ['oom timeline']);   // the active sub-agent by its functional name
+});
+
+test("hermes: a session's model and the reasoning effort its config records", () => {
+  const { DatabaseSync } = require('node:sqlite'), db = new DatabaseSync(path.join(tmp, 'hermes', 'profiles', 'gaming', 'state.db')), now = Date.now() / 1000;   // the profile the fixture made: a newer store has model_config
+  db.exec('alter table sessions add column model_config text');
+  db.prepare('insert into sessions (id, source, title, started_at, last_activity_at, model, model_config) values (?,?,?,?,?,?,?)').run('20261012_070000_aaaabbbb', 'cli', 'Plan the release', now - 60, now - 5, 'openai/gpt-6-luna', JSON.stringify({ reasoning_config: { enabled: true, effort: 'medium' } }));
+  db.prepare('insert into messages (id, session_id, role, content, timestamp, active, compacted) values (?,?,?,?,?,?,?)').run(99001, '20261012_070000_aaaabbbb', 'user', 'Plan the release', now - 60, 1, 0);
+  db.close();
+  const main = hermes.timeline('_hermes-gaming', '20261012_070000_aaaabbbb').agents.find((a) => a.id === 'main');
+  assert.deepEqual([main.model, main.effort], ['openai/gpt-6-luna', 'medium']);
+  const row = hermes.board().find((r) => r.id === '20261012_070000_aaaabbbb'); assert.deepEqual([row.model, row.effort], ['openai/gpt-6-luna', 'medium']);
 });

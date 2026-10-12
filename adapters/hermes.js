@@ -157,12 +157,14 @@ function usageOf(db, s, agent) {   // Hermes keeps totals per session and model 
   const u = rows.length ? rows.reduce((a, r) => ({ i: a.i + (r.i || 0), o: a.o + (r.o || 0), r: a.r + (r.r || 0), w: a.w + (r.w || 0) }), { i: 0, o: 0, r: 0, w: 0 }) : { i: s.input_tokens || 0, o: s.output_tokens || 0, r: s.cache_read_tokens || 0, w: s.cache_write_tokens || 0 };
   return u.i + u.o + u.r + u.w ? { ts: mtimeOf(s), agent, kind: 'usage', u, model: (rows[0] && rows[0].model) || s.model || '', total: true } : null;
 }
+// The model a conversation runs on, and its reasoning effort when the config records one (the session row keeps the latest)
+const modelOf = (db, s) => { let effort = ''; try { const c = JSON.parse((q(db, 'select model_config from sessions where id=?', s.id)[0] || {}).model_config || '{}').reasoning_config; if (c && c.enabled !== false && typeof c.effort === 'string') effort = c.effort; } catch {} return { model: s.model || '', effort }; };   // an older store has no model_config: no effort, still the model
 function timeline(proj, id) {
   const db = dbOf(proj), s = db && SAFE.test(id) ? one(db, id) : null; if (!s) throw new Error('session not found');
-  const p = profileOf(proj), agents = { main: { id: 'main', role: 'Lead', type: 'main', name: 'Hermes' } }, states = [], kids = children(db, id);
+  const p = profileOf(proj), agents = { main: { id: 'main', role: 'Lead', type: 'main', name: 'Hermes', ...modelOf(db, s) } }, states = [], kids = children(db, id);
   const st = parseSession(db, s, 'main', kids); states.push(st);
   for (const k of kids) {
-    agents[k.id] = { id: k.id, name: peers.label(titleOf(db, k), 40), role: 'delegate', type: 'subagent', mtime: mtimeOf(k) };   // named by its task
+    agents[k.id] = { id: k.id, name: peers.label(titleOf(db, k), 40), role: 'delegate', type: 'subagent', mtime: mtimeOf(k), ...modelOf(db, k) };   // named by its task
     const ks = parseSession(db, k, k.id, []); states.push(ks);
     if (k.ended_at) st.raw.push({ ts: mtimeOf(k), agent: 'main', kind: 'agentdone', child: k.id });
   }
@@ -192,7 +194,7 @@ function boardRow(db, p, s, now) {
     else if (last && last.role === 'assistant' && last.finish_reason === 'stop') state = 'turn';
     else { state = age < 10 * 60e3 ? 'working' : 'idle'; if (state === 'working' && lastCall) { tool = lastCall.name; arg = lastCall.arg || ''; } }   // between two calls: the last thing it ran
   }
-  return { proj: p.proj, id: s.id, title: titleOf(db, s), mtime, state, tool, arg, ageMs, subActive: kids.filter((k) => !k.ended_at).length, subTotal: kids.length, source: 'hermes', project: projectOf(s), group: groupOf(p, s), peers: seen.names, msgs: seen.n, oneshot: /^(cron|webhook|healthcheck|tool)$/.test(s.source || '') };
+  return { proj: p.proj, id: s.id, title: titleOf(db, s), mtime, state, tool, arg, ageMs, subActive: kids.filter((k) => !k.ended_at).length, subTotal: kids.length, ...modelOf(db, s), source: 'hermes', project: projectOf(s), group: groupOf(p, s), peers: seen.names, msgs: seen.n, oneshot: /^(cron|webhook|healthcheck|tool)$/.test(s.source || '') };
 }
 const exists = (proj, id) => { const db = dbOf(proj); if (!db || !SAFE.test(id)) return false; try { return !!one(db, id); } catch { return false; } };
 function mtime(proj, id) {

@@ -185,7 +185,7 @@
   .tag { position:absolute; left:6px; bottom:6px; right:6px; display:flex; gap:5px; pointer-events:none }
   .tag b, .tag span { background:rgba(14,15,24,.78); backdrop-filter:blur(6px); padding:2px 9px; border-radius:99px; font-size:11.5px; white-space:nowrap }
   .tag span { color:#e3e6f0; font-size:10.5px; overflow:hidden; text-overflow:ellipsis; min-width:0 }
-  .tile .tag span:not(.tk):not(.cx) { display:none } .tile:not(.focus) .tag b { display:none }   /* the role is on the shirt; a small tile is named by its shirt and the agents list, never by a cut-off pill */
+  .tile .tag span:not(.tk):not(.cx):not(.md) { display:none } .tile.lead .tag b { display:none } .tile .tag .md:empty { display:none } .tile:not(.focus) .tag, body.presenting .tile.focus .tag { flex-wrap:wrap } .tile .tag > span.md, .tile .tag > span.tk, .tile .tag > span.cx { flex-shrink:0; overflow:visible }   /* the model is the badge: the lead's name is only its harness */ .tile:not(.focus) .tag b { display:none }   /* the role is on the shirt; a small tile is named by its shirt and the agents list, never by a cut-off pill */
   @media (min-width:900px) { body.rost:not(.tree):not(.board):not(.compact) .tile .status:not(.blocked):not(.stalled) { display:none } body.rost:not(.compact) .tile:not(.focus) .tag, body.rost.presenting:not(.compact) .tile.focus .tag { top:6px; bottom:auto } }
   body:not(.presenting) .tile.focus svg { transform:translateY(-8%) }   /* the spotlight's name row sits below the shirt, not over its role */
   body.presenting .tile.focus .tag b { display:none } .tile.focus .tag b { white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }   /* the agents list says what each one does: a tile only raises a hand */
@@ -247,7 +247,7 @@
   body.compact .tile > svg:first-child { width:54px; height:54px; flex:none; border-radius:9px 0 0 9px }
   body.compact .tile .bubble, body.compact .tile .thought, body.compact .tile .ticker, body.compact .tile .tbadge { display:none !important }
   body.compact .tile .tag { position:static; flex:1; min-width:0; padding:0 8px; flex-direction:column; gap:2px; align-items:flex-start } body.compact .tile .tag b, body.compact .tile .tag span { background:none; backdrop-filter:none; padding:0; max-width:100%; overflow:hidden; text-overflow:ellipsis }
-  body.compact .tile .tag span:not(.tk):not(.cx) { display:none }
+  body.compact .tile .tag span:not(.tk):not(.cx):not(.md) { display:none }
   body.compact .tile .status { position:static; max-width:none; margin-right:6px; font-size:10.5px; padding:2px 7px; flex:none; max-width:46% }
   body.compact .tile .prop { top:2px; left:34px; font-size:16px }
   body.compact .tile .status:empty { display:none }
@@ -410,7 +410,26 @@ const teamOf = (g) => (!g || g.other ? { key: '_other', short: '' } : { key: g.k
 const inkOn = (hex) => { const [r, g, b] = hexRGB(hex); return r * 0.299 + g * 0.587 + b * 0.114 > 125 ? '#1b1d2a' : '#ffffff'; };
 const monogram = (t) => (String(t || '').replace(/([a-z])([A-Z])/g, '$1 $2').match(/[A-Za-z0-9]+/g) || []).slice(0, 2).map((w) => w[0].toUpperCase()).join('');   // "MarketSimulator" → MS, "gladiator-game" → GG
 const roleTag = (t, n = 26) => { t = String(t || '').replace(/\s+/g, ' ').trim(); if (t.length <= n) return t; const c = t.lastIndexOf(' ', n - 1); return t.slice(0, c > n * 0.5 ? c : n - 1).replace(/[\s,;:/–—-]+$/, '') + '…'; };   // the role on a shirt: short, cut at a word
-const shirtRole = (t, n = 14) => { const w = String(t || '').replace(/\s+/g, ' ').trim().split(/(?<=[\s-])/); let out = ''; for (const x of w) { if ((out + x).trim().length > n) break; out += x; } return (out || w[0] || '').replace(/[\s,;:/–—-]+$/, '').slice(0, n); };   // "Build parrying decision page" → "Build parrying": whole words, no ellipsis
+const shirtRole = (t, n = 14) => { const w = String(t || '').replace(/\s+/g, ' ').trim().split(/(?<=[\s-])/).filter((x, i) => i === 0 || !/^(?:the|a|an)\s*$/i.test(x)); let out = ''; for (const x of w) { if ((out + x).trim().length > n) break; out += x; } let r = (out || w[0] || '').replace(/[\s,;:/–—-]+$/, '').slice(0, n); while (/\s(?:of|the|a|an|for|to|and|with|on|in|at|by|from|into|its|their)$/i.test(r)) r = r.replace(/\s+\S+$/, ''); return r; };   // "Build parrying decision page" → "Build parrying": whole words, no ellipsis   // no room for articles on a shirt
+// A model as a person says it: "Opus 5.5", "Sonnet 3.5", "GPT-6 Astra xhigh", "GPT-6 Luna medium" (with the reasoning effort where it is recorded); '' when unknown.
+function modelLabel(model, effort) {
+  const m = String(model || '').trim().replace(/^[\w.-]+\//, '').replace(/\[[^\]]*\]$/, '').replace(/-\d{8}$/, ''); if (!m || m === '<synthetic>') return '';   // a provider prefix, "[1m]", a release date
+  const c = /^claude-(?:(\d+)-(\d+)-)?(opus|sonnet|haiku|fable)(?:-(\d+)(?:-(\d+))?)?$/i.exec(m), cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+  const out = c ? cap(c[3].toLowerCase()) + ((c[4] ? ' ' + c[4] + (c[5] ? '.' + c[5] : '') : c[1] ? ' ' + c[1] + '.' + c[2] : ''))
+    : /^gpt-/i.test(m) ? ((p) => 'GPT-' + p[1] + (p.length > 2 ? ' ' + p.slice(2).map(cap).join(' ') : ''))(m.split('-'))
+    : /^o\d/i.test(m) ? m : m.split(/[-_]+/).map(cap).join(' ');
+  return effort ? out + ' ' + effort : out;
+}
+const harnessOf = (p) => (p && p.type === 'peer' ? (/^Codex/.test(p.role || '') ? 'Codex' : /^Hermes/.test(p.role || '') ? 'Hermes' : 'Claude Code') : ((S.cur || {}).proj === '_codex' ? 'Codex' : /^_hermes/.test((S.cur || {}).proj || '') ? 'Hermes' : 'Claude Code'));
+const peerModel = (p) => { const r = p && p.link && (boardMemo.rows || []).find((x) => x.id === p.link.id); return r ? modelLabel(r.model, r.effort) : ''; };   // a guest's model, from its own session's board row
+// Who a tile is, the same on every tile, chip, row and card: the model it runs on (else its harness, never nothing) and what it does (its shirt's role). The person is "You".
+function identityOf(p) {
+  if (!p) return { model: '', role: '' };
+  if (p.id === 'user') return { model: L('Vous', 'You'), role: OWNER };
+  const model = modelLabel(S.model[p.id] || p.model, S.effort[p.id] || p.effort) || (p.type === 'peer' ? peerModel(p) : '') || harnessOf(p);
+  return { model, role: p.roleTag || shirtRole(p.name || p.role) || p.role || '' };
+}
+function paintIdentity() { for (const id in S.agents) { const el = $('#t-' + CSS.escape(id) + ' .md'); if (el) el.textContent = identityOf(S.agents[id]).model; } }
 const shirtText = (t) => { t = String(t || '').trim(); return t.length > 16 ? t.slice(0, 15) + '…' : t; };
 const hexRGB = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const mix = (a, b, t) => { const A = hexRGB(a), B = hexRGB(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
@@ -443,7 +462,7 @@ function persona0(a) {
   const team = teamOf(a.type === 'peer' ? a.group : S.group), tee = shirtText(team.short), shirt = tee ? GCOL(team.key) : a.id === 'main' ? '#e8845f' : PAL[(h >>> 6) % 8];   // no project (the demo, a one-off): the old colours
   if (a.id === 'main') return { ...base, name: a.name || 'Claude', role: L('Chef', 'Lead'), shirt, tee, roleTag: tee ? L('chef', 'lead') : '', shape: 0, acc: 1, eye: 0, glasses: false, scene: 6, prop: 1, acc2: '#f5c04a', lead: true, vi: 0, gid: 'main' };   // the lead is Claude, Codex or Hermes, as the server says
   if (a.id === 'user') return { ...base, name: L('Vous', 'You'), role: L('Humain', 'Human'), shirt: '#eef0f6', tee: OWNER, owner: true, shape: 1, acc: 2, eye: 1, glasses: false, scene: 7, prop: 1, acc2: '#ff7a6b', vi: 3, gid: 'user' };
-  return { ...base, name: a.name || uniqueName(a.id, h), roleEn: a.roleEn || a.role, role: (FR() && a.roleFr) || a.roleEn || a.role, shirt, tee, roleTag: tee ? shirtRole(a.name || a.role) : '', shape: (h >>> 3) % 5, acc: (h >>> 9) % 6, eye: (h >>> 12) % 3, glasses: ((h >>> 15) % 4) === 0,
+  return { ...base, name: a.name || (a.role && !/^(agent|general-purpose|sub-agent|subagent|blank|default)$/i.test(a.role) ? a.role : L('Sous-agent', 'Sub-agent')), roleEn: a.roleEn || a.role, role: (FR() && a.roleFr) || a.roleEn || a.role, shirt, tee, roleTag: tee ? shirtRole(a.name || a.role) : '', shape: (h >>> 3) % 5, acc: (h >>> 9) % 6, eye: (h >>> 12) % 3, glasses: ((h >>> 15) % 4) === 0,
            scene: (h >>> 18) % 6, prop: (h >>> 21) % 3, acc2: PAL[(h >>> 24) % 8], vi: h >>> 4, gid: h.toString(36) };
 }
 
@@ -556,7 +575,7 @@ function avatarSVG(p, o, uid = '') {   // uid keeps SVG ids unique per instance:
 // =====================================================================
 //  state
 // =====================================================================
-const S = { owner: null, errRun: {}, exQ: [], agents: {}, events: [], idx: 0, playing: false, token: 0, status: {}, tc: {}, cur: null, live: true, userPaused: false, boost: 1, stopAt: 0,
+const S = { owner: null, errRun: {}, exQ: [], agents: {}, model: {}, effort: {}, events: [], idx: 0, playing: false, token: 0, status: {}, tc: {}, cur: null, live: true, userPaused: false, boost: 1, stopAt: 0,
             speakers: new Set(), say: {}, lastTool: {}, level: {}, detail: null, collapsed: new Set(), title: '', idle: false, logTo: 0, trOk: true,
             clock: 0, doneAt: {}, gone: new Set(), leaving: new Set(), demo: false, hold: false };
 if (Q.get('pin')) S.pin = Q.get('pin'); else if (prefs.pin && prefs.pinProj === prefs.proj) S.pin = prefs.pin;   // the pin survives a reload
@@ -960,7 +979,7 @@ async function speakLine(text, p, primary, token, fr = FR(), still) {   // resol
 // =====================================================================
 function addTile(p) {
   const d = document.createElement('div'); d.className = 'tile' + (p.lead ? ' lead' : '') + (p.type === 'peer' ? ' guest' : ''); d.id = 't-' + p.id; d.tabIndex = 0; d.setAttribute('role', 'button'); d.setAttribute('aria-label', p.name + ' — ' + p.role); d.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(p.id); } }; d.style.display = 'none'; d.onclick = () => openDetail(p.id);
-  d.innerHTML = `${avatarSVG(p, undefined, 't' + p.gid + '_')}<div class="bubble"></div><div class="status"></div><div class="prop"></div><div class="thought"></div><div class="ticker"></div><div class="tbadge"></div><div class="tag"><b>${esc(p.name)}</b><span>${esc(p.role)}</span><span class="tk"></span><span class="cx"></span></div>`;
+  d.innerHTML = `${avatarSVG(p, undefined, 't' + p.gid + '_')}<div class="bubble"></div><div class="status"></div><div class="prop"></div><div class="thought"></div><div class="ticker"></div><div class="tbadge"></div><div class="tag"><b>${esc(p.name)}</b><span>${esc(p.role)}</span><span class="md"></span><span class="tk"></span><span class="cx"></span></div>`;
   const g = p.type === 'peer' ? p.group : S.group; if (g && g.key) d.style.setProperty('--pc', GCOL(g.other ? '_other' : g.key));   // the project's colour, the same as on the board
   $('#stage').appendChild(d);
 }
@@ -974,7 +993,7 @@ function guestsAt(evs, idx, ref, agents) {
 }
 function renderGuests() {
   const box = $('#guests'); if (!box) return; const e = S.events[Math.min(S.idx, S.events.length - 1)], ref = S.live ? Date.now() : (e && e.ts) || 0;
-  const html = S.cur ? guestsAt(S.events, S.idx, ref, S.agents).map((x) => { const p = S.agents[x.id], t = teamOf(p.group); return `<button class="gchip" data-g="${esc(x.id)}" style="--pc:${GCOL(t.key)}" title="${esc(p.name + ' — ' + p.role)}"><i></i>${t.short && t.short !== teamOf(S.group).short ? `<small>${esc(t.short)}</small>` : !t.short ? `<small>${L('autre session', 'other session')}</small>` : ''}<span>${esc(nameOf(x.id))}</span><small>✉&nbsp;${x.n}</small></button>`; }).join('') : '';
+  const html = S.cur ? guestsAt(S.events, S.idx, ref, S.agents).map((x) => { const p = S.agents[x.id], t = teamOf(p.group); return `<button class="gchip" data-g="${esc(x.id)}" style="--pc:${GCOL(t.key)}" title="${esc(p.name + ' — ' + p.role)}"><i></i>${t.short && t.short !== teamOf(S.group).short ? `<small>${esc(t.short)}</small>` : !t.short ? `<small>${L('autre session', 'other session')}</small>` : ''}<span>${esc(nameOf(x.id))}</span><small class="gm">${esc(identityOf(p).model)}</small><small>✉&nbsp;${x.n}</small></button>`; }).join('') : '';
   const full = html ? `<em>${L('En ligne', 'On the line')}</em>` + html : ''; if (box._h !== full) { box.innerHTML = full; box._h = full; }
 }
 function flashGuest(id) { renderGuests(); const c = $(`#guests [data-g="${id}"]`); if (!c) return; c.classList.remove('hl'); void c.offsetWidth; c.classList.add('hl'); clearTimeout(c._t); c._t = setTimeout(() => c.classList.remove('hl'), 1600); }
@@ -1033,7 +1052,7 @@ const applyStatus = (ev) => {
   if (ev.kind === 'report') { if (S.waitOn[ev.to]) S.waitOn[ev.to].delete(ev.agent); S.status[ev.agent] = 'done'; S.doneAt[ev.agent] = S.clock; delete S.run[ev.agent]; }
 };
 function recomputeStatus(upTo) {
-  S.term = {}; S.todos = {}; S.run = {}; S.act = {}; S.usage = {}; S.errs = {}; S.lastAct = {}; S.waitOn = {}; S.orderTs = {}; S.prevState = {}; S.lastTool = {}; S.mainBusyAt = 0; S.ctx = {}; S.model = {}; S.compacts = {}; S.ctxWarned = {}; S.rep = {}; S.loops = {}; S.recomputing = true; document.querySelectorAll('.tile').forEach((t) => { clearTimeout(t._byeT); t.classList.remove('bye'); }); hidePresent();
+  S.term = {}; S.todos = {}; S.run = {}; S.act = {}; S.usage = {}; S.errs = {}; S.lastAct = {}; S.waitOn = {}; S.orderTs = {}; S.prevState = {}; S.lastTool = {}; S.mainBusyAt = 0; S.ctx = {}; S.model = {}; S.effort = {}; S.compacts = {}; S.ctxWarned = {}; S.rep = {}; S.loops = {}; S.recomputing = true; document.querySelectorAll('.tile').forEach((t) => { clearTimeout(t._byeT); t.classList.remove('bye'); }); hidePresent();
   S.status = {}; S.tc = {}; S.doneAt = {}; S.gone.clear(); S.leaving.clear(); document.querySelectorAll('.tile.vanishing').forEach((t) => t.classList.remove('vanishing')); const doneIdx = {}; document.querySelectorAll('.ticker').forEach((x) => { x.classList.remove('on'); x.innerHTML = ''; });
   for (let i = 0; i < upTo; i++) {
     const e = S.events[i]; applyStatus(e); tally(e); if (e.kind === 'tools') S.tc[e.agent] = (S.tc[e.agent] || 0) + e.tools.length;
@@ -1054,7 +1073,7 @@ function syncUI() {
 
 // ---------- tool ticker, shared screen, flying messages ----------
 // ---------- what each agent is doing: tool calls with their real outputs ----------
-S.term = {}; S.todos = {}; S.run = {}; S.act = {}; S.usage = {}; S.errs = {}; S.lastAct = {}; S.waitOn = {}; S.orderTs = {}; S.prevState = {}; S.ctx = {}; S.model = {}; S.compacts = {}; S.ctxWarned = {}; S.rep = {}; S.loops = {}; S.present = null; S.camFor = null; let presentTimer = null;
+S.term = {}; S.todos = {}; S.run = {}; S.act = {}; S.usage = {}; S.errs = {}; S.lastAct = {}; S.waitOn = {}; S.orderTs = {}; S.prevState = {}; S.ctx = {}; S.model = {}; S.effort = {}; S.compacts = {}; S.ctxWarned = {}; S.rep = {}; S.loops = {}; S.present = null; S.camFor = null; let presentTimer = null;
 const later = (k, fn, ms = 160) => { later.p = later.p || {}; if (later.p[k]) return; later.p[k] = setTimeout(() => { later.p[k] = 0; fn(); }, ms); };   // coalesce bursts of repaints
 const fmtTok = (n) => (n < 1000 ? String(n) : n < 1e6 ? (n / 1000).toFixed(n < 1e4 ? 1 : 0) + 'k' : (n / 1e6).toFixed(1) + 'M');   // 3.4M, 398k
 const tokTotal = (u) => (u ? u.i + u.o + u.w : 0);   // headline = input + output + cache writes; cache reads are cheap and shown separately
@@ -1072,7 +1091,7 @@ function ctxWin(model, ctx) { const base = WIN1M.test(model || '') ? 1e6 : 2e5; 
 function tally(ev) {   // numbers that pile up over a session: token usage, errors, last sign of life
   if (ev.kind === 'compact') { S.compacts[ev.agent] = (S.compacts[ev.agent] || 0) + 1; delete S.ctxWarned[ev.agent]; }
   const det = loopStep(S.rep, ev); if (det) { S.loops[ev.agent] = det; later('badges', renderBadges, 300); } else if (S.loops[ev.agent] && (ev.kind === 'results' ? (S.loops[ev.agent].kind === 'errors' && ev.items.every((it) => !it.err)) : (ev.kind === 'tools' && S.rep[ev.agent].n < 2))) { delete S.loops[ev.agent]; later('badges', renderBadges, 300); }
-  if (ev.kind === 'usage') { const c = ev.u.i + ev.u.r + ev.u.w; if (c > 0 && ev.model !== '<synthetic>' && !ev.total /* a session total (Hermes) says nothing about the context size */) { S.ctx[ev.agent] = c; S.model[ev.agent] = ev.model; later('tok', renderCtx, 300); } const u = (S.usage[ev.agent] = S.usage[ev.agent] || { i: 0, o: 0, r: 0, w: 0 }); u.i += ev.u.i; u.o += ev.u.o; u.r += ev.u.r; u.w += ev.u.w; later('tok', renderTokens, 300); }
+  if (ev.kind === 'usage') { const c = ev.u.i + ev.u.r + ev.u.w; if (c > 0 && ev.model !== '<synthetic>' && !ev.total /* a session total (Hermes) says nothing about the context size */) { S.ctx[ev.agent] = c; S.model[ev.agent] = ev.model; if (ev.effort != null) S.effort[ev.agent] = ev.effort; later('tok', renderCtx, 300); later('idn', paintIdentity, 300); } const u = (S.usage[ev.agent] = S.usage[ev.agent] || { i: 0, o: 0, r: 0, w: 0 }); u.i += ev.u.i; u.o += ev.u.o; u.r += ev.u.r; u.w += ev.u.w; later('tok', renderTokens, 300); }
   else if (ev.kind === 'results') ev.items.forEach((it) => { if (it.err) { S.errs[ev.agent] = (S.errs[ev.agent] || 0) + 1; later('badges', renderBadges, 300); oops(ev.agent); noteTrouble(ev.agent, false); } else noteTrouble(ev.agent, true); });
   else if (ev.kind === 'tools' || ev.kind === 'say') S.lastAct[ev.agent] = ev.ts;
 }
@@ -1091,6 +1110,7 @@ function renderTokens() {
   const all = { i: 0, o: 0, r: 0, w: 0 }; for (const id in S.usage) for (const k in all) all[k] += S.usage[id][k];
   const b = $('#tok'), tot = tokTotal(all); b.style.display = tot ? '' : 'none';
   if (tot) { b.textContent = `⚡ ${fmtTok(tot)} ${L('jetons', 'tokens')}`; b.title = tokTip(all); }
+  paintIdentity();
   for (const id in S.agents) { const t = $('#t-' + id); if (!t) continue; const u = S.usage[id], el = t.querySelector('.tk'); el.textContent = u && tokTotal(u) ? `${fmtTok(tokTotal(u))} ${L('jetons', 'tokens')}` : ''; if (u) t.title = tokTip(u); }
 }
 // One boring signal per tile: working · waiting on another agent · may need you · stalled · done. Stalled hand-offs are what really cost time.
@@ -1128,7 +1148,7 @@ function paintStates() {
     if (shown && !S.gone.has(p.id) && p.type !== 'peer') ros.push({ p, st });   // the agents list is the team; guests are on the strip
     if (p.id === 'main' && st.k === 'done' && was && was !== 'done' && was !== 'idle' && S.live && S.playing && Date.now() - (S.mainBusyAt || 0) > 45000) confetti();
     if (p.id === 'main') { if (st.k === 'working' || st.k === 'waiting') S.mainBusyAt = S.mainBusyAt || Date.now(); else if (st.k === 'done') S.mainBusyAt = 0; }
-    S.prevState[p.id] = st.k; const tip = `${p.name} — ${p.role}${st.txt ? '\n' + st.txt : ''}${S.lastTool[p.id] ? '\n' + S.lastTool[p.id] : ''}`; if (t.title !== tip) t.title = tip;
+    S.prevState[p.id] = st.k; const idn = identityOf(p), tip = `${p.name} — ${p.role}\n${[idn.model, harnessOf(p)].filter((x, i, a) => x && a.indexOf(x) === i).join(', ')}${st.txt ? '\n' + st.txt : ''}${S.lastTool[p.id] ? '\n' + S.lastTool[p.id] : ''}`; if (t.title !== tip) t.title = tip;
   }
   const b = $('#board'), parts = [['blocked', '✋', L('vous attendent', 'need you')]]   // the header counts one thing: who needs Tom (the agents list has the rest)
     .filter(([k]) => n[k]).map(([k, i, l]) => `<span class="${k}" title="${n[k]} ${l}">${i} ${n[k]}<em> ${l}</em></span>`).join('');
@@ -1139,7 +1159,7 @@ function paintRoster(ros) {   // a fixed list beside the call: who is doing what
   const box = $('#roster'); if (!box || !document.body.classList.contains('rost')) return;
   ros.sort((a, b) => (a.p.id === 'main' ? -1 : b.p.id === 'main' ? 1 : (RORDER[a.st.k] - RORDER[b.st.k]) || (S.lastAct[b.p.id] || 0) - (S.lastAct[a.p.id] || 0)));
   const done = ros.filter((x) => x.p.id !== 'main' && x.st.k === 'done'); if (!S.rosterDone && done.length) ros = ros.filter((x) => !done.includes(x));   // finished sub-agents: one line, opened on a click
-  const rows = ros.slice(0, 60).map(({ p, st }) => `<div class="rr k-${st.k}${S.focus === p.id ? ' sel' : ''}${S.speakers.has(p.id) ? ' speaking' : ''}" data-id="${esc(p.id)}" tabindex="0" role="button" aria-label="${esc(p.name)}, ${esc(st.txt || '')}"><div class="n"><b>${esc(p.name)}</b>${p.id === 'main' ? ` <span class="ro">${esc(p.role)}</span>` : ''}</div><div class="st">${sHtml(st.k, agentStatus(p.id, st))}${S.loops[p.id] ? ' 🔁' : ''}</div></div>`).join('');
+  const rows = ros.slice(0, 60).map(({ p, st }) => `<div class="rr k-${st.k}${S.focus === p.id ? ' sel' : ''}${S.speakers.has(p.id) ? ' speaking' : ''}" data-id="${esc(p.id)}" tabindex="0" role="button" aria-label="${esc(p.name)}, ${esc(st.txt || '')}"><div class="n"><b>${esc(p.name)}</b> <span class="ro">${esc([p.id === 'main' ? p.role : '', identityOf(p).model].filter(Boolean).join(', '))}</span></div><div class="st">${sHtml(st.k, agentStatus(p.id, st))}${S.loops[p.id] ? ' 🔁' : ''}</div></div>`).join('');
   const html = `<h3>${L('Agents', 'Agents')} <span class="dim">${ros.length}</span></h3>${rows}${ros.length > 60 ? `<div class="ro" style="padding:4px 8px">+${ros.length - 60}</div>` : ''}${done.length ? `<button class="cq rq">${S.rosterDone ? '−' : '＋'} ${done.length} ${L('terminés', 'done')}</button>` : ''}`;
   if (box.dataset.h !== html) { box.dataset.h = html; box.innerHTML = html; }
 }
@@ -1484,7 +1504,7 @@ $('#tree').onclick = (e) => {
 };
 
 // ---------- agent detail ----------
-function openDetail(id) { const p = S.agents[id]; if (!p) return; S.detail = id; $('#dname').innerHTML = `${esc(p.name)} <span class="dim">${esc(p.role || '')}</span>${p.nick ? `<br><small class="dim">${esc(p.nick)}</small>` : ''}`; renderDetail(); $('#detail').classList.add('on'); }
+function openDetail(id) { const p = S.agents[id]; if (!p) return; S.detail = id; const idn = identityOf(p); $('#dname').innerHTML = `${esc(p.name)} <span class="dim">${esc(p.role || '')}</span><br><small class="dim">${esc([idn.model, harnessOf(p)].filter((x, k, a) => x && a.indexOf(x) === k).join(', '))}</small>${p.nick ? `<br><small class="dim">${esc(p.nick)}</small>` : ''}`; renderDetail(); $('#detail').classList.add('on'); }
 function renderDetail() {
   if (!S.detail) return; const id = S.detail, evs = S.events.slice(0, S.idx + 1).filter((e) => e.agent === id || e.to === id);
   const order = evs.find((e) => e.kind === 'order' && e.to === id), tools = evs.filter((e) => e.agent === id && e.kind === 'tools').flatMap((e) => e.tools);
@@ -2143,10 +2163,11 @@ const boardOpen = new Set();
 const boardTool = plainAct;
 const GCOL = (key) => (key && key !== '_other' ? PAL[hash(String(key)) % PAL.length] : '#6b7089');   // one colour per project, the same everywhere
 const agoStr = (ms) => (ms < 90e3 ? Math.max(1, Math.round(ms / 1000)) + 's' : ms < 5400e3 ? Math.round(ms / 60e3) + ' min' : Math.round(ms / 3600e3) + ' h');
+const rowModel = (r) => modelLabel(r.model, r.effort) || (r.source === 'codex' ? 'Codex' : r.source === 'hermes' ? 'Hermes' : 'Claude Code');   // a session's model on the board and the rail, else its harness
 // A board card says who, what it is doing now, who it talks to and whether Tom is needed, in the rail's words; its project is the group's header, said once.
 function boardCard(r) {
   const thread = r.group && r.group.hermes ? String(r.group.name).split(', ').slice(1).join(', ') : '', title = /^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(r.title) ? L('Session sans titre', 'Untitled session') : r.title;
-  const run = r.source === 'codex' ? 'Codex' : r.source === 'hermes' ? 'Hermes' : '', n = (r.subTotal || 0) + 1;
+  const run = rowModel(r), n = (r.subTotal || 0) + 1;   // the model it runs on, else its harness
   const team = n > 1 ? `${n} ${L('agents', 'agents')}` + (r.state !== 'waiting' && r.active && r.active.length ? `, ${L('au travail', 'working')}: ${r.active.join(', ')}` : '') : '';   // waiting: the status line names them already
   const talks = r.peers && r.peers.length ? `${L('Parle à', 'Talks to')} ${[...new Set(r.peers.map((x) => peerWords(x)))].join(', ')}` : '', meta = [run, team].filter(Boolean).join(', ');
   return `<div class="bcard${r.state === 'blocked' ? ' needs' : ''}" tabindex="0" role="button" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" title="${esc(title)}">${thread && thread === r.title ? '' : `<div class="bt">${esc(title)}</div>`}<div class="bs">${sHtml(r.state, callStatus(r))}</div>${meta ? `<div class="bm">${esc(meta)}</div>` : ''}${talks ? `<div class="bm">${esc(talks)}</div>` : ''}</div>`;
@@ -2206,7 +2227,7 @@ async function renderCalls() {
 
   const groups = new Map(); for (const r of rows) { const k = boardKey(r); if (!groups.has(k)) groups.set(k, { key: k, name: railGroup(r), rows: [] }); groups.get(k).rows.push(r); }
   const row = (r, proj) => { const n = (r.subTotal || 0) + 1, here = cur.id === r.id;   // two lines: the title in full; one status word and what it is doing
-    return `<button class="crow${here ? ' cur' : ''}" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" title="${esc(r.title)}"${here ? ` aria-current="true"` : ''}><span class="cn"><b>${proj ? `<span style="color:${GCOL(boardKey(r))}">${esc(railGroup(r))}</span> ` : ''}${esc(r.title)}</b>${S.pin && S.pin === r.id ? `<span class="cpin" role="button" tabindex="0" title="${esc(L('Désépingler : suivre à nouveau', 'Unpin: follow again'))}">📌 ${L('désépingler', 'unpin')}</span>` : ''}</span><span class="ca">${sHtml(r.state, callStatus(r))}${n > 1 ? `<small>${n} ${L('agents', 'agents')}</small>` : ''}</span></button>`; };
+    return `<button class="crow${here ? ' cur' : ''}" data-p="${esc(r.proj)}" data-i="${esc(r.id)}" title="${esc(r.title)}"${here ? ` aria-current="true"` : ''}><span class="cn"><b>${proj ? `<span style="color:${GCOL(boardKey(r))}">${esc(railGroup(r))}</span> ` : ''}${esc(r.title)}</b>${S.pin && S.pin === r.id ? `<span class="cpin" role="button" tabindex="0" title="${esc(L('Désépingler : suivre à nouveau', 'Unpin: follow again'))}">📌 ${L('désépingler', 'unpin')}</span>` : ''}</span><span class="ca">${sHtml(r.state, callStatus(r))}<small>${esc([rowModel(r), n > 1 ? `${n} ${L('agents', 'agents')}` : ''].filter(Boolean).join(', '))}</small></span></button>`; };
   let html = `<div class="ch"><h3>${L('Appels', 'Calls')}</h3><button class="cmin" title="${esc(L('Replier', 'Fold'))}">${box.classList.contains('min') ? '▸' : '▾'}</button></div>`;   // what to follow is picked in the header
   const { needs, live, quiet } = railSplit(rows, cur.id), mine = cur.id && rows.find((r) => r.id === cur.id), first = mine ? boardKey(mine) : '';
   html += '<div class="clist">';

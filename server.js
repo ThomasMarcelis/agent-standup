@@ -177,7 +177,7 @@ function parseTail(file, st) {
     if (!title) { const u = readHead(file, 64 * 1024).match(/"role":"user","content":"((?:[^"\\]|\\.)*)"/); if (u) { try { title = JSON.parse('"' + u[1] + '"').replace(/\s+/g, ' ').slice(0, 90); } catch {} } }
   }
   const cwd = (hit && hit.cwd) || ((/"cwd":"((?:[^"\\]|\\.)*)"/.exec(text) || [])[1] || '');   // the folder the session runs in: its project
-  const out = { sig, title: title || null, tried: true, lastType, lastTool, lastTs, pending: [...pend.values()], lastCall, talks: peers.tailPeers(text), cwd, msgIds: [...new Set([...text.matchAll(/\\*"msg_id\\*":\s*\\*"([0-9a-f-]{36})/g)].map((m) => m[1]))] };   // talks: the peers messaged in this tail
+  const out = { sig, title: title || null, tried: true, lastType, lastTool, lastTs, pending: [...pend.values()], lastCall, talks: peers.tailPeers(text), cwd, model: ([...text.matchAll(/"model":"(claude-[\w.\[\]-]+)"/g)].pop() || [])[1] || '', msgIds: [...new Set([...text.matchAll(/\\*"msg_id\\*":\s*\\*"([0-9a-f-]{36})/g)].map((m) => m[1]))] };   // talks: the peers messaged in this tail
   boardCache.set(file, out); if (boardCache.size > 200) boardCache.delete(boardCache.keys().next().value); return out;
 }
 function boardRows() {
@@ -206,7 +206,7 @@ function boardRows0() {
     let subActive = 0, subTotal = 0; const sd = path.join(ROOT, proj, id, 'subagents'), active = [];
     try { for (const x of fs.readdirSync(sd)) if (x.endsWith('.jsonl')) { subTotal++; if (now - fs.statSync(path.join(sd, x)).mtimeMs < 90e3) { subActive++; if (active.length < 4) { const d = readMeta(path.join(sd, x.replace(/\.jsonl$/, '.meta.json'))).description; if (d) active.push(peers.label(d, 32)); } } } } catch {}
     const group = project.groupOf(p.cwd); if (p.msgIds && p.msgIds.length) peers.indexMessages(p.msgIds, { proj, id, cwd: p.cwd, group });   // so a message id in another runtime's log finds this session even after its pid is gone
-    return { proj, id, title: p.title || id, mtime: st.mtimeMs, state, tool, arg: lp ? lp.arg || '' : tool && p.lastCall ? p.lastCall.arg || '' : '', ageMs, subActive, subTotal, active, stopped, source: 'claude', ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(p.talks)), group };
+    return { proj, id, title: p.title || id, mtime: st.mtimeMs, state, tool, arg: lp ? lp.arg || '' : tool && p.lastCall ? p.lastCall.arg || '' : '', ageMs, subActive, subTotal, active, stopped, model: p.model || '', source: 'claude', ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(p.talks)), group };
   })).map((r) => (r.oneshot && r.state === 'turn' ? { ...r, state: 'done' } : r)).sort((a, b) => boardRank(a) - boardRank(b) || b.mtime - a.mtime).slice(0, BOARD_MAX);   // a one-shot that answered is done, not "your turn": nobody is waiting for the human there
 }
 // The board with its placement check: every row derives its project from its own log (a git root from the cwd, a Hermes thread); a session the
@@ -313,6 +313,7 @@ function parseRecord(st, r) {
     if (txt && !/^<(system-reminder|command-|local-command|task-notification)/.test(txt) && !r.isMeta) st.raw.push({ ts, agent: 'user', kind: 'user', text: txt });
   } else if (r.type === 'assistant') {
     const m = r.message || {};
+    if (typeof m.model === 'string' && m.model && m.model !== '<synthetic>') st.model = m.model;   // the latest model this agent ran on
     if (m.id && m.usage) {   // the same message is repeated once per content block with identical numbers: keep one per message id
       const u = m.usage, prev = st.msgUsage.get(m.id);
       st.msgUsage.set(m.id, { ts: prev ? prev.ts : ts, u: { i: u.input_tokens || 0, o: u.output_tokens || 0, r: u.cache_read_input_tokens || 0, w: u.cache_creation_input_tokens || 0 }, model: m.model });
@@ -348,6 +349,7 @@ function buildTimeline(proj, id) {
       const st = readNew(path.join(subDir, f), aid, share); if (st) { states.push(st); if (st.truncated) agents[aid].truncated = true; }
     }
   }
+  for (const st of states) if (st && st.model && agents[st.agent]) agents[st.agent].model = st.model;   // which model each agent runs on, from its own transcript
   const childByTool = {};   // Agent tool_use id → the sub-agent it created, so we know who ordered whom
   for (const a of Object.values(agents)) if (a.toolUseId) childByTool[a.toolUseId] = a.id;
 

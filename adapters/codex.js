@@ -161,12 +161,12 @@ const diffSide = (diff, sign) => String(diff).split('\n').filter((l) => l[0] ===
 function parseRecord(st, r) {
   if (st.histStart && r.ordinal < st.histStart) return;   // a forked sub-agent replays its parent's history first: that is the parent's, shown there
   const ts = Date.parse(r.timestamp) || 0, p = r.payload || {}, agent = st.agent;
-  if (r.type === 'turn_context') { if (p.model) st.model = p.model; return; }
+  if (r.type === 'turn_context') { if (p.model) st.model = p.model; if (p.effort) st.effort = p.effort; return; }   // the model and reasoning effort it runs on (the latest wins)
   if (r.type === 'event_msg' && p.type === 'task_complete' && typeof p.last_agent_message === 'string' && p.last_agent_message.trim()) { st.answer = { ts, text: p.last_agent_message.trim() }; }   // the agent's report, in plain text
   if (r.type === 'compacted') { st.raw.push({ ts, agent, kind: 'compact' }); return; }
   if (r.type === 'token_usage_record') {   // one per API response; the same response can be recorded again on resume
     const u = p.usage; if (!u || (p.response_id && st.seen.has(p.response_id))) return; if (p.response_id) st.seen.add(p.response_id);
-    st.raw.push({ ts, agent, kind: 'usage', u: { i: Math.max(0, (u.input_tokens || 0) - (u.cached_input_tokens || 0)), o: u.output_tokens || 0, r: u.cached_input_tokens || 0, w: u.cache_write_input_tokens || 0 }, model: st.model }); return;
+    st.raw.push({ ts, agent, kind: 'usage', u: { i: Math.max(0, (u.input_tokens || 0) - (u.cached_input_tokens || 0)), o: u.output_tokens || 0, r: u.cached_input_tokens || 0, w: u.cache_write_input_tokens || 0 }, model: st.model, effort: st.effort || '' }); return;
   }
   if (r.type === 'event_msg') { if (p.type === 'item_completed') item(st, p.item, ts); return; }
   if (r.type !== 'response_item') return;
@@ -258,6 +258,7 @@ function timeline(proj, id) {
       if (m.agentPath) { childByPath[m.agentPath] = aid; pathOf[aid] = m.agentPath; }
     }
     const st = readNew(m.file, aid, m, peers.readBudget(m === root, all.length - 1)); if (!st) continue; states.push(st); Object.assign(childByTool, st.childByCall); if (st.truncated && agents[aid]) agents[aid].truncated = true;
+    if (agents[aid] && st.model) Object.assign(agents[aid], { model: st.model, effort: st.effort || '' });
   }
   // this session's own agent-peers addresses and names: codex-<last 16 hex>, codex:<slug>-<last 4 hex>, codex:<nickname>
   const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, ''), byKey = {}, byName = {}, byTail = {};
@@ -286,23 +287,32 @@ function readable(tl, states, agents) {
 }
 
 // ---- board, liveness, cache keys
+// The model a rollout started on, from its first turn_context: what a board row says when its tail has none (a long turn). Read once per file.
+const headModels = new Map();
+function headModel(file) {
+  if (headModels.has(file)) return headModels.get(file);
+  let out = { model: '', effort: '' };
+  try { const fd = fs.openSync(file, 'r'); try { const buf = Buffer.alloc(256 * 1024), n = fs.readSync(fd, buf, 0, buf.length, 0); for (const l of buf.subarray(0, n).toString('utf8').split('\n')) { if (!l.includes('"turn_context"')) continue; try { const p = JSON.parse(l).payload || {}; if (p.model) { out = { model: p.model, effort: p.effort || '' }; break; } } catch {} } } finally { fs.closeSync(fd); } } catch {}
+  headModels.set(file, out); peers.capped(headModels, 4000); return out;
+}
 const tailCache = new Map();   // file → { sig, pending, lastTask, lastTs, peers }
 function tail(file) {
   let st; try { st = fs.statSync(file); } catch { return { pending: [], lastTask: '', lastTs: 0, peers: { hits: [] } }; }
   const sig = st.mtimeMs + ':' + st.size, hit = tailCache.get(file); if (hit && hit.sig === sig) return hit;
   const fd = fs.openSync(file, 'r'); let text;
   try { const n = Math.min(192 * 1024, st.size), buf = Buffer.alloc(n); fs.readSync(fd, buf, 0, n, st.size - n); text = buf.toString('utf8'); if (st.size > n) text = text.slice(text.indexOf('\n') + 1); } finally { fs.closeSync(fd); }
-  const pend = new Map(); let lastTask = '', lastTs = 0, last = null;
+  const pend = new Map(); let lastTask = '', lastTs = 0, last = null, model = '', effort = '';
   for (const l of text.split('\n')) {
     if (!l) continue; let r; try { r = JSON.parse(l); } catch { continue; } const p = r.payload || {}, t = Date.parse(r.timestamp) || 0; if (t) lastTs = t;
-    if (r.type === 'event_msg') { if (p.type === 'task_started') lastTask = 'started'; else if (p.type === 'task_complete') lastTask = 'complete'; else if (p.type === 'turn_aborted') lastTask = 'aborted'; }
+    if (r.type === 'turn_context') { model = p.model || model; effort = p.effort || effort; }
+    else if (r.type === 'event_msg') { if (p.type === 'task_started') lastTask = 'started'; else if (p.type === 'task_complete') lastTask = 'complete'; else if (p.type === 'turn_aborted') lastTask = 'aborted'; }
     else if (r.type === 'response_item') {
       if (p.type === 'custom_tool_call') pend.set(p.call_id, (last = { name: firstTool(p.input) || p.name, ts: t, arg: clip(cmdsIn(p.input)[0] || String(p.input || ''), 90) }));
       else if (p.type === 'function_call') { let a = {}; try { a = JSON.parse(p.arguments || '{}'); } catch {} pend.set(p.call_id, (last = { name: p.name, ts: t, arg: clip(a.task_name || a.target || firstStr(a), 90) })); }
       else if (p.type === 'custom_tool_call_output' || p.type === 'function_call_output') pend.delete(p.call_id);
     }
   }
-  const out = { sig, pending: [...pend.values()], last, lastTask, lastTs, peers: peers.tailPeers(text) };
+  const out = { sig, pending: [...pend.values()], last, lastTask, lastTs, peers: peers.tailPeers(text), model, effort };
   tailCache.set(file, out); if (tailCache.size > 200) tailCache.delete(tailCache.keys().next().value); return out;
 }
 const isOpen = (id) => fs.existsSync(path.join(HOME(), 'thread-writer-locks', id + '.lock'));   // Codex holds a lock file while a thread is loaded
@@ -316,7 +326,7 @@ function board(now = Date.now()) {
       else { state = age < 10 * 60e3 ? 'working' : 'idle'; if (state === 'working' && t.last) { tool = t.last.name; arg = t.last.arg || ''; } }   // between two calls: the last thing it ran
     }
     let subActive = 0; const active = []; for (const m of all.slice(1)) { const s = statOf(m); if (s && now - s.mtime < 90e3) { subActive++; if (active.length < 4) active.push(peers.label(human(String(m.agentPath || '').split('/').pop() || m.nickname || 'sub-agent').replace(/ (?:ultra|max|xhigh)$/i, ''), 32)); } }
-    return { proj: '_codex', id: meta.id, title: titleOf(meta), mtime, state, tool, arg, ageMs, subActive, active, subTotal: all.length - 1, source: 'codex', project: meta.cwd, group: project.groupOf(meta.cwd), ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(t.peers, now)), oneshot: meta.originator === 'codex_exec' && all.length === 1 };   // a `codex exec` run with no agents of its own: a one-shot job
+    return { proj: '_codex', id: meta.id, title: titleOf(meta), mtime, state, tool, arg, ageMs, subActive, active, subTotal: all.length - 1, ...(t.model ? { model: t.model, effort: t.effort || '' } : headModel(meta.file)), source: 'codex', project: meta.cwd, group: project.groupOf(meta.cwd), ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(t.peers, now)), oneshot: meta.originator === 'codex_exec' && all.length === 1 };   // a `codex exec` run with no agents of its own: a one-shot job
   });
 }
 const exists = (proj, id) => !!fileOf(id);
