@@ -577,9 +577,10 @@ function synthesize(voice, wpm, text, out) {
   });
 }
 // ---- ElevenLabs voices, set up exactly like Hermes: the key is ELEVENLABS_API_KEY in the Hermes profile's .env, the model and the lead's voice are
-// tts.elevenlabs.model_id / voice_id in its config.yaml (HERMES_HOME names the profile folder; the gaming profile otherwise). The key never leaves this process.
-// The audio is cached on disk by voice and text, so a line is paid for once.
-const HERMES_PROFILE = () => process.env.HERMES_HOME || path.join(os.homedir(), '.hermes', 'profiles', 'gaming'), ELEVEN_MAX = 600;   // characters per line: a spoken line is short, and this bounds the cost of any one request
+// tts.elevenlabs.model_id / voice_id in its config.yaml. No setup: the folder is HERMES_HOME when it is set (that folder only), else the gaming profile or else the default
+// ~/.hermes, the first that has a key, whatever folder agent-standup is started from. The key never leaves this process. The audio is cached on disk by voice and text, so a line is paid for once.
+const HERMES_HOMES = () => (process.env.HERMES_HOME ? [process.env.HERMES_HOME] : [path.join(os.homedir(), '.hermes', 'profiles', 'gaming'), path.join(os.homedir(), '.hermes')]);
+const HERMES_PROFILE = () => HERMES_HOMES().find((d) => envFileValue(path.join(d, '.env'), 'ELEVENLABS_API_KEY')) || HERMES_HOMES()[0], ELEVEN_MAX = 600;   // characters per line: a spoken line is short, and this bounds the cost of any one request
 function envFileValue(file, name) { try { const m = new RegExp('^\\s*(?:export\\s+)?' + name + '\\s*=\\s*(.*?)\\s*$', 'm').exec(fs.readFileSync(file, 'utf8')); return m ? m[1].replace(/^(["'])(.*)\1$/, '$2') : ''; } catch { return ''; } }
 const elevenKey = () => envFileValue(path.join(HERMES_PROFILE(), '.env'), 'ELEVENLABS_API_KEY');
 function elevenSetup() {   // model and lead voice from the Hermes config (tts: elevenlabs: model_id / voice_id)
@@ -600,7 +601,7 @@ const elevenSlot = (ms) => new Promise((go, no) => {   // a slot, or a timeout o
 });
 const elevenFree = () => { const next = elevenWait.shift(); if (next) next(); else elevenBusy--; };
 async function listElevenVoices() {   // the account's voices, cached for an hour; the lead's voice first
-  const key = elevenKey(), setup = elevenSetup(); if (!key) return { available: false, voices: [], model: setup.model, error: 'no ELEVENLABS_API_KEY in ' + path.join(HERMES_PROFILE(), '.env') };
+  const key = elevenKey(), setup = elevenSetup(); if (!key) return { available: false, voices: [], model: setup.model, error: 'no ELEVENLABS_API_KEY in ' + HERMES_HOMES().map((d) => path.join(d, '.env')).join(' or ') };
   if (Date.now() - elevenVoices.at > 3600e3) {
     try {
       const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key }, signal: AbortSignal.timeout(5000) }); if (!r.ok) throw new Error('voices ' + r.status);
@@ -694,6 +695,7 @@ function start(port = PORT) {
     if (url.pathname === '/api/audio') {   // only one window at a time plays sound: the last one that claimed it (expires if that window stops answering)
       const cid = url.searchParams.get('cid') || '', ok = /^[\w-]{4,40}$/.test(cid);
       if (ok && url.searchParams.get('claim')) audioOwner = { id: cid, seen: Date.now() };
+      else if (ok && audioOwner.id === cid && url.searchParams.get('release')) audioOwner = { id: null, seen: 0 };   // a closing or reloading window gives the sound back at once, not 6 s later
       else if (ok && audioOwner.id === cid) audioOwner.seen = Date.now();
       if (audioOwner.id && Date.now() - audioOwner.seen > 6000) audioOwner = { id: null, seen: 0 };
       return json({ owner: audioOwner.id });
@@ -753,7 +755,7 @@ function start(port = PORT) {
   } catch (e) { if (res.headersSent) return res.destroy(); json({ error: String(e.message || e) }, 500); }
   }).listen(port, '127.0.0.1', function () { console.log(`Agent Standup → http://localhost:${this.address().port}`); });
 }
-module.exports = { tts, elevenStats, start, currentSession, shutdown, findClaude, bundledClaude, boardRows, placement, charactersDir, listCharacters, triageInput, TRIAGE_SYS, TRIAGE_SCHEMA, SUMMARY_URL, SUMMARY_MODEL };   // the triage pieces: for the offline evaluation of thinking levels
+module.exports = { tts, elevenStats, elevenHome: HERMES_PROFILE, elevenSetup, start, currentSession, shutdown, findClaude, bundledClaude, boardRows, placement, charactersDir, listCharacters, triageInput, TRIAGE_SYS, TRIAGE_SCHEMA, SUMMARY_URL, SUMMARY_MODEL };   // the triage pieces: for the offline evaluation of thinking levels
 if (require.main === module) {
   start().on('error', (e) => {
     console.error(e.code === 'EADDRINUSE' ? `Port ${PORT} is already in use (maybe Agent Standup is already running, e.g. inside VS Code). Try: PORT=4790 node server.js` : String(e));

@@ -47,7 +47,7 @@ function director({ triageMs, synthMs, playMs, refuse = () => false }) {
     await TTS.buf(text); if (token !== S.token || (still && !still())) return;
     log.live++; log.most = Math.max(log.most, log.live); log.start[text] = at(); log.said.push(text); await sleep(playMs); log.end[text] = at(); log.live--; return true;
   };
-  const env = { S, TTS, fetch: triage, speakServer, speakBrowser: async () => { log.browser++; return true; }, AUD: { off: () => false, ctx: { state: 'running' }, murmur() {} }, prefs: { voice: true, vstyle: 'elevenlabs' }, sleep: idle,
+  const env = { S, TTS, fetch: triage, speakServer, speakBrowser: async () => { log.browser++; return true; }, AUD: { off: () => false, ctx: { state: 'running' }, murmur() {} }, prefs: { voice: true, vstyle: 'elevenlabs' }, ELEVEN_KEY: true, sleep: idle,
     speechOf: (ev) => ev.text, speakable: (t) => t, clipSpeech: (t) => t, teamOf: () => ({}), niceProj: () => '', startTalk() {}, stopTalk() {}, captionRun() {}, estMs: () => 10, speakBabble: async () => {}, synth: {}, EMBED: false, FR: () => false, L: (fr, en) => en, esc: (t) => t, $: () => null };
   const api = new Function(...Object.keys(env), src + '\nreturn { directorStep, speakLine, elevenWhy, freshIn, SYNTH_MS, KEEP_MS };')(...Object.values(env));
   api.SYNTH_MS.elevenlabs = synthMs * 1.2;   // the page's estimate, scaled like the latency
@@ -123,7 +123,7 @@ test('a merged line is fresh only while every item in it is; a follow switch wai
 // ---- the page's TTS cache: a line that could not be made is not waited for twice
 test('TTS.buf: a failed line fails at once on the next ask, with its reason (no second request, no second wait)', async () => {
   let calls = 0; const later = (fn, ms) => { const t = setTimeout(fn, ms); t.unref(); return t; };
-  const TTS = new Function('fetch', 'AUD', '$', 'setTimeout', grab(/const TTS_WAIT = [^\n]*/) + '\n' + grab(/const TTS = \{[\s\S]*?\n\};/) + '\nreturn TTS;')(async () => { calls++; await sleep(30); return { ok: true, status: 204, headers: { get: () => 'elevenlabs 429 limit' } }; }, { ctx: { decodeAudioData: async (b) => b } }, () => null, later);
+  const TTS = new Function('fetch', 'AUD', '$', 'setTimeout', 'const ELEVEN_KEY = true;\n' + grab(/const TTS_WAIT = [^\n]*/) + '\n' + grab(/const TTS = \{[\s\S]*?\n\};/) + '\nreturn TTS;')(async () => { calls++; await sleep(30); return { ok: true, status: 204, headers: { get: () => 'elevenlabs 429 limit' } }; }, { ctx: { decodeAudioData: async (b) => b } }, () => null, later);
   TTS.engine = 'elevenlabs';
   await assert.rejects(TTS.buf('A line.', VOICE, 180), /elevenlabs 429 limit/);
   const t = Date.now(); await assert.rejects(TTS.buf('A line.', VOICE, 200));
@@ -305,4 +305,85 @@ test('follow mode: an automatic switch waits out the hold when this call merely 
   assert.equal(await followCurrent(), false); assert.deepEqual(loads, [], 'within the hold: it stays');
   S.switchAt = Date.now() - 25000; assert.equal(await followCurrent(), true);
   assert.deepEqual([loads, notes], [['busy'], ['Following everything: MarketSimulator is busy, Combat simulation realism gaps went quiet']]);
+});
+
+// ---- one sound control (Tom: "it's also not clear if it's on mute or on loud"; his window was silent on voice:false and nothing said so)
+const SOUND_SRC = () => [grab(/const soundHeld = [^\n]*/), grab(/function soundState\(s\) \{[\s\S]*?\n\}/), grab(/const talkingNow = [^\n]*/), grab(/const soundNow = [^\n]*/), grab(/function paintSound\(\) \{[\s\S]*?\n\}/), grab(/function toggleSound\(\) \{[\s\S]*?\n\}/)].join('\n');
+test('sound: the control shows exactly one state, in words, in the order a person acts on it', () => {
+  const { soundState } = new Function('L', grab(/function soundState\(s\) \{[\s\S]*?\n\}/) + '\nreturn { soundState };')((fr, en) => en);
+  const on = { elsewhere: false, muted: false, voice: true, held: false, down: '', talking: false }, st = (x) => soundState({ ...on, ...x });
+  const row = (x) => { const r = st(x); return [r.k, r.icon, r.text, r.hint, r.silent]; };
+  assert.deepEqual(row({}), ['on', '🔊', 'Sound on', '', false]);
+  assert.deepEqual(row({ talking: true }), ['talking', '🔊', 'Sound on', '', false], 'on and talking reads differently from on and idle');
+  assert.deepEqual(row({ muted: true }), ['muted', '🔇', 'Muted', 'M to unmute', true]);
+  assert.deepEqual(row({ voice: false }), ['off', '🔇', 'Voice off', 'click for sound', true], "Tom's case: voices off in the saved settings");
+  assert.deepEqual(row({ held: true }), ['held', '⚠', 'Click anywhere for sound', '', true]);
+  assert.deepEqual(row({ down: 'quota' }), ['eleven', '⚠', 'ElevenLabs: quota', '', true]);
+  assert.deepEqual(row({ elsewhere: true }), ['elsewhere', '🔈', 'Sound in another window', 'click to play it here', true]);
+  assert.equal(st({ muted: true, voice: false, held: true, down: 'quota' }).k, 'muted', 'one state at a time: muted wins over the rest');
+  assert.equal(st({ voice: false, held: true }).k, 'off'); assert.equal(st({ held: true, down: 'quota' }).k, 'held');
+  assert.equal(new Set([{}, { talking: true }, { muted: true }, { voice: false }, { held: true }, { down: 'x' }, { elsewhere: true }].map((x) => st(x).k)).size, 7, 'each state its own look');
+});
+test('sound: one click goes from any silent state to sound on, and from on to muted; the click that unlocks the browser never mutes', () => {
+  const run = (setup) => {
+    const calls = [], S = { owner: 'me' }, prefs = { voice: true }, AUD = { muted: false, live: new Set(), ctx: { state: 'running', resume: async () => {} }, init() {} };
+    setup({ S, prefs, AUD });
+    const scope = pageScope({ S, prefs, AUD, CID: 'me', synth: null, TTS: { down: '' }, L: (fr, en) => en, performance: { now: () => 10000 }, savePrefs: () => calls.push('save'),
+      applyMute: () => calls.push('applyMute'), claimAudio: () => { S.owner = 'me'; calls.push('claim'); }, paintSound: () => {}, document: { querySelector: () => null } });
+    new Function('scope', 'with (scope) { ' + SOUND_SRC().replace(/function paintSound\(\) \{[\s\S]*?\n\}/, '') + '\nreturn { toggleSound }; }')(scope).toggleSound();
+    return { muted: AUD.muted, voice: prefs.voice, owner: S.owner, calls };
+  };
+  const ON = { muted: false, voice: true, owner: 'me', calls: ['save', 'claim'] };   // on, saved, and the sound taken for this window
+  assert.deepEqual(run(() => {}), { muted: true, voice: true, owner: 'me', calls: ['save', 'applyMute'] }, 'on: muted, and saved (the one switch)');
+  assert.deepEqual(run(({ AUD }) => { AUD.muted = true; }), ON, 'muted: on');
+  assert.deepEqual(run(({ prefs }) => { prefs.voice = false; }), ON, 'voice off (an older window): on');
+  assert.deepEqual(run(({ S }) => { S.owner = 'other'; }), ON, 'another window: taken here');
+  assert.deepEqual(run(({ AUD, S }) => { AUD.ctx.state = 'suspended'; S.unlockHeld = false; }), ON, 'held by the browser: on');
+  assert.deepEqual(run(({ S }) => { S.unlockHeld = true; S.unlockAt = 9800; }), ON, 'the click that just let the browser play (it is running by now): still on, not muted');
+});
+test('sound: the control paints its state and a silent state prefixes the tab title', () => {
+  const el = () => ({ textContent: '' }), parts = { '.si': el(), '.st': el(), small: el() }, attrs = {};
+  const b = { className: '', title: '', querySelector: (q) => parts[q], setAttribute: (k, v) => (attrs[k] = v) }, doc = { title: '' };
+  const S = { owner: 'me', tabBase: '● 2 working' }, prefs = { voice: true }, AUD = { muted: true, live: new Set(), ctx: { state: 'running' } };
+  const scope = pageScope({ S, prefs, AUD, CID: 'me', synth: null, TTS: { down: '' }, L: (fr, en) => en, $: () => b, document: doc });
+  const { paintSound } = new Function('scope', 'with (scope) { ' + SOUND_SRC() + '\nreturn { paintSound }; }')(scope);
+  paintSound(); assert.deepEqual([b.className, parts['.si'].textContent, parts['.st'].textContent, parts.small.textContent, doc.title], ['snd muted', '🔇', 'Muted', 'M to unmute', '🔇 ● 2 working']);
+  AUD.muted = false; AUD.live.add({}); paintSound(); assert.deepEqual([b.className, parts['.st'].textContent, doc.title], ['snd talking', 'Sound on', '● 2 working'], 'talking: the pulse, no prefix');
+  AUD.live.clear(); AUD.ctx.state = 'suspended'; paintSound(); assert.deepEqual([b.className, doc.title], ['snd held', '⚠ ● 2 working']);
+});
+test('sound: ElevenLabs chosen, voices turned on from voice:false: the first line goes to /api/tts and the browser voice never speaks', async () => {
+  const urls = [], spoken = [], S = { token: 1, level: {}, owner: 'me', live: true }, prefs = { voice: false, vstyle: 'elevenlabs' };
+  const node = () => ({ connect: (d) => d, fftSize: 0, gain: { value: 1 }, getByteTimeDomainData() {} });
+  const ctx = { state: 'running', resume: async () => {}, createGain: node, createAnalyser: node, decodeAudioData: async () => ({ duration: 0.02 }),
+    createBufferSource: () => ({ ...node(), playbackRate: { value: 1 }, start() { setTimeout(() => this.onended && this.onended(), 20); }, stop() {} }) };
+  const AUD = { ctx, muted: false, live: new Set(), voice: node(), init() {}, off() { return this.muted; } };
+  const fetch = async (u) => { urls.push(String(u)); return /\/api\/voices/.test(u) ? { json: async () => ({ available: true, voices: [{ name: 'adam' }] }) } : { status: 200, ok: true, headers: { get: () => '' }, arrayBuffer: async () => new ArrayBuffer(8) }; };
+  const synth = { speaking: false, speak: (u) => { if (u.text) spoken.push(u.text); }, cancel() {}, getVoices: () => [{ name: 'espeak', lang: 'en-US' }] };
+  const scope = pageScope({ S, prefs, AUD, fetch, synth, CID: 'me', EMBED: false, ELEVEN_KEY: true, SpeechSynthesisUtterance: function (t) { this.text = t; }, L: (fr, en) => en, FR: () => false,
+    $: () => null, document: { querySelector: () => null }, performance: { now: () => 1e6 }, savePrefs() {}, applyMute() {}, claimAudio() {}, paintSound() {}, captionRun() {}, vlog() {}, estMs: () => 10, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    speakable: (t) => t, rankVoices: (v) => v, spd: () => 1, lagFactor: () => 1, fxFor() {}, fxChain() {}, AbortSignal: { timeout: () => undefined }, TTS_WAIT: 10000, TTS_RETRY: 30000, setTimeout: (f, ms) => { const t = setTimeout(f, ms); if (ms > 1000 && t.unref) t.unref(); return t; } });
+  const src = [grab(/const soundHeld = [^\n]*/), grab(/const elevenWhy = [^\n]*/), grab(/const TTS = \{[\s\S]*?\n\};/), grab(/function soundState\(s\) \{[\s\S]*?\n\}/), grab(/const talkingNow = [^\n]*/), grab(/const soundNow = [^\n]*/),
+    grab(/function toggleSound\(\) \{[\s\S]*?\n\}/), grab(/async function speakServer\([\s\S]*?\n\}/), grab(/function speakBrowser\([\s\S]*?\n\}/), grab(/async function speakLine\([\s\S]*?\n\}/)].join('\n');
+  const { TTS, toggleSound, speakLine } = new Function('scope', 'with (scope) { ' + src + '\nreturn { TTS, toggleSound, speakLine }; }')(scope);
+  await TTS.init(); assert.deepEqual([TTS.engine, TTS.server], ['elevenlabs', true]);
+  await speakLine('Said while the voices are off.', { id: 'main', vi: 0 }, true, 1); assert.deepEqual([urls.filter((u) => /\/api\/tts/.test(u)), spoken], [[], []], 'voices off: nothing is said or paid for');
+  toggleSound(); assert.equal(prefs.voice, true, 'the sound control turned the voices on');
+  const r = await speakLine('The build is green.', { id: 'main', vi: 0 }, true, 1);
+  assert.equal(r, undefined, 'the line was said'); assert.match(urls.filter((u) => /\/api\/tts/.test(u))[0] || '', /engine=elevenlabs&voice=adam&.*text=The%20build%20is%20green\./);
+  scope.fetch = async () => ({ status: 204, ok: false, headers: { get: () => 'elevenlabs quota_exceeded' } });   // the key is refused
+  const skipped = await speakLine('A line ElevenLabs cannot make.', { id: 'main', vi: 0 }, true, 1);
+  assert.ok(skipped && skipped.skipped, 'a line it cannot make is skipped and marked'); assert.deepEqual(spoken, [], 'and never said by the browser voice');
+  const asked = []; scope.fetch = async (u) => { asked.push(String(u)); return { status: 200, ok: true, headers: { get: () => '' }, arrayBuffer: async () => new ArrayBuffer(8) }; };
+  TTS.engine = 'system'; TTS.server = true;   // a key, and yet an engine left on the system voices (an old style, the moment before init): still nobody else speaks
+  const r2 = await speakLine('Never in another voice.', { id: 'main', vi: 0 }, true, 1);
+  assert.ok(r2 && r2.skipped, 'skipped and marked'); assert.deepEqual([spoken, asked], [[], []], 'neither the browser voice nor the server system voice');
+});
+test('sound: no setup: a Hermes key makes ElevenLabs the voice whatever was saved (a system voice, voice:false), and voices come back on once', () => {
+  const src = grab(/let prefs = \{[\s\S]*?prefs\.soundOnce = true; \}/);
+  const load = (saved, key) => new Function('window', 'localStorage', src + '\nreturn { prefs, ELEVEN_KEY };')({ SAVED_PREFS: { _t: 2, ...saved }, SERVER_VOICES: { elevenlabs: key } }, { getItem: () => null });
+  const tom = load({ vstyle: 'natural', voice: false, elevenOnce: true }, true);
+  assert.deepEqual([tom.ELEVEN_KEY, tom.prefs.vstyle, tom.prefs.voice, tom.prefs.muted], [true, 'elevenlabs', true, false], "Tom's 4747: the system voice and voices off, saved by older pages");
+  assert.equal(load({ vstyle: 'natural', elevenOnce: true, soundOnce: true }, true).prefs.vstyle, 'elevenlabs', 'with a key, every time');
+  assert.deepEqual([load({ vstyle: 'natural', elevenOnce: true, soundOnce: true, muted: true }, true).prefs.muted], [true], 'a mute chosen since is kept');
+  assert.equal(load({ vstyle: 'natural', elevenOnce: true }, false).prefs.vstyle, 'natural', 'without a key, the voice chosen in the settings');
 });

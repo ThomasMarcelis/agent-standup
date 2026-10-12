@@ -13,6 +13,9 @@ test('settings are kept in a file; cross-site writes are refused', async () => {
     assert.equal((await get(port, '/api/prefs', {}, 'PUT', '[1]')).status, 400);
     assert.equal(JSON.parse((await get(port, '/api/kokoro')).body).installed, false);
     assert.equal((await get(port, '/api/kokoro/install', { 'sec-fetch-site': 'cross-site' }, 'POST')).status, 403);
+    const owner = async (q, m) => JSON.parse((await get(port, '/api/audio?' + q, {}, m)).body).owner;   // one window has the sound; a closing one gives it back at once
+    assert.equal(await owner('cid=win-a&claim=1'), 'win-a'); assert.equal(await owner('cid=win-b&release=1', 'POST'), 'win-a', 'only the owner can give it back');
+    assert.equal(await owner('cid=win-a&release=1', 'POST'), null); assert.equal(await owner('cid=win-c'), null);
   } finally { srv.close(); require('../server.js').shutdown(); }
 });
 test('pictures returned by tools are counted in the timeline and served from the transcript only', async () => {
@@ -32,4 +35,20 @@ test('pictures returned by tools are counted in the timeline and served from the
     assert.equal((await get(port, '/api/media?proj=..&id=s1&agent=main&tool=toolu_pic&n=0')).status, 400);
     assert.equal((await get(port, '/api/media?proj=-p&id=s1&agent=main&tool=toolu_pic&n=0', { 'sec-fetch-site': 'cross-site' })).status, 403);
   } finally { srv.close(); require('../server.js').shutdown(); }
+});
+
+test('ElevenLabs needs no setup: started as agent-standup from any folder, with HERMES_HOME unset, the key is found in the gaming profile or in ~/.hermes', async () => {
+  const { spawn } = require('child_process'), os = require('os'), path = require('path'), fs = require('fs');
+  const run = (home) => new Promise((done, fail) => {
+    const env = { ...process.env, HOME: home, PORT: '0', AGENT_STANDUP_PREFS: path.join(home, 'prefs.json'), AGENT_STANDUP_PROJECTS: path.join(home, 'none'), AGENT_STANDUP_HERMES: path.join(home, 'none'), CODEX_HOME: path.join(home, 'none') }; delete env.HERMES_HOME;
+    const p = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { cwd: os.tmpdir(), env }); let out = '';
+    const t = setTimeout(() => { p.kill(); fail(new Error('no start: ' + out)); }, 8000);
+    p.stdout.on('data', async (d) => { out += d; const m = /localhost:(\d+)/.exec(out); if (!m) return; clearTimeout(t);
+      try { const js = (await get(+m[1], '/api/prefs.js')).body, v = JSON.parse((await get(+m[1], '/api/voices?engine=elevenlabs')).body); done({ key: /SERVER_VOICES = \{"elevenlabs":true\}/.test(js), error: v.error || '' }); } catch (e) { fail(e); } finally { p.kill(); } });
+  });
+  const home = (files) => { const h = fs.mkdtempSync(path.join(os.tmpdir(), 'standup-home-')); for (const [f, body] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(h, f)), { recursive: true }); fs.writeFileSync(path.join(h, f), body); } return h; };
+  assert.equal((await run(home({ '.hermes/profiles/gaming/.env': 'ELEVENLABS_API_KEY=sk_test_gaming\n' }))).key, true, 'the gaming profile');
+  assert.equal((await run(home({ '.hermes/.env': 'export ELEVENLABS_API_KEY="sk_test_default"\n' }))).key, true, 'the default ~/.hermes');
+  const none = await run(home({ '.hermes/.env': 'OTHER=1\n' }));
+  assert.equal(none.key, false); assert.match(none.error, /no ELEVENLABS_API_KEY in .*profiles\/gaming\/\.env or .*\.hermes\/\.env/, 'without a key it says where it looked');
 });
