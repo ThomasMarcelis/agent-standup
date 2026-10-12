@@ -108,6 +108,7 @@ function peerAgent(addrOrName, nameHint, book, opt) {
     const a = book.get(n) || (tail && [...book.values()].find((x) => x.endsWith(tail + '.sock')));
     if (a) { nameHint = nameHint || n; addrOrName = a; }
   }
+  if (parseAddress(nameHint)) nameHint = '';   // an inbox address is not a name
   const p = parseAddress(addrOrName), r = p ? resolve(p.addr, opt) : null, key = p ? p.key : String(addrOrName || 'peer');
   let name = String(nameHint || (r && r.name) || (p && p.kind !== 'claude' ? key : '')).replace(/^claude:/, '');
   if (!NAME.test(name)) name = !p ? 'unknown peer' : p.kind === 'claude' ? (r ? 'Claude Code ' + key.slice(-6) : 'Claude session (ended)') : (ROLE[p.kind] || 'peer') + ' ' + key.slice(-6);   // a name is a name, not an ellipsis or a sentence; a pid means nothing to a person

@@ -26,13 +26,14 @@
   .pbtn { display:flex; align-items:center; gap:9px; min-width:0; padding:3px 10px 3px 8px; border:1px solid transparent; border-radius:10px; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; transition:background .12s, border-color .12s }
   .pbtn:hover, .pbtn:focus-visible, .pbtn[aria-expanded="true"] { background:var(--panel2); border-color:var(--line); outline:none } .pbtn > div { min-width:0 }
   .psw { width:10px; height:10px; border-radius:3px; flex:none; background:var(--proj, var(--line)) } .psw.all { background:conic-gradient(#7c9cff, #58d68d, #f0a020, #ff7ab6, #7c9cff) }
+  .pmi { font-size:13px; line-height:1 } .pmi:empty { display:none } .brand b { max-width:380px; display:block } #log .row.divider { font-size:11.5px; color:var(--dim); text-align:center; border-bottom:1px dashed var(--line); padding:5px 14px }
   .pchev { color:var(--dim); font-size:11px; transition:transform .12s } .pbtn[aria-expanded="true"] .pchev { transform:rotate(180deg) }
   #pmenu { position:fixed; top:50px; left:48px; z-index:30; width:390px; max-width:calc(100vw - 24px); max-height:min(70vh, 560px); overflow:auto; padding:6px; background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:0 18px 50px rgba(0,0,0,.55); opacity:0; transform:translateY(-6px) scale(.98); transform-origin:top left; pointer-events:none; visibility:hidden; transition:opacity .12s, transform .12s, visibility 0s .12s; scrollbar-width:thin; scrollbar-color:#3a4060 transparent }
   #pmenu.on { opacity:1; transform:none; pointer-events:auto; visibility:visible; transition:opacity .12s, transform .12s } #pmenu hr { border:0; border-top:1px solid var(--line); margin:4px 6px }
   .prow { display:flex; align-items:center; gap:10px; width:100%; padding:9px 10px; border:0; border-radius:8px; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer }
   .prow:hover, .prow:focus-visible { background:var(--panel2); outline:none } .prow .pn { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1 } .prow b { font-size:13px; font-weight:600; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical }
   .prow small { font-size:11.5px; color:var(--dim) } .prow .pck { color:var(--accent); font-weight:700; flex:none } .prow.pq { color:var(--dim); font-size:12px; padding:7px 10px }
-  .brand small { display:block; color:var(--dim); font-size:11px; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .brand small { display:block; color:var(--dim); font-size:11px; max-width:380px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
   .sp { flex:1 }
   .tok { font-size:11px; font-weight:600; padding:3px 9px; border-radius:99px; background:var(--panel2); color:#c3c6d4; white-space:nowrap } .tok:hover { color:#fff }
   .tbadge { position:absolute; top:30px; right:6px; display:flex; gap:4px; z-index:2; pointer-events:none } .tbadge span { font-size:10.5px; padding:1px 7px; border-radius:99px; background:rgba(14,15,24,.78); backdrop-filter:blur(6px) }
@@ -100,7 +101,7 @@
   .bgroup.quiet { margin-bottom:6px } .bgh .bquiet { padding:2px 10px; font-size:12px; font-weight:400 }
   .sx { margin-left:.7em } .stc .sx { opacity:.9 } .bp .src { font-size:10.5px; padding:0 5px; margin-right:6px; border:1px solid var(--line); border-radius:4px; color:var(--dim) }
   .bquiet { grid-column:1 / -1; justify-self:start; padding:6px 12px; border-radius:10px; border:1px dashed var(--line); background:transparent; color:var(--dim); font:inherit; font-size:12.5px; cursor:pointer } .bquiet:hover { color:inherit; background:var(--panel2) }
-  body.board #pill, body.board #tok, body.board #ctxp, body.board #board, body.board #meet, body.board #subtitle { display:none !important }   /* those are about the followed session, which the board does not show */
+  body.board #pill, body.board #tok, body.board #ctxp, body.board #board, body.board #meet { display:none !important }   /* those are about the followed session, which the board does not show */
   .bcard { text-align:left; background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:11px 13px; display:flex; flex-direction:column; gap:5px; cursor:pointer }
   .bgroup { margin-bottom:16px } .bgh { display:flex; align-items:center; gap:8px; margin:0 0 8px; font-size:13.5px; font-weight:700 } .bgh .gdot { width:10px; height:10px; border-radius:50%; background:var(--pc); flex:none } .bgh .dim { font-weight:400 }
   .tile { box-shadow:inset 4px 0 0 var(--pc, transparent) } .row .pj { color:var(--dim); font-size:10.5px }
@@ -287,7 +288,7 @@
 </head>
 <body>
 <header>
-  <div class="brand"><div class="logo">🎥</div><button id="pbtn" class="pbtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="pmenu"><i class="psw"></i><div><b>Agent Standup</b><small id="subtitle"></small></div><span class="pchev" aria-hidden="true">▾</span></button></div>
+  <div class="brand"><div class="logo">🎥</div><button id="pbtn" class="pbtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="pmenu"><i class="psw"></i><span id="pmi" class="pmi" aria-hidden="true"></span><div><b>Agent Standup</b><small id="subtitle"></small></div><span class="pchev" aria-hidden="true">▾</span></button></div>
   <span id="pill">REPLAY</span><button id="tok" class="tok" style="display:none"></button><button id="ctxp" class="ctxp" style="display:none"></button><span id="board" aria-live="polite"></span>
   <div class="sp"></div>
   <div class="seg" id="viewSeg"><button data-v="call" class="on" data-fr="Appel" data-en="Call">Appel</button><button data-v="tree" data-fr="Arbre" data-en="Tree">Arbre</button><button data-v="board" data-fr="Sessions" data-en="Sessions">Sessions</button></div>
@@ -1015,11 +1016,13 @@ function renderLog(full) {
   if (full || S.logTo < from || S.logTo > S.events.length) { log.innerHTML = ''; S.logTo = from; }
   const html = [];
   for (let i = S.logTo; i < S.events.length; i++) {
+    if (full) for (const d of S.dividers || []) if (d.i === i) html.push(dividerHtml(d));   // where the call switched
     if (S.events[i].kind === 'results' || S.events[i].kind === 'usage' || S.events[i].kind === 'finish' || S.events[i].kind === 'compact') continue;
     const e = S.events[i], arrow = e.to ? ` <span class="arrow">→</span> <span class="who">${esc(nameOf(e.to))}</span>${pjTag(e.to)}` : '';
     const body = e.kind === 'tools' ? e.tools.map((t) => t.name).join(', ') : spoken(e), k = { order: L('tâche', 'task'), report: L('rapport', 'report'), say: '', user: L('brief', 'brief'), tools: L('outils', 'tools'), msg: L('message', 'message') + ' ' + MSG_STATE(e.state) }[e.kind];
     html.push(`<div class="row ${e.kind}" data-i="${i}"><span class="who">${esc(nameOf(e.agent))}</span>${pjTag(e.agent)}${arrow} <span class="k">${k}</span><div class="txt">${esc(body)}${e.note ? ` <span class="pj">(${esc(e.note)})</span>` : ''}${e.unsaid ? unsaidTag(e.unsaid) : ''}</div></div>`);
   }
+  if (full) for (const d of S.dividers || []) if (d.i >= S.events.length) html.push(dividerHtml(d));
   log.insertAdjacentHTML('beforeend', html.join('')); S.logTo = S.events.length;
   if (S.live) while (log.children.length > 320) log.firstChild.remove();
   filterLog();
@@ -1421,7 +1424,7 @@ function poof(tile, color) {
       { duration: 650 + Math.random() * 450, easing: 'cubic-bezier(.2,.7,.4,1)', delay: 120 }).onfinish = () => d.remove();
   }
 }
-function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; const c = $('#toasts'); c.appendChild(t); while (c.children.length > 3) c.firstChild.remove(); setTimeout(() => t.remove(), 3100); }
+function toast(msg, ms = 3100) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; const c = $('#toasts'); c.appendChild(t); while (c.children.length > 3) c.firstChild.remove(); setTimeout(() => t.remove(), ms); }
 const BYE = { en: ['Bye, everyone!', 'Off I go. 👋', 'Thanks, see you!', 'My work here is done.', 'Catch you later!', 'Logging off, bye!', 'That’s a wrap!', 'Good luck with the rest!', 'Mic drop. 🎤', 'Leaving the call… ☕'],
   fr: ['Salut tout le monde !', 'Je file. 👋', 'Merci, à plus !', 'Ma mission est terminée.', 'À tout à l’heure !', 'Je me déconnecte, ciao !', 'C’est dans la boîte !', 'Bon courage pour la suite !', 'Mic drop. 🎤', 'Je quitte l’appel… ☕'] };
 function byeLine(id) { const P = BYE[FR() ? 'fr' : 'en'], seed = hash(id + String(S.clock | 0)); let l = P[seed % P.length]; if (l === S.lastBye) l = P[(seed + 1) % P.length]; return (S.lastBye = l); }
@@ -2033,7 +2036,7 @@ async function loadSession(proj, id) {   // every switch comes here (a click on 
   const data = await (await fetch(`/api/session?proj=${encodeURIComponent(proj)}&id=${id}`)).json();
   if (mine !== S.loadN || data.error) return false;
   const again = [S.cur, S.last].some((c) => c && c.proj === proj && c.id === id), keepDetail = again && S.detail, joined = S.joinAt;   // the same session rebuilt (a live rewrite): the room stays as it was
-  if (!again) { $('#pbody').innerHTML = ''; hidePresent(true); }   // another session: its screen, not the last one's
+  if (!again) { $('#pbody').innerHTML = ''; hidePresent(true); S.dividers = []; }   // another session: its screen, not the last one's
   S.term = {}; S.camFor = null; S.focus = null; S.agents = {}; for (const k in nameBook) delete nameBook[k]; S.group = data.group || null; [{ id: 'user' }, ...data.agents].forEach((a) => (S.agents[a.id] = persona(a)));
   S.events = data.events; S.rev = data.rev; S.group = data.group || null; S.joinAt = again && joined ? joined : Date.now(); S.idx = 0; S.status = {}; S.tc = {}; S.cur = { proj, id }; S.logTo = 0; S.detail = null; $('#detail').classList.remove('on');
   const opt = $('#sessions').selectedOptions[0]; S.title = [S.group && !S.group.other ? (S.group.hermes ? S.group.name.split(', ')[0] : S.group.name) : niceProj(proj), S.live ? (data.title || '') : (opt && opt.dataset.title) || data.title || ''].filter(Boolean).join(', ');   // a Hermes thread's group name is its title: said once   // project, session: so it is clear where this call belongs
@@ -2041,11 +2044,20 @@ async function loadSession(proj, id) {   // every switch comes here (a click on 
   paintSubtitle(); recomputeStatus(0); buildStage(); renderHighlights(); setFocus('main'); renderLog(true); computeGantt(); layout(); paintStatus(); prefetchTr(0); if (keepDetail && S.agents[keepDetail]) openDetail(keepDetail); return true;
 }
 // the header line: 📌 while the live call is pinned to one session (click to unpin and follow the latest activity again)
-function paintSubtitle() {   // in a call the header names the project in its colour, with a stripe of it, so a jump to another project is obvious
-  const team = teamOf(S.group), b = $('.brand b'), inCall = !!(S.cur && S.cur.proj !== '_demo' && team.short && !document.body.classList.contains('board'));   // the board is every project: no one project's name on top
-  b.textContent = inCall ? team.short : 'Agent Standup'; b.style.color = inCall ? GCOL(team.key) : ''; document.documentElement.style.setProperty('--proj', inCall ? GCOL(team.key) : 'var(--line)');
+// What the live call follows, as the header says it: everything, one project, or a pinned call, each with its icon; the project and call on screen under it.
+function modeLabel(m) {   // m: { pinned, follow, project, call, followed }
+  if (m.pinned) return { kind: 'pin', icon: '📌', main: L('Épinglé : ', 'Pinned: ') + (m.call || m.project || ''), sub: m.project || '' };
+  if (m.follow && m.follow.startsWith('g:')) return { kind: 'project', icon: '📁', main: L('Suit ', 'Following ') + (m.followed || m.project || ''), sub: m.call || '' };
+  return { kind: 'all', icon: '🌐', main: L('Suit tout', 'Following everything'), sub: [m.project, m.call].filter(Boolean).join(', ') };
+}
+function paintSubtitle() {   // the header: what the call follows, and the project (its colour on the swatch and the stripe) and call on screen
+  const team = teamOf(S.group), b = $('.brand b'), inCall = !!(S.cur && S.cur.proj !== '_demo' && team.short), f = prefs.follow || 'all';
+  document.documentElement.style.setProperty('--proj', inCall && !document.body.classList.contains('board') ? GCOL(team.key) : 'var(--line)');
   const s = $('#subtitle'), sum = inCall && S.projSum && S.projSum[team.key], own = (S.title || '').replace(inCall ? team.short + ', ' : '\u0000', '');
-  s.textContent = sum || (S.live && S.pin ? '📌 ' : '') + own; $('#pbtn').title = [own, L('Changer de projet', 'Switch project')].filter(Boolean).join('\n'); s.title = S.live && S.pin ? L('Épinglé. Cliquer pour suivre à nouveau la dernière activité', 'Pinned. Click to follow the latest activity again') : ''; s.style.cursor = S.live && S.pin ? 'pointer' : ''; }
+  const followed = f.startsWith('g:') ? (((boardMemo.rows || []).find((r) => boardKey(r) === f.slice(2)) || {}).group || {}).name : '';
+  const m = S.live && !S.demo ? modeLabel({ pinned: !!S.pin, follow: f, project: inCall ? team.short : '', call: own, followed }) : { icon: '', main: inCall ? team.short : 'Agent Standup', sub: own };
+  $('#pmi').textContent = m.icon; b.textContent = m.main; b.style.color = ''; s.textContent = m.sub;
+  $('#pbtn').title = [m.main, m.sub, sum, L('Choisir ce que suit l’appel', 'Choose what the call follows')].filter(Boolean).join('\n'); s.title = S.live && S.pin ? L('Épinglé. Cliquer pour suivre à nouveau la dernière activité', 'Pinned. Click to follow the latest activity again') : ''; s.style.cursor = S.live && S.pin ? 'pointer' : ''; }
 // ---- the header is a project switcher: every project with something going on and its counts; picking one follows it and opens its most urgent or most active call
 let boardMemo = { at: 0, rows: [] };
 async function boardNow(maxAge = 2500) { if (Date.now() - boardMemo.at > maxAge) { try { boardMemo = { at: Date.now(), rows: (await (await fetch('/api/board')).json()) || [] }; } catch {} } return boardMemo.rows; }
@@ -2061,9 +2073,10 @@ function paintProjSum(rows) { const sum = {}; for (const p of projectCounts(rows
 setInterval(async () => { if (S.live && !document.hidden && !document.body.classList.contains('board')) paintProjSum(await boardNow(4000)); }, 5000);
 let pmQuiet = false;
 function renderProjects(rows) {
-  const list = projectCounts(rows), cur = S.group && !document.body.classList.contains('board') ? teamOf(S.group).key : '', all = !S.pin && (prefs.follow || 'all') === 'all', busy = list.filter((p) => p.calls), quiet = list.filter((p) => !p.calls);
+  const list = projectCounts(rows), f = prefs.follow || 'all', cur = !S.pin && f.startsWith('g:') ? f.slice(2) : '', all = !S.pin && f === 'all', busy = list.filter((p) => p.calls), quiet = list.filter((p) => !p.calls);   // the check marks the mode in use, not the project the call happens to be in
   const row = (p) => `<button class="prow" role="option" data-k="${esc(p.key)}" aria-selected="${p.key === cur}"><i class="psw" style="background:${GCOL(p.key)}"></i><span class="pn"><b>${esc(p.name)}</b><small>${esc(projLine(p))}</small></span>${p.needs ? '<i class="sdot needs"></i>' : ''}${p.key === cur ? '<span class="pck">✓</span>' : ''}</button>`;
-  $('#pmenu').innerHTML = `<button class="prow" role="option" data-k="" aria-selected="${all}"><i class="psw all"></i><span class="pn"><b>${L('Tout', 'Everything')}</b><small>${L('l’appel le plus actif, ou celui qui vous attend', 'the most active call, or one that needs you')}</small></span>${all ? '<span class="pck">✓</span>' : ''}</button><hr>`
+  const pinRow = S.pin ? `<button class="prow" role="option" data-k="__pin" aria-selected="true"><span class="pmi">📌</span><span class="pn"><b>${esc(L('Épinglé : ', 'Pinned: ') + ((S.title || '').split(', ').slice(1).join(', ') || S.title || ''))}</b><small>${esc(teamOf(S.group).short || '')}</small></span><span class="pck">✓</span></button>` : '';
+  $('#pmenu').innerHTML = pinRow + `<button class="prow" role="option" data-k="" aria-selected="${all}"><i class="psw all"></i><span class="pn"><b>${L('Tout', 'Everything')}</b><small>${L('l’appel le plus actif, ou celui qui vous attend', 'the most active call, or one that needs you')}</small></span>${all ? '<span class="pck">✓</span>' : ''}</button><hr>`
     + busy.map(row).join('') + (quiet.length ? (pmQuiet ? quiet.map(row).join('') : `<button class="prow pq">＋ ${quiet.length} ${L('inactives', 'quiet')}</button>`) : '');
 }
 async function openProjects() {
@@ -2072,16 +2085,18 @@ async function openProjects() {
 }
 function closeProjects(refocus) { $('#pmenu').classList.remove('on'); $('#pbtn').setAttribute('aria-expanded', 'false'); if (refocus) $('#pbtn').focus(); }
 async function followProject(key) {   // '' is everything
-  closeProjects(); const rows = await boardNow(0), t = key ? followTarget(rows, 'g:' + key) : null, g = key && rows.find((r) => boardKey(r) === key);
-  prefs.follow = key ? 'g:' + key : 'all'; S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; prefs.proj = ''; Q.delete('proj'); savePrefs();
-  S.autoPin = t ? { proj: t.proj, id: t.id } : null; S.switchAt = t ? Date.now() : 0;
+  closeProjects(); prefs.follow = key ? 'g:' + key : 'all'; S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; prefs.proj = ''; Q.delete('proj'); savePrefs();
+  S.switchAt = Date.now(); S.switchWhy = null; S.autoPin = null; paintSubtitle();   // the header says the new mode the moment it is picked; the pick starts the hold
+  if (!key && S.live && !S.demo && S.cur) { $('#calls')._h = ''; renderCalls(); return; }   // everything: stay on this call; the next real reason (needs you, or it goes quiet while another is busy) moves it
+  const rows = await boardNow(0), t = key ? followTarget(rows, 'g:' + key) : null;
+  S.autoPin = t ? { proj: t.proj, id: t.id } : null;
   if (document.body.classList.contains('board')) setView('call');
   if (!S.live || S.demo) await setMode('live'); else { S.cur = null; await followCurrent(); }   // a replay or the demo: back to the live call
   $('#calls')._h = ''; renderCalls();
 }
 $('#pbtn').onclick = () => ($('#pmenu').classList.contains('on') ? closeProjects() : openProjects());
 $('#pbtn').onkeydown = (e) => { if (e.key === 'ArrowDown' && !$('#pmenu').classList.contains('on')) { e.preventDefault(); openProjects(); } };
-$('#pmenu').onclick = (e) => { const r = e.target.closest('.prow'); if (!r) return; if (r.classList.contains('pq')) { pmQuiet = true; renderProjects(boardMemo.rows); $('#pmenu .prow:last-child').focus(); return; } followProject(r.dataset.k); };
+$('#pmenu').onclick = (e) => { const r = e.target.closest('.prow'); if (!r) return; if (r.dataset.k === '__pin') return closeProjects(); if (r.classList.contains('pq')) { pmQuiet = true; renderProjects(boardMemo.rows); $('#pmenu .prow:last-child').focus(); return; } followProject(r.dataset.k); };
 $('#pmenu').onkeydown = (e) => {
   const rows = [...$('#pmenu').querySelectorAll('.prow')], i = rows.indexOf(document.activeElement);
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeProjects(true); }
@@ -2099,17 +2114,21 @@ async function fillProjects() {   // live view: follow the latest activity anywh
   sel.value = prefs.proj && rows.some((r) => r.proj === prefs.proj) ? prefs.proj : ''; sel.style.display = rows.length > 1 ? '' : 'none';
 }
 $('#liveProj').onchange = () => { Q.delete('proj'); prefs.proj = $('#liveProj').value; S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; savePrefs(); S.cur = null; followCurrent(); };
-async function followCurrent() {   // a switch lets the line being said finish (loadSession)
-  const auto = !S.pin && S.autoPin, pid = S.pin || (auto && auto.id), pproj = auto ? auto.proj : Q.get('proj') || prefs.proj || '';   // the rail's follow target, asked like a pin
+async function followCurrent() {   // a switch lets the line being said finish (loadSession); one nobody asked for (S.cur still set) waits out the hold and says why
+  const prev = S.cur, prevTitle = (S.title || '').split(', ').slice(1).join(', ') || S.title, auto = !S.pin && S.autoPin, pid = S.pin || (auto && auto.id), pproj = auto ? auto.proj : Q.get('proj') || prefs.proj || '';   // the rail's follow target, asked like a pin
   const cur = await (await fetch('/api/current?proj=' + encodeURIComponent(pproj) + (pid ? '&id=' + encodeURIComponent(pid) : '') + (S.cur && !pid ? '&sproj=' + encodeURIComponent(S.cur.proj) + '&sid=' + encodeURIComponent(S.cur.id) : ''))).json();
   if (auto && cur.id !== auto.id) S.autoPin = null;
   if (!cur.id) { $('#empty').classList.add('on'); return false; } $('#empty').classList.remove('on');
-  if (S.pin && cur.id !== S.pin) { S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; savePrefs(); }   // the pinned session is gone: follow the latest one instead of staying silently pinned
-  if (S.cur && S.cur.id === cur.id && S.cur.proj === cur.proj) return false;
+  if (S.pin && cur.id !== S.pin) { S.pin = ''; prefs.pin = ''; prefs.pinProj = ''; savePrefs(); S.switchWhy = { why: 'pin' }; }   // the pinned session is gone: follow the latest one instead of staying silently pinned
+  if (S.cur && S.cur.id === cur.id && S.cur.proj === cur.proj) { S.switchWhy = null; return false; }
+  const why = prev && (S.switchWhy || { why: 'quiet', from: prevTitle }); S.switchWhy = null;
+  if (prev && why.why === 'quiet' && Date.now() - (S.switchAt || 0) < FOLLOW_HOLD) return false;   // this call went quiet: another busy one takes over after the hold, not at once
+  if (prev) S.switchAt = Date.now();
   const was = S.last && S.last.proj === cur.proj && S.last.id === cur.id ? S.last.ts : 0;   // the same session reloaded (it was rewritten): carry on after what was already played
   if (!(await loadSession(cur.proj, cur.id))) return false;
   let start = Math.max(0, S.events.length - 16); if (was) { const r = S.events.findIndex((e) => e.ts > was); start = r < 0 ? S.events.length : Math.max(start, r); }
   recomputeStatus(start); S.idx = start; trNew(start); paintStatus();
+  if (why) noteSwitch(followReason({ ...why, follow: prefs.follow || 'all', to: why.to || (S.group && !S.group.other ? S.group.name : S.title), followed: ((S.group || {}).name) }));
   if (!S.userPaused) run(start); return true;
 }
 let polling = false;
@@ -2206,12 +2225,21 @@ function railSplit(rows, curId, now = Date.now()) {
   return { needs, live, quiet };
 }
 const railGroup = (r) => { const k = boardKey(r); return k === '_other' ? L('Autres', 'Other') : r.group.hermes ? r.group.name.split(', ')[0] : r.group.name; };   // a Hermes thread is its own project: the header says "Hermes gaming", the row says the thread
+function followReason(r) {   // r: { mode, follow, to, toTitle, from, why }
+  const head = r.follow && r.follow.startsWith('g:') ? L('Suit ', 'Following ') + (r.followed || r.to || '') : L('Suit tout', 'Following everything');
+  const why = r.why === 'needs' ? `${r.to} ${L('vous attend', 'needs you')}` : r.why === 'quiet' ? `${r.to} ${L('est actif', 'is busy')}, ${r.from || L('cet appel', 'this call')} ${L('est calme', 'went quiet')}` : r.why === 'pin' ? L('l’appel épinglé est terminé', 'the pinned call ended') : `${r.toTitle || r.to} ${L('est le plus actif', 'is the most active')}`;
+  return head + ': ' + why;
+}
+function noteSwitch(text) {   // a switch nobody asked for says why: a toast long enough to read, and a line in the transcript
+  toast(text, 4200); const d = { i: S.events.length, text, at: Date.now() }; (S.dividers = S.dividers || []).push(d); $('#log').insertAdjacentHTML('beforeend', dividerHtml(d));
+}
+const dividerHtml = (d) => `<div class="row divider">⇄ ${esc(d.text)} <span class="dim">${new Date(d.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span></div>`;
 function updateFollow(rows) {   // whether the rail is on screen or not (the tree, a narrow window), a followed project keeps its call current
   const follow = prefs.follow || 'all', cur = S.cur || {}, t = !S.pin && followTarget(rows, follow);
   if (!S.pin) {   // follow: switch with a hold so the call does not flicker between sessions
     const there = t && cur.id === t.id, hold = Date.now() - (S.switchAt || 0) < FOLLOW_HOLD;
-    if (t && !there && !hold) { S.autoPin = { proj: t.proj, id: t.id }; S.switchAt = Date.now(); if (t.state === 'blocked') toast(L('a basculé : ', 'switched: ') + (t.group ? t.group.name : t.title) + ' ' + L('vous attend', 'needs you')); S.cur = null; followCurrent(); }
-    else if (!t && S.autoPin && !hold) { S.autoPin = null; S.cur = null; followCurrent(); }   // nothing needs Tom any more: back to the most active session
+    if (t && !there && !hold) { S.autoPin = { proj: t.proj, id: t.id }; S.switchWhy = { why: t.state === 'blocked' ? 'needs' : 'busy', to: t.group ? t.group.name : t.title, toTitle: t.title }; followCurrent(); }
+    else if (!t && S.autoPin && !hold) { S.autoPin = null; followCurrent(); }   // nothing needs Tom any more: back to the most active session
   }
 }
 setInterval(async () => { if (S.live && !S.demo && !document.hidden && !document.body.classList.contains('board')) updateFollow(await boardNow(1000)); }, 3000);

@@ -267,3 +267,42 @@ test('shared screen: a call with terminal history shows it, even when opened in 
   assert.match($('#pbody').innerHTML, /npm test/); assert.match($('#pbody').innerHTML, /Gate passed\./);
   assert.match($('#pbadge').textContent, /Claude, last shared screen/); assert.equal($('#ptitle').textContent, 'Claude');
 });
+
+// ---- what the call follows (Tom: "as soon as I click Everything it jumps to something else, so I don't even know if I'm on Everything")
+test('follow mode: the header says it (everything, a project, a pinned call), each with its icon', () => {
+  const { modeLabel } = new Function('L', grab(/function modeLabel\(m\) \{[\s\S]*?\n\}/) + '\nreturn { modeLabel };')((fr, en) => en);
+  assert.deepEqual(modeLabel({ follow: 'all', project: 'gladiator-game', call: 'Combat simulation realism gaps' }), { kind: 'all', icon: '🌐', main: 'Following everything', sub: 'gladiator-game, Combat simulation realism gaps' });
+  assert.deepEqual(modeLabel({ follow: 'g:/w/ms', followed: 'MarketSimulator', project: 'MarketSimulator', call: 'Build Act 2 environments' }), { kind: 'project', icon: '📁', main: 'Following MarketSimulator', sub: 'Build Act 2 environments' });
+  assert.deepEqual(modeLabel({ pinned: true, follow: 'all', project: 'gladiator-game', call: 'Combat simulation realism gaps' }), { kind: 'pin', icon: '📌', main: 'Pinned: Combat simulation realism gaps', sub: 'gladiator-game' });
+});
+test('follow mode: picking Everything stays on the call on screen; picking a project goes to its most urgent call', async () => {
+  const src = grab(/async function followProject\(key\) \{[\s\S]*?\n\}/), calls = [];
+  const S = { live: true, demo: false, cur: { proj: 'p', id: 'combat' }, pin: 'combat', autoPin: null }, prefs = { follow: 'g:/w/gl', pin: 'combat' };
+  const rows = [{ id: 'busy', proj: '_codex', state: 'working', mtime: Date.now(), group: { key: '/w/ms', name: 'MarketSimulator' } }];
+  const scope = pageScope({ S, prefs, Q: new URLSearchParams(''), document: { body: { classList: { contains: () => false } } }, boardNow: async () => (calls.push('board'), rows), boardKey: (r) => r.group.key,
+    followTarget: (rs, f) => rs.find((r) => 'g:' + r.group.key === f) || null, followCurrent: async () => { calls.push('followCurrent'); }, setMode: async () => calls.push('setMode'),
+    paintSubtitle: () => calls.push('header ' + (S.pin ? 'pinned' : prefs.follow)), $: () => ({}) });
+  const { followProject } = new Function('scope', 'with (scope) { ' + src + '\nreturn { followProject }; }')(scope);
+  const p = followProject('');
+  assert.deepEqual(calls, ['header all'], 'the header says it at once, before anything is fetched');
+  await p;
+  assert.deepEqual([S.cur, S.pin, prefs.follow, calls], [{ proj: 'p', id: 'combat' }, '', 'all', ['header all']], 'everything: the same call, no load');
+  assert.ok(Date.now() - S.switchAt < 1000, 'and the hold starts, so it does not move at once either');
+  calls.length = 0; await followProject('/w/ms');
+  assert.deepEqual([prefs.follow, S.autoPin, calls], ['g:/w/ms', { proj: '_codex', id: 'busy' }, ['header g:/w/ms', 'board', 'followCurrent']]);
+});
+test('follow mode: an automatic switch waits out the hold when this call merely went quiet, and always says why', async () => {
+  const { followReason } = new Function('L', grab(/function followReason\(r\) \{[\s\S]*?\n\}/) + '\nreturn { followReason };')((fr, en) => en);
+  assert.equal(followReason({ follow: 'all', why: 'needs', to: 'gladiator-game' }), 'Following everything: gladiator-game needs you');
+  assert.equal(followReason({ follow: 'all', why: 'quiet', to: 'MarketSimulator', from: 'Combat simulation realism gaps' }), 'Following everything: MarketSimulator is busy, Combat simulation realism gaps went quiet');
+  assert.equal(followReason({ follow: 'g:/w/gl', followed: 'gladiator-game', why: 'busy', toTitle: 'Respond to greeting' }), 'Following gladiator-game: Respond to greeting is the most active');
+  assert.equal(followReason({ follow: 'all', why: 'pin' }), 'Following everything: the pinned call ended');
+  const notes = [], loads = [], S = { cur: { proj: 'p', id: 'combat' }, title: 'gladiator-game, Combat simulation realism gaps', pin: '', autoPin: null, switchAt: Date.now(), events: [], userPaused: true }, prefs = { follow: 'all' };
+  const src = [grab(/function followReason\(r\) \{[\s\S]*?\n\}/), grab(/async function followCurrent\(\) \{[\s\S]*?\n\}/)].join('\n');
+  const scope = pageScope({ S, prefs, Q: new URLSearchParams(''), FOLLOW_HOLD: 20000, L: (fr, en) => en, fetch: async () => ({ json: async () => ({ proj: '_codex', id: 'busy' }) }),
+    loadSession: async (proj, id) => { loads.push(id); S.cur = { proj, id }; S.group = { key: '/w/ms', name: 'MarketSimulator' }; S.title = 'MarketSimulator, Build Act 2 environments'; return true; }, noteSwitch: (t) => notes.push(t), $: () => ({ classList: { add() {}, remove() {} } }) });
+  const { followCurrent } = new Function('scope', 'with (scope) { ' + src + '\nreturn { followCurrent }; }')(scope);
+  assert.equal(await followCurrent(), false); assert.deepEqual(loads, [], 'within the hold: it stays');
+  S.switchAt = Date.now() - 25000; assert.equal(await followCurrent(), true);
+  assert.deepEqual([loads, notes], [['busy'], ['Following everything: MarketSimulator is busy, Combat simulation realism gaps went quiet']]);
+});

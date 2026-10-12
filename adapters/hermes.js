@@ -46,7 +46,8 @@ const dbOf = (proj) => { const p = profileOf(proj); return p ? open(p.db) : null
 const COLS = 'id, source, title, started_at, ended_at, end_reason, last_activity_at, model, parent_session_id, display_name, cwd, message_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, chat_id, thread_id';
 const COLS0 = COLS.replace('last_activity_at', 'null as last_activity_at').replace('display_name', 'null as display_name').replace('chat_id, thread_id', 'null as chat_id, null as thread_id');
 // The project a Hermes session belongs to: the Discord thread it runs in (profile + thread), the repo of its folder for command-line runs, or the profile.
-const groupOf = (p, s) => (s.thread_id || s.chat_id ? project.hermesGroup(p.name, s.thread_id || s.chat_id, s.title || (s.display_name ? String(s.display_name).split(' / ').pop() : '')) : s.cwd ? project.groupOf(s.cwd) : project.hermesGroup(p.name));   // the thread, named by the conversation's title
+const undot = (t) => (t ? String(t).replace(/\s*·\s*/g, ', ') : t);   // Hermes names a cron run "task · Oct 12 08:42": no middle dot on screen
+const groupOf = (p, s) => (s.thread_id || s.chat_id ? project.hermesGroup(p.name, s.thread_id || s.chat_id, undot(s.title) || (s.display_name ? String(s.display_name).split(' / ').pop() : '')) : s.cwd ? project.groupOf(s.cwd) : project.hermesGroup(p.name));   // the thread, named by the conversation's title
 const NOT_KIDS = "source not in ('subagent', 'healthcheck')";
 const recent = (db, since, limit) => tryq(db, [
   `select ${COLS} from sessions where hidden=0 and ${NOT_KIDS} and coalesce(last_activity_at, started_at) > ? order by coalesce(last_activity_at, started_at) desc limit ?`,
@@ -65,8 +66,8 @@ function cleanUser(t) {   // exported for the tests
     .replace(/<@[!&]?\d+>\s*/g, '').trim();   // Discord mentions (<@291975306871439360>) are routing, not words
 }
 function titleOf(db, s) {
-  if (s.title) return s.title;
-  if (s.parent_session_id && s.source !== 'subagent') { try { const p = one(db, s.parent_session_id); if (p && p.title) return p.title; } catch {} }   // a continuation after compaction keeps the conversation's title
+  if (s.title) return undot(s.title);
+  if (s.parent_session_id && s.source !== 'subagent') { try { const p = one(db, s.parent_session_id); if (p && p.title) return undot(p.title); } catch {} }   // a continuation after compaction keeps the conversation's title
   let rows = []; try { rows = q(db, "select content from messages where session_id=? and role='user' order by id limit 3", s.id); } catch {}
   for (const r of rows) { const t = cleanUser(r.content); if (t && !/^\[CONTEXT COMPACTION/.test(t) && !peers.incoming(t)) return t.replace(/\s+/g, ' ').slice(0, 90); }
   return s.id;

@@ -255,3 +255,11 @@ test("hermes: a session's model and the reasoning effort its config records", ()
   assert.deepEqual([main.model, main.effort], ['openai/gpt-6-luna', 'medium']);
   const row = hermes.board().find((r) => r.id === '20261012_070000_aaaabbbb'); assert.deepEqual([row.model, row.effort], ['openai/gpt-6-luna', 'medium']);
 });
+
+test('hermes: a cron run named "task · Oct 12 08:42" shows without the middle dot; a peer named by its inbox address is not shown as the address', () => {
+  const { DatabaseSync } = require('node:sqlite'), db = new DatabaseSync(path.join(tmp, 'hermes', 'profiles', 'gaming', 'state.db')), now = Date.now() / 1000;
+  db.prepare('insert into sessions (id, source, title, started_at, last_activity_at, model) values (?,?,?,?,?,?)').run('cron_f8403df27592_20261012_084203', 'cron', 'agent-standup fork supervisor · Oct 12 08:42', now - 60, now - 4, 'openai/gpt-6-luna');
+  db.close();
+  const row = hermes.board().find((r) => r.id === 'cron_f8403df27592_20261012_084203'); assert.equal(row.title, 'agent-standup fork supervisor, Oct 12 08:42');
+  assert.equal(peers.peerAgent('uds:/run/user/1000/cc-socks/hermes-500ca2206db14c889c88fe388b08a64c.sock', 'uds:/run/user/1000/cc-socks/hermes-500ca2206db14c889c88fe388b08a64c.sock').name, 'hermes-500ca2206db14c889c88fe388b08a64c');   // a send that names its peer by the address: never the address on the tile
+});
