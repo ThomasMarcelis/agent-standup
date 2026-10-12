@@ -163,7 +163,7 @@ test('rail: one vocabulary for calls and agents, "N agents" only past one', () =
   assert.equal(rail.callStatus({ state: 'turn', mtime: now - 120e3 }), 'Finished, 2 min');
   assert.equal(rail.agentStatus('a1', { k: 'working' }), 'Reading spec.md');
   assert.equal(rail.agentStatus('a2', { k: 'stalled', on: ['b1'] }), 'Waiting on b1, no news');
-  assert.equal(rail.agentStatus('main', { k: 'done' }), 'Finished'); assert.equal(rail.agentStatus('a3', { k: 'done' }), 'Done');
+  assert.equal(rail.agentStatus('main', { k: 'done' }), 'Finished'); assert.equal(rail.agentStatus('a3', { k: 'done' }), 'Finished');   // one word for finished, lead or sub-agent
 });
 test('a session that ended its turn is finished, then idle after 5 minutes, never "needs you"; "needs you" is a real ask', () => {
   const now = Date.now(), { isQuiet, BSTATE } = new Function('L', grab(/const isQuiet = [^\n]*/) + '\n' + grab(/const BSTATE = [^\n]*/) + '\nreturn { isQuiet, BSTATE };')((fr, en) => en);

@@ -67,6 +67,8 @@ test("a call is the project's: a Claude lead, a Codex thread and a Hermes sessio
   assert.deepEqual(tl.agents.map((a) => [a.id, a.lead || false, (a.team || {}).source || '']), [['main', false, 'claude'], ['a1', false, 'claude'], ['p_claude_x', false, ''], ['p_old', false, ''], [X + 'main', true, 'codex'], [X + 'w1', false, 'codex'], [H + 'main', true, 'hermes']], 'every session under its own lead; the other project stays a guest');
   assert.deepEqual(tl.agents.filter((a) => a.type === 'peer').map((a) => [a.id, !!a.kin]), [['p_claude_x', false], ['p_old', true]], 'a past session of this project is kin, never a guest');
   assert.deepEqual(mergeCall(codex, [{ ...claude, tl: { ...claude.tl, agents: [{ id: 'main', role: 'Lead', type: 'main' }] } }]).agents.find((a) => a.lead).name, 'Claude', 'a lead with no name of its own is named by its harness');
+  const withTom = mergeCall(codex, [{ ...hermes, tl: { ...hermes.tl, events: [{ ts: 12, agent: 'user', kind: 'user', text: 'Please fix the release.' }, { ts: 13, agent: 'main', kind: 'msg', to: 'user', text: 'On it.' }] } }]);
+  assert.deepEqual(withTom.events.filter((e) => e.sess === 'h1').map((e) => [e.agent, e.to || '']), [['user', ''], ['sh1__main', 'user']], "Tom is one person in every session of the call (Astra P1: a prefixed user had no persona)");
   assert.ok(!tl.agents.some((a) => a.id === 'p_hermes_h1' || a.id === 'p_claude_c1'), 'a session of the call is not a guest of it');
   const msgs = tl.events.filter((e) => e.kind === 'msg').map((e) => [e.msgId, e.agent, e.to]);
   assert.deepEqual(msgs, [['m1', 'main', H + 'main'], [ 'm3', X + 'main', 'main'], ['m2', 'p_claude_x', 'main']], 'one message from two logs is kept once, between the leads; in time order');

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Agent Standup from a terminal: the live call in your browser, and one-line status for status bars (Claude Code, tmux, Neovim…).
 //   agent-standup [serve] [--port 4747] [--open]   start the local server and (optionally) open the page
-//   agent-standup status [--here] [--json]          counts of working / needs you / your turn
+//   agent-standup status [--here] [--json]          counts of needs you / working / finished, across Claude Code, Codex and Hermes
 //   agent-standup statusline                        same, one short line; reads Claude Code's statusLine JSON on stdin
-// Everything reads the local session files Claude Code already writes. Nothing is sent anywhere unless you turn on the optional French translation or jokes (they use your own Claude login or ANTHROPIC_API_KEY).
+// Everything reads the session files Claude Code, Codex and Hermes already write. While the page is unmuted, the lines to be spoken go to the local codex-lb (to choose them)
+// and the chosen ones to ElevenLabs (the Hermes key); nothing else leaves the machine.
 const path = require('path'), { spawn } = require('child_process');
 const pkg = require('../package.json');
 const argv = process.argv.slice(2), flags = {}, rest = [];
@@ -14,7 +15,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '-h' || a === '--help') flags.help = true; else if (a === '-v' || a === '--version') flags.version = true; else rest.push(a);
 }
 const cmd = rest[0] || 'serve';
-const HELP = `Agent Standup ${pkg.version} — your Claude Code agents as a live video call
+const HELP = `Agent Standup ${pkg.version}: your Claude Code, Codex and Hermes agents as one live call per project
 
 Usage
   agent-standup [serve] [--port 4747] [--open]   start the local server (http://localhost:4747)
@@ -26,7 +27,7 @@ Options
   --open            open the page in your browser
   --projects DIR    where the session files are (default ~/.claude/projects, or $CLAUDE_CONFIG_DIR/projects)
   --characters DIR  folder with your own pixel-art characters (default ~/.agent-standup/characters)
-  --here            status: only sessions of the current folder (matched on its real path, as Claude Code names it)
+  --here            status: only this folder's project (its git root), Claude Code, Codex and Hermes alike
   --json            status: machine-readable output (add --titles to include session titles)
 `;
 if (flags.help || cmd === 'help') { process.stdout.write(HELP); process.exit(0); }
@@ -42,15 +43,15 @@ const server = require('../server.js');
 const projKey = (dir) => String(dir || '').replace(/[^a-zA-Z0-9]/g, '-');   // Claude Code's project folder naming
 
 function snapshot(dir) {
-  const now = Date.now(), all = server.boardRows(), rows = dir ? all.filter((r) => r.proj === projKey(dir)) : all;
+  const now = Date.now(), all = server.boardRows(), root = dir ? require('../adapters/project.js').repoOf(dir) : '', rows = dir ? all.filter((r) => r.proj === projKey(dir) || (root && r.group && r.group.key === root)) : all;   // --here: this folder's project, every runtime
   const act = rows.filter((r) => r.state !== 'idle' || now - r.mtime < 15 * 60e3), n = (st) => act.filter((r) => r.state === st).length;
-  return { rows: act, needsYou: n('blocked'), working: n('working') + n('waiting'), yourTurn: n('turn'), idle: rows.length - act.length };
+  return { rows: act, needsYou: n('blocked'), working: n('working') + n('waiting'), finished: n('turn') + n('done'), idle: rows.length - act.length };
 }
-const line = (s, short) => { const p = []; if (s.needsYou) p.push(short ? `✋${s.needsYou}` : `✋ ${s.needsYou} needs you`); if (s.working) p.push(short ? `⚙${s.working}` : `⚙ ${s.working} working`); if (!s.needsYou && !s.working && s.yourTurn) p.push(short ? '✓' : '✓ your turn'); return p.join(short ? ' ' : ', ') || (short ? '' : 'idle'); };
+const line = (s, short) => { const p = []; if (s.needsYou) p.push(short ? `✋${s.needsYou}` : `✋ ${s.needsYou} needs you`); if (s.working) p.push(short ? `⚙${s.working}` : `⚙ ${s.working} working`); if (!s.needsYou && !s.working && s.finished) p.push(short ? '✓' : `✓ ${s.finished} finished`); return p.join(short ? ' ' : ', ') || (short ? '' : 'idle'); };   // the app's words: needs you, working, finished, idle
 
 if (cmd === 'status') {
   const s = snapshot(flags.here ? process.cwd() : '');
-  if (flags.json) console.log(JSON.stringify({ needsYou: s.needsYou, working: s.working, yourTurn: s.yourTurn, idle: s.idle, sessions: s.rows.map((r) => ({ project: r.proj, id: r.id, state: r.state, tool: r.tool, ageMs: Math.round(r.ageMs), subAgentsActive: r.subActive, subAgents: r.subTotal, ...(flags.titles ? { title: r.title } : {}) })) }, null, 2));
+  if (flags.json) console.log(JSON.stringify({ needsYou: s.needsYou, working: s.working, finished: s.finished, idle: s.idle, sessions: s.rows.map((r) => ({ project: r.proj, id: r.id, state: r.state, tool: r.tool, ageMs: Math.round(r.ageMs), subAgentsActive: r.subActive, subAgents: r.subTotal, ...(flags.titles ? { title: r.title } : {}) })) }, null, 2));
   else console.log(line(s, false));
 } else if (cmd === 'statusline') {
   let raw = ''; const go = () => { let dir = ''; try { const j = JSON.parse(raw); dir = (j.workspace && j.workspace.current_dir) || j.cwd || ''; } catch {} console.log(line(snapshot(dir), true)); process.exit(0); };

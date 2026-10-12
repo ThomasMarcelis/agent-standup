@@ -8,7 +8,7 @@
   "config.port.description": "Lokal port for Agent Standup-serveren. 0 (standard) vælger automatisk en ledig port for hvert VS Code-vindue.",
   "config.autoOpen.description": "Åbn live-opkaldet automatisk, når VS Code starter.",
   "config.onlyThisWorkspace.description": "Følg kun Claude Code-sessioner, der er startet i den aktuelle arbejdsmappe.",
-  "config.statusBar.description": "Vis live-tal i statuslinjen (agenter der arbejder, har brug for dig, din tur) for dette arbejdsområde; elementet bliver rødt, når en agent måske venter på dig.",
+  "config.statusBar.description": "Vis live-tal i statuslinjen (agenter der arbejder, har brug for dig, færdig) for dette arbejdsområde; elementet bliver rødt, når en agent måske venter på dig.",
   "config.shareUsage.description": "Hjælp projektet med at tælle aktive installationer: én gang om dagen sendes én tom forespørgsel til en 1-pixel-fil på GitHub (ingen identifikator, intet indhold; GitHub ser din IP som ved enhver download). Fra som standard; ignoreres, hvis VS Code-telemetri er slået fra.",
   "config.claudePath.description": "Fuld sti til Claude Code-programmet, hvis det ikke findes automatisk (bruges til fransk oversættelse).",
   "config.charactersPath.description": "Mappe med dine egne figurbilleder (PNG, GIF eller WebP, op til 300 KB hver). Tom bruger ~/.agent-standup/characters. lead.png er lederen, you.png er dig, alle andre billeder er underagenter, navn-talk.png er en valgfri ramme med åben mund."

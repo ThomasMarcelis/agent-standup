@@ -237,7 +237,7 @@ test('switches: loading another session (every switch path) lets the line being 
   const src = [grab(/const voiceBusy = [^\n]*/), grab(/const VLOG = [^\n]*/), grab(/function vlog\(what\) \{[^\n]*\}/), grab(/function stopVoice\(reason\) \{[^\n]*\}/), grab(/async function finishLine\(cap = 20000\) \{[\s\S]*?\n\}/), grab(/function pause\(reason = 'pause'\) \{[^\n]*\}/), grab(/async function loadSession\(proj, id\) \{[\s\S]*?\n\}/)].join('\n');
   const cuts = [], live = new Set([{}]), S = { playing: true, speakers: new Set(), loadN: 0, token: 1, cur: { proj: 'a', id: '1' }, agents: {}, events: [] };
   const AUD = { live, stopAll() { if (live.size) cuts.push('stopped while playing'); live.clear(); } };
-  const scope = pageScope({ S, AUD, Q: new URLSearchParams(''), window: {}, synth: { speaking: false, cancel() {} }, sleep, fetch: async () => ({ json: async () => ({ agents: [], events: [{ ts: 1, kind: 'say', agent: 'main', text: 'x' }], rev: 1, group: null }) }), nameBook: {} });
+  const scope = pageScope({ S, AUD, Q: new URLSearchParams(''), window: {}, synth: { speaking: false, cancel() {} }, sleep, fetch: async () => ({ json: async () => ({ agents: [], events: [{ ts: 1, kind: 'say', agent: 'main', text: 'x' }], rev: 1, group: null }) }), });
   const page = new Function('scope', 'with (scope) { ' + src + '\nreturn { loadSession, pause, finishLine, VLOG: window.__voiceLog }; }')(scope);
   setTimeout(() => live.clear(), 300);   // the line ends 300 ms from now
   const t0 = Date.now(); assert.equal(await page.loadSession('b', '2'), true);
@@ -391,23 +391,27 @@ test('sound: no setup: a Hermes key makes ElevenLabs the voice whatever was save
 // ---- more chatter (Tom: "I just expected a bit more chatter"; he wants it narrated 24/7, thinned only when there is too much): real content, never invented banter
 function beatEnv(over = {}) {
   const src = [grab(/\nconst base = [^\n]*/), grab(/function cmdLabel\(text\) \{[\s\S]*?\n\}/), grab(/function cmdVerb\(cmd\) \{[\s\S]*?\n\}/), grab(/function plainAct\(tool, arg\) \{[\s\S]*?\n\}/), grab(/const projWord = [^\n]*/),
-    grab(/function party\(p\) \{[\s\S]*?\n\}/), grab(/const TRIAGE_WAIT = [\s\S]*?\/\/ ---- end triage policy/), grab(/function whoDoes\(id\) \{[\s\S]*?\n\}/), grab(/const DULL = [^\n]*/), grab(/const dullAct = [^\n]*/), grab(/const verbAct = [^\n]*/), grab(/const ing = [^\n]*/),
-    grab(/function commitOf\(t\) \{[\s\S]*?\n\}/), grab(/function testsOf\(out\) \{[\s\S]*?\n\}/), grab(/function beatOf\(e\) \{[\s\S]*?\n\}/), grab(/const STATUS_MS = [^\n]*/), grab(/function statusLine\(rows, now = Date\.now\(\)\) \{[\s\S]*?\n\}/),
+    grab(/function party\(p\) \{[\s\S]*?\n\}/), grab(/const TRIAGE_WAIT = [\s\S]*?\/\/ ---- end triage policy/), grab(/function whoDoes\(id\) \{[\s\S]*?\n\}/), grab(/const shirtRole = [^\n]*/), grab(/const DULL = [^\n]*/), grab(/const dullAct = [^\n]*/), grab(/const verbAct = [^\n]*/), grab(/const ing = [^\n]*/),
+    grab(/function commitOf\(t\) \{[\s\S]*?\n\}/), grab(/function testsOf\(out\) \{[\s\S]*?\n\}/), grab(/function beatOf\(e\) \{[\s\S]*?\n\}/), grab(/const STATUS_MS = [^\n]*/), grab(/function statusItems\(rows, now = Date\.now\(\)\) \{[\s\S]*?\n\}/),
     grab(/function statusNext\(now = Date\.now\(\)\) \{[\s\S]*?\n\}/), grab(/const SPEECH_MAX = [^\n]*/), grab(/function clipSpeech\(t, cap\) \{[\s\S]*?\n\}/)].join('\n');
-  const S = { agents: { main: { id: 'main', name: 'Codex', role: 'Codex, Lead' }, k1: { id: 'k1', name: 'kettle hat', role: 'worker' }, k2: { id: 'k2', name: 'buckler writer', role: 'worker' } }, group: { key: '/w/gladiator-game', name: 'gladiator-game' }, cur: { proj: '_codex', id: 'glad' }, pin: '' };
-  const env = { S, prefs: { follow: 'all' }, D: { quietAt: 0, statusSaid: [], pending: null }, L: (fr, en) => en, speechOf: (e) => e.text || '', speakable: (t) => t, boardMemo: { rows: [] }, boardKey: (r) => r.group.key, niceProj: (p) => p, LIVE_MS: 300000, warmLines: (l) => l, ...over };
-  return new Function('scope', 'with (scope) { ' + src + '\nreturn { beatOf, testsOf, commitOf, triageItems, applyTriage, localPick, statusLine, statusNext, maxLines }; }')(pageScope(env));
+  const S = { agents: { main: { id: 'main', name: 'Codex', role: 'Codex, Lead' }, k1: { id: 'k1', name: 'kettle hat', role: 'worker' }, k2: { id: 'k2', name: 'buckler writer', role: 'worker' }, k3: { id: 'k3', name: 'Build the armour decision page', role: 'general-purpose' } }, group: { key: '/w/gladiator-game', name: 'gladiator-game' }, cur: { proj: '_codex', id: 'glad' }, pin: '', title: 'gladiator-game, Combat simulation realism gaps' };
+  const env = { S, prefs: { follow: 'all' }, D: { quietAt: 0, statusSaid: [], pending: null, ctx: { main: 'The fatigue change landed; rerunning the armour sim to see if knockouts drop.' } }, decide: async (items, max) => ({ items, max }), L: (fr, en) => en, speechOf: (e) => e.text || '', speakable: (t) => t, boardMemo: { rows: [] }, boardKey: (r) => r.group.key, niceProj: (p) => p, LIVE_MS: 300000, warmLines: (l) => l, ...over };
+  return new Function('scope', 'with (scope) { ' + src + '\nreturn { beatOf, testsOf, commitOf, triageItems, applyTriage, localPick, statusItems, statusNext, maxLines, GENERIC }; }')(pageScope(env));
 }
 test('chatter: an event is worth a line in plain words: what an agent is doing, a sub-agent starting or finishing, a commit, a test result', () => {
   const b = beatEnv(), tools = (agent, name, arg) => ({ agent, kind: 'tools', ts: 1, tools: [{ name, arg }] });
-  assert.deepEqual(b.beatOf(tools('main', 'exec_command', 'dotnet test Gladiator.Sim.Tests --filter Combat')), { kind: 'work', act: 'Running tests', text: 'Gladiator lead is running tests', hint: 'dotnet test Gladiator.Sim.Tests --filter Combat' });
-  assert.equal(b.beatOf(tools('k1', 'apply_patch', 'straps.py')).text, 'The kettle hat sub-agent is editing straps.py');
+  assert.deepEqual(b.beatOf(tools('main', 'exec_command', 'dotnet test Gladiator.Sim.Tests --filter Combat')), { kind: 'work', act: 'Running tests', text: 'Gladiator lead is running tests', hint: 'command: dotnet test Gladiator.Sim.Tests --filter Combat | it just said: The fatigue change landed; rerunning the armour sim to see if knockouts drop. | its task: Combat simulation realism gaps' }, 'the content behind it: the command, what it just said, the task');
+  assert.equal(b.beatOf({ agent: 'k1', kind: 'tools', ts: 1, tools: [{ name: 'Bash', arg: 'python3 sim.py --seeds 150', d: { note: 'Measure 150 playthroughs for the difficulty report' } }] }).hint, 'command: python3 sim.py --seeds 150 | its purpose: Measure 150 playthroughs for the difficulty report | its task: kettle hat');
+  assert.equal(b.beatOf(tools('k1', 'apply_patch', 'straps.py')).text, 'The kettle hat is editing straps.py', 'a sub-agent by its role, never "a sub-agent"');
+  assert.equal(b.beatOf(tools('k3', 'apply_patch', 'page.html')).text, 'The Build armour is editing page.html', 'a long task name: its shirt words');
   assert.equal(b.beatOf(tools('main', 'exec_command', 'sed -n 1,80p server.js')), null, 'reading or searching is not news');
   assert.equal(b.beatOf(tools('main', 'followup_task', '')), null, 'a tool with no plain doing is not a line');
   assert.equal(b.beatOf(tools('main', 'exec_command', 'git commit -m "Wounds: pain shifts surrender to real injuries"')).text, 'Gladiator lead committed: Wounds: pain shifts surrender to real injuries');
   assert.equal(b.beatOf(tools('main', 'Bash', "git commit -q -F - <<'EOF'\nOne sound control in words\n\nmore\nEOF")).kind, 'commit');
-  assert.equal(b.beatOf({ agent: 'main', kind: 'order', ts: 1, to: 'k2', title: 'buckler_writer', label: true, text: 'task "buckler_writer" (worker)' }).text, 'Gladiator lead started a sub-agent: buckler writer');
-  assert.equal(b.beatOf({ agent: 'k1', kind: 'finish', ts: 1, to: 'main' }).text, 'The kettle hat sub-agent finished');
+  assert.deepEqual(b.beatOf({ agent: 'main', kind: 'order', ts: 1, to: 'k2', title: 'buckler_writer', label: true, text: 'task "buckler_writer" (worker)' }), { kind: 'order', text: 'Gladiator lead started the buckler writer', hint: '' });
+  assert.deepEqual(b.beatOf({ agent: 'main', kind: 'order', ts: 1, to: 'k3', title: 'armour page', text: 'Build the armour decision page from the 25,920-fight matrix.' }), { kind: 'order', text: 'Build the armour decision page from the 25,920-fight matrix.' }, 'a readable brief is what it was started to do');
+  assert.equal(b.beatOf({ agent: 'k1', kind: 'finish', ts: 1, to: 'main' }), null, 'a finish with nothing it concluded is not a line (its report says it)');
+  assert.equal(beatEnv({ D: { ctx: { k1: 'Kettle hat fits all four heads; the strap is 2 mm short.' } } }).beatOf({ agent: 'k1', kind: 'finish', ts: 1, to: 'main' }).hint, 'it concluded: Kettle hat fits all four heads; the strap is 2 mm short.');
   assert.deepEqual(b.beatOf({ agent: 'main', kind: 'msg', ts: 1, text: 'The armour numbers are in.' }), { kind: 'message', text: 'The armour numbers are in.' }, 'what an agent wrote stays its own words');
   assert.equal(b.beatOf({ agent: 'main', kind: 'results', ts: 1, items: [{ out: 'ℹ tests 78\nℹ pass 78\nℹ fail 0' }] }).text, 'Gladiator lead: all 78 tests pass');
   for (const [out, said] of [['Tests:       2 failed, 76 passed, 78 total', '2 of 78 tests failed'], ['===== 25 passed, 1 warning in 1.20s =====', 'all 25 tests pass'], ['Passed!  - Failed:     0, Passed:   120, Skipped: 0, Total: 120', 'all 120 tests pass'],
@@ -423,18 +427,21 @@ test('chatter: the queue keeps only the newest of what an agent is doing (an old
   const say = (n) => Array.from({ length: n }, (_, i) => ({ ids: [i + 1], line: 'Line ' + (i + 1) + '.' })), mk = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1, kind: 'work', ev: { ts: now }, text: 'x' }));
   assert.equal(b.applyTriage(mk(5), { drop: [], say: say(5) }).length, 4); assert.equal(b.applyTriage(mk(12), { drop: [], say: say(5) }).length, 2);
 });
-test('chatter: after 20 s of quiet while agents work, one status line from the real board, in the scope followed, never the same line twice', () => {
-  const now = Date.now(), row = (name, state, tool, arg, ago, sub = 0) => ({ id: name, proj: '-w-' + name, group: { key: '/w/' + name, name }, state, tool, arg, mtime: now - ago * 1000, subActive: sub });
-  const rows = [row('gladiator-game', 'working', 'exec_command', 'dotnet test', 5, 4), row('MarketSimulator', 'working', 'apply_patch', 'Ledger.cs', 9), row('agent-standup', 'blocked', '', '', 30), row('twin-folder', 'done', '', '', 20), row('old-thing', 'working', 'Bash', 'ls', 900)];
-  const b = beatEnv({ boardMemo: { rows } });
-  assert.equal(b.statusLine(rows, now), 'Agent standup needs you; gladiator is running tests, with 4 sub-agents; MarketSimulator is editing Ledger.cs.');
-  const p = beatEnv({ boardMemo: { rows }, prefs: { follow: 'g:/w/MarketSimulator' } }); assert.equal(p.statusLine(rows, now), 'MarketSimulator is editing Ledger.cs.', 'following a project: that project only');
-  const D = { quietAt: 0, statusSaid: [], pending: null }, s = beatEnv({ boardMemo: { rows }, D });
-  s.statusNext(now); assert.ok(D.pending, 'said'); D.pending = null; s.statusNext(now + 30000); assert.equal(D.pending, null, 'the same state again: nothing new to say');
-  assert.equal(beatEnv().statusLine([row('x', 'done', '', '', 5)], now), '', 'nobody working: silence');
-  assert.equal(beatEnv().statusLine([row('gladiator-game', 'working', 'followup_task', '', 5, 2)], now), 'Gladiator is working, with 2 sub-agents.', 'a bare tool name is not a doing ("is followup task")');
-  const a = beatEnv().statusLine([row('MarketSimulator', 'working', 'Bash', 'npm test', 2), row('gladiator-game', 'working', 'Bash', 'npm test', 9)], now), c = beatEnv().statusLine([row('MarketSimulator', 'working', 'Bash', 'npm test', 9), row('gladiator-game', 'working', 'Bash', 'npm test', 2)], now);
-  assert.equal(a, c, 'the same work in another order is the same line: not said again');
+test('chatter: after 20 s of quiet while agents work, a status line from the busy calls\' real content (titles, commands, workers), in the scope followed, never asked twice for the same state', () => {
+  const now = Date.now(), row = (name, state, tool, arg, ago, sub = 0, title = '') => ({ id: name, proj: '-w-' + name, group: { key: '/w/' + name, name }, state, tool, arg, mtime: now - ago * 1000, subActive: sub, active: sub ? ['fatigue build'] : [], title });
+  const rows = [row('gladiator-game', 'working', 'exec_command', 'python3 sim.py --armour', 5, 4, 'Combat simulation realism gaps'), row('MarketSimulator', 'working', 'apply_patch', 'Ledger.cs', 9, 0, 'Review the news gate'), row('agent-standup', 'blocked', '', '', 30, 0, 'Polish the call'), row('twin-folder', 'done', '', '', 20), row('old-thing', 'working', 'Bash', 'ls', 900)];
+  const b = beatEnv({ boardMemo: { rows } }), items = b.statusItems(rows, now);
+  assert.deepEqual(items.map((it) => [it.kind, it.text, it.hint]), [['status', 'agent standup: Polish the call', ''], ['status', 'gladiator: Combat simulation realism gaps', 'now: exec_command python3 sim.py --armour | 4 sub-agents working: fatigue build'], ['status', 'MarketSimulator: Review the news gate', 'now: apply_patch Ledger.cs']], 'who needs Tom first, then in a steady order; finished and stale calls are out');
+  assert.deepEqual(beatEnv({ boardMemo: { rows }, prefs: { follow: 'g:/w/MarketSimulator' } }).statusItems(rows, now).map((it) => it.text), ['MarketSimulator: Review the news gate'], 'following a project: that project only');
+  const D = { quietAt: 0, statusSaid: [], pending: null }, s = beatEnv({ boardMemo: { rows }, D }); s.statusNext(now); assert.ok(D.pending, 'asked'); D.pending = null; s.statusNext(now + 30000); assert.equal(D.pending, null, 'the same state again: nothing new to say');
+  assert.deepEqual(beatEnv().statusItems([row('x', 'done', '', '', 5)], now), [], 'nobody working: silence');
+});
+test("chatter: a generic line is never said (Tom: 'running a script, executing a command tells me nothing'); without the model, work and status are not said at all", () => {
+  const b = beatEnv(), now = 1.79e12, it = (id, kind) => ({ id, kind, ev: { ts: now }, text: 'Gladiator lead is running a script' });
+  for (const g of ['Gladiator lead is running a script.', 'The fatigue build sub-agent is executing a command.', 'Codex is editing files.', 'Gladiator is working, with 2 sub-agents.', 'MarketSimulator is busy.', 'Hermes is using a tool.', 'Claude is searching files.', 'A subagent is running a script.', 'A sub-agent is reporting back.', 'The armour builder is reporting back.', 'An agent finished.', 'The fatigue sim finished.']) assert.ok(b.GENERIC.test(g), g);   // Tom, twice: content, never these
+  for (const ok of ['Gladiator lead is rerunning the armour sim after the fatigue change.', 'Fatigue build is measuring 150 playthroughs for the difficulty report.', 'All 78 tests pass.', 'To gladiator Hermes: the armour numbers are in.', 'The armour builder found plate cuts bleed 40 percent less; the decision page is ready.', 'The fatigue sim finished: knockouts fell from 113 to 0.']) assert.ok(!b.GENERIC.test(ok), ok);
+  assert.deepEqual(b.applyTriage([it(1, 'work'), it(2, 'work')], { drop: [], say: [{ ids: [1], line: 'Gladiator lead is running a script.' }, { ids: [2], line: 'Gladiator lead is rerunning the armour sim after the fatigue change.' }] }).map((o) => o.line), ['Gladiator lead is rerunning the armour sim after the fatigue change.']);
+  assert.deepEqual(b.localPick([it(1, 'work'), it(2, 'status'), { ...it(3, 'report'), text: 'Report: the armour library is committed.' }]).map((o) => o.items[0].id), [3], 'the fallback says what agents wrote, never a made-up work line');
 });
 test('chatter: Luna is told to say almost everything, how many lines it may use, and the command behind a work beat for the wording only', () => {
   const t = srv.triageInput({ items: [{ id: 1, age: 2, kind: 'work', project: 'gladiator-game', lead: true, role: 'Codex, Lead', text: 'Gladiator lead is running tests', hint: 'dotnet test --filter Combat' }], said: [], viewing: 'gladiator-game', max: 4 });
@@ -456,4 +463,13 @@ test('screens: up to 4 at once, picked by real activity, each keeping its place;
   delete S.run.main; assert.deepEqual(f.screenPicks(now, 2), ['a', 'c'], 'a narrow centre has room for two');
   assert.deepEqual([1, 2, 3, 4].map((n) => f.screenGrid(n, 900).cols), [1, 2, 2, 2]); assert.deepEqual([f.screenGrid(2, 600).cols, f.screenGrid(0, 600).max, f.screenGrid(0, 900).max], [1, 2, 4], '2 stacked when narrow; 2 or 4 by width');
   assert.deepEqual(['main', 'a', 'se7a982__main', 'se7a982__r'].map(f.screenWho), ['Gladiator lead', 'Fatigue build, sub-agent of gladiator lead', 'Gladiator Claude', 'Research the 2D fight view, sub-agent of gladiator Claude']);
+});
+
+test('director: a work beat never takes a needs-you or a message down with it; the fallback drops a generic message (Astra P1s)', () => {
+  const b = beatEnv(), now = Date.now(), freshIn = new Function('keepOf', grab(/const freshIn = [^\n]*/) + '\nreturn freshIn;')(new Function(grab(/const TRIAGE_WAIT = [^\n]*/) + '\n' + grab(/const keepOf = [^\n]*/) + '\nreturn keepOf;')());
+  const it = (kind, ago) => ({ kind, ev: { ts: now - ago * 1000 } });
+  assert.equal(freshIn({ items: [it('needs_you', 1), it('work', 19)] }, 1200), true, 'a 1 s old approval merged with 19 s old work: still said');
+  assert.equal(freshIn({ items: [it('work', 19)] }, 1200), false, 'work alone is news for 20 s');
+  assert.equal(freshIn({ items: [it('message', 50), it('work', 1)] }, 0), false, 'the content itself out of date: stale');
+  assert.deepEqual(b.localPick([{ id: 1, kind: 'message', ev: { ts: now }, text: 'The lead is running a script.' }, { id: 2, kind: 'report', ev: { ts: now }, text: 'The armour page is ready.' }]).map((o) => o.items[0].id), [2]);
 });

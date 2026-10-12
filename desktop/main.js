@@ -29,7 +29,7 @@ function refreshTray() {
   if (!tray) return; let c; try { c = counts(); } catch { return; }
   const text = [c.needs ? `✋${c.needs}` : '', c.working ? `⚙${c.working}` : '', !c.needs && !c.working && c.turn ? '✓' : ''].filter(Boolean).join(' ');
   if (process.platform === 'darwin') tray.setTitle(text ? ' ' + text : '');
-  tray.setToolTip('Agent Standup' + (text ? ' — ' + [c.needs && `${c.needs} may need you`, c.working && `${c.working} working`, !c.needs && !c.working && c.turn && 'your turn'].filter(Boolean).join(', ') : ''));
+  tray.setToolTip('Agent Standup' + (text ? ' — ' + [c.needs && `${c.needs} may need you`, c.working && `${c.working} working`, !c.needs && !c.working && c.turn && `${c.turn} finished`].filter(Boolean).join(', ') : ''));
   if (c.needs > lastNeeds && !(win && win.isFocused()) && Notification.isSupported()) new Notification({ title: 'Agent Standup', body: 'An agent may be waiting for you ✋' }).show();
   lastNeeds = c.needs;
 }

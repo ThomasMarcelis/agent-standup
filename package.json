@@ -136,6 +136,6 @@
   },
   "l10n": "./l10n",
   "bin": {
-    "agent-standup": "server.js"
+    "agent-standup": "bin/agent-standup.js"
   }
 }

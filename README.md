@@ -6,33 +6,70 @@ This is Tom's personal fork of [Atoll92/agent-standup](https://github.com/Atoll9
 
 ## Run it
 
-```sh
-cd ~/workspace/agent-standup && node server.js
-```
-
-Or install the command once (it links this clone, so `git pull` updates it):
+Install the command once (it links this clone, so `git pull` updates it), then run it from any folder:
 
 ```sh
 cd ~/workspace/agent-standup && npm link
-agent-standup
+agent-standup                 # the server on http://localhost:4747
+agent-standup --port 4790     # another port (or PORT=4790)
+agent-standup status          # ✋ needs you, ⚙ working, ✓ finished, across all three runtimes
 ```
 
-Then open <http://localhost:4747>. `PORT=4790 node server.js` picks another port. Node 22.5+ (Hermes is read with the built-in `node:sqlite`); there is nothing to install.
+`node server.js` in the clone does the same as `agent-standup`. Node 22.5+ (Hermes is read with the built-in `node:sqlite`); there is nothing to install. There is no setup for the voice either: when a Hermes ElevenLabs key exists, it is used.
 
 ## What it shows
 
-- **Sessions board** (the default view): every recent session across the three runtimes, one card each, the top line says *Nobody needs you* or *N need you*, then cards ranked needs you → working → finished → idle. Cards are grouped by **project**: the git root of the session's folder (a worktree counts as its parent repo), or for Hermes the profile plus the Discord thread. One colour per project, one-off and non-repo runs last under *Other*. Each card shows the session's functional name, one status dot with plain words (what it is doing now), active sub-agents and *Talks to …* (the last 10 minutes). No raw commands or ids. Click a card to open its call.
-- **Call**: one session as a team call. The header names the project in its colour. Every agent wears its project's colour as a tee: the project's name across the chest with the agent's role under it (lead, its task or path leaf), a badge with its initials, sleeve stripes; a peer from another project wears its own); your shirt says `Tom` with a gold collar and a star (`OWNER` in `public/index.html`). Each tile says what the agent is doing right now; the shared screen shows the real command and output, the file read or the diff applied. Only the session's own team has desks; an agent of another session in a current exchange (a message either way in the last 10 minutes) is a chip on the *On the line* strip, in its project's colour, with its message count, lit up when its message plays; click it to open its session. Every message is in the transcript with its delivery state (📨 taken by the inbox, ✋ held, ✗ refused, 📥 received).
-- **Project switcher** (click the project name in the call header): *Everything* or one project, each with its live counts (calls, agents working, needs you). *Everything* (the default) goes to a call that needs you, else the most active one, with a 20 s hold; a project stays in that project. A short toast says why it switched.
-- **Calls rail** (left of the call): only what is live (working or active in the last 5 minutes, needing you, or the call you are in). *Needs you* on top, then calls by project, each row its full title and a plain status (*Working: running tests*, *Waiting on …*, *Finished*, *Idle 10 min*); the rest folds into one *+N quiet*. Click a call to join and pin it; *📌 unpin* on the pinned row.
-- **Shared screen**: the centre of the call shows what an agent is doing (command and output, the page or image, the diff). A call opened in a quiet moment shows its last screen, dimmed, with the time it was shared.
-- **Tree** (T): the lead and its sub-agents at every depth, with status, tool counts and current action. Sub-agents always sit under their root.
-- **Agent detail** (click a tile or a tree row): the task it was given, its tools, recent activity, its messages, and *Open this session* for a peer that lives elsewhere on this machine.
-- **Transcript** (L), **replay and recap** (R), **Ctrl/Cmd+K** to jump to any session, **J/K** for the next agent that needs you, **?** for all shortcuts.
+- **Sessions board**: every recent session, grouped by project, one card each, ranked needs you, working, finished, idle. The top line says *Nobody needs you* or *N need you*.
+- **One call per project**: every live session placed in a project joins that project's call, whatever its runtime, with all its sub-agents, each session's agents under their own lead.
+  - Claude Code and Codex sessions are placed by their repository: the git root of their folder, a worktree counting as its parent repo.
+  - A Hermes thread with no folder is placed by the sessions it messages and the repositories its tools work in.
+  - *On the line* is only for sessions of other projects that messaged in during the last 10 minutes.
+- **The call's screen**:
+  - **Centre**: up to four shared screens at once (one fills the view, two side by side, three or four in a 2×2). They are the agents with real activity now: a command running, or their last event within 20 s. Each is labelled with who shares it ("Fatigue build, sub-agent of gladiator lead") and its model. With nothing active, the last screen stays up, dimmed.
+  - **Side panel**: the project's workers as a graph. Each worker is a dot sized by its tokens and coloured by its state. Lines link a sub-agent to whoever started it, and message lines get thicker the more two workers talk; a dot runs along one when a message is sent. Other projects' guests sit at the rim. Hover a dot for its model; click it to open its detail.
+  - **Bottom**: the team as a compact bar of tiles. Each tile has its project's shirt with its role, its model and its status dot, and the speaker is highlighted.
+  - The **transcript** is closed by default, behind the *Transcript ▸* tab, ☰ or L.
+- **Header**:
+  - The project switcher always says what the call follows: *Following everything*, *Following gladiator-game* or *Pinned: <call>*. *Everything* moves only when someone needs you, or when the call goes quiet while another is busy (after a 20 s hold). Every automatic switch says why, in a toast and a line in the transcript.
+  - The sound control, below.
+- **Calls rail** (left): only what is live, *Needs you* on top, then the calls by project; every session of the call on screen is marked. Each row has a dot and a plain word: *Running tests*, *Needs you: …*, *Waiting on …*, *Finished*, *Idle 10 min*. Click a call to pin it, and use *📌 unpin* to follow again.
+- **Tree** (T), **agent detail** (click a tile, a dot or a screen), **replay and recap** (R), **Ctrl/Cmd+K** to jump to any session, **J/K** for the next agent that needs you, **?** for all shortcuts.
 
-**Names are functional**: a Codex root is named by its thread name (or its first prompt without the model/effort boilerplate), a Codex sub-agent by its `agent_path` leaf ("escape stair") with its kind (worker, explorer) as the role, a Claude sub-agent by the task it was given, a Hermes delegate by its goal. Its full path and Codex's invented nickname only appear in the detail header.
+**Names are functional**:
+- Codex: a root by its thread name or first prompt; a sub-agent by its `agent_path` leaf.
+- Claude: a sub-agent by its task.
+- Hermes: a delegate by its goal.
+- Every tile, row and card says the model it runs on.
+- A sub-agent stays in the call until 10 minutes after its own last event, and comes back whenever it acts again.
 
-**Sound and voice**: a sound plays only when an agent newly needs you. In a live call the picture stays current and a *voice director* decides what you hear: the lines waiting to be heard go in one batch to a small model (`gpt-6-luna` through the local codex-lb proxy, reasoning effort pinned, `AGENT_STANDUP_LUNA_EFFORT`), with what was already said and the session on screen; it drops what is not worth saying and writes at most two short neutral sentences, merging related lines. Rules it cannot break: a line that needs you is never dropped, nothing older than 45 s (2 min for reports and needs-you) is sent or said, one voice at a time, never cut mid-sentence; on an error or after 20 s a local pick (needs-you, then reports, then messages, whole sentences) is used. Replays read each line, a long one as a one-sentence summary. ElevenLabs reads only the chosen lines. Messages between agents start with a short spoken route ("Gladiator lead, from Codex"); everything else is content only. There is no verbosity setting: it narrates everything it can keep up with. Switching calls lets the line being said finish; only pause, mute, seek or a language change stops it. With ElevenLabs a line that fails (busy after one retry, quota, no key) is skipped and marked *not read aloud*, never said in a system voice, and the voice button says why. The first click or key anywhere turns sound on (browsers block it until then). `?debug=voice` logs every start and stop with its reason. Mute with M.
+## Sound and voice
+
+**One sound control** in the header, always in words:
+
+| State | Means |
+|---|---|
+| 🔊 *Sound on* | lit; level bars while a line plays |
+| 🔇 *Muted* | M to unmute; the mute is remembered |
+| ⚠ *Click anywhere for sound* | the browser holds sound back until a click |
+| ⚠ *ElevenLabs: <why>* | ElevenLabs cannot speak right now |
+| 🔈 *Sound in another window* | click to play it here |
+| 🔇 *Voice off* | only from an older window's saved settings |
+
+A silent state also prefixes the tab's title. One click, or M, goes from any silent state to sound on.
+
+**ElevenLabs is automatic**:
+- The key is `ELEVENLABS_API_KEY` from `$HERMES_HOME/.env` when `HERMES_HOME` is set; otherwise from `~/.hermes/profiles/gaming/.env`, then `~/.hermes/.env`.
+- The model and the lead's voice come from the same folder's `config.yaml` (`tts.elevenlabs`).
+- While a key exists, no other voice ever speaks: a line ElevenLabs cannot make is skipped and marked *not read aloud*.
+
+**What you hear**: a sound plays when an agent newly needs you. In a live call, a voice director chooses the lines:
+- **Batches**: the lines waiting to be said go in batches to a small model (`gpt-6-luna` through the local codex-lb, effort `AGENT_STANDUP_LUNA_EFFORT`, medium by default).
+- **Narration**: it says almost everything, up to 4 short lines a batch while the queue is short, and thins out only under a real backlog.
+- **Sources**: reports and messages, what an agent is doing (from the real command, its purpose, the file and the task it serves), sub-agents starting and finishing, commits and test results. After 20 s of quiet while agents work, one line on what is going on now.
+- **Banned lines**: generic ones such as *running a script* are never said.
+- **Hard rules**: needs-you is never dropped, nothing stale is said (45 s, 2 min for reports), one voice at a time, never cut mid-sentence.
+- **Routes**: messages between agents start with a short spoken route ("Gladiator lead, from Codex").
+- **Debugging**: `?debug=voice` logs every line's start and stop.
 
 ## Where the data comes from
 
@@ -44,17 +81,17 @@ All read-only; nothing is written to any agent store.
 | Codex CLI | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` of the last 7 days (`CODEX_HOME` honoured), thread names from `~/.codex/session_index.jsonl`; native sub-agents are their own rollouts linked by `parent_thread_id`. Encrypted agent-to-agent bodies are never decrypted. |
 | Hermes | `~/.hermes/state.db` and `~/.hermes/profiles/*/state.db`, opened read-only; `delegate_task` children are the sub-agents |
 | agent-peers | Claude `SendMessage` to `uds:` addresses and `<cross-session-message>` arrivals, Codex/Hermes `send_peer` calls and `<peer_message>` arrivals, joined by address and message id |
-| ElevenLabs | key `ELEVENLABS_API_KEY` from the environment or `~/.hermes/profiles/gaming/.env` (`HERMES_HOME` names another profile); model and lead voice from that profile's `config.yaml` (`tts.elevenlabs`). Currently `eleven_v4_turbo`. Server-side only; audio cached on disk per model, voice and text. |
 
-The server listens on `127.0.0.1` only and refuses non-local Host/Origin headers. Nothing leaves the machine except, while unmuted, the lines to be spoken (to codex-lb for the triage, and the chosen ones to ElevenLabs) (and the optional upstream extras: French translation through your `claude` CLI, the FIP radio).
+The server listens on `127.0.0.1` only and refuses non-local Host/Origin headers. Nothing leaves the machine except, while unmuted:
+- the lines to be spoken, to codex-lb, which chooses them;
+- the chosen lines, to ElevenLabs.
 
 ## Checks
 
-Browser QA should run its own server with `AGENT_STANDUP_PREFS=<a scratch file>` so it does not change Tom's settings.
-
+Browser QA should run its own server with `AGENT_STANDUP_PREFS=<a scratch file>` so that it does not change Tom's settings, and a muted page so that it plays nothing aloud.
 
 ```sh
-npm test                  # adapters, peers, project grouping, speech, server
+npm test                  # adapters, peers, project calls, director, sound, graph, server
 npm run i18n              # locale files complete
 npm run check:placement   # every busy session on this machine's board has a project (exit 1 if not)
 ```
@@ -62,12 +99,12 @@ npm run check:placement   # every busy session on this machine's board has a pro
 ## Known limits
 
 - "Needs you" is a heuristic: no runtime records permission prompts.
-- Codex messages sent before the agent-peers `msg_id` change is installed pair with the other end by address, time and text only.
-- A Claude session that exited resolves by name only while an arrival from it is in the viewed transcript; a Hermes inbox outside the recent sessions' own `send_peer` rows stays unresolved (labelled so).
-- Hermes has no per-message token usage: one session total, kept out of the context gauge.
-- Live Codex "turn" vs "idle" relies on the thread lock file in `~/.codex/thread-writer-locks`.
+- Codex messages sent before the agent-peers `msg_id` change pair with the other end by address, time and text only.
+- A Claude session that exited resolves by name only while an arrival from it is in the transcript being viewed. A Hermes inbox outside the recent sessions' own `send_peer` rows stays unresolved, and is labelled so.
+- Hermes has no per-message token usage: only one session total, which is kept out of the context gauge.
+- Live Codex "finished" vs "idle" relies on the thread lock file in `~/.codex/thread-writer-locks`.
 
-The upstream features (VS Code extension, CLI and desktop builds, video export, characters, other voices, office music) are still in the code and work as upstream documents them; see the [upstream README](https://github.com/Atoll92/agent-standup#readme). Changes in this fork are in [CHANGELOG.md](CHANGELOG.md).
+The upstream features (VS Code extension, desktop build, video export, characters, other voices, office music) are still in the code; see the [upstream README](https://github.com/Atoll92/agent-standup#readme). Changes in this fork are in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

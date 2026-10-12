@@ -235,7 +235,7 @@ function addressMap() {
   const map = new Map();
   for (const p of profiles()) {
     const db = open(p.db); if (!db) { peers.problem('Hermes ' + p.name, 'its database could not be opened (is node:sqlite available?)'); continue; } let rows = []; try { rows = recent(db, Date.now() / 1000 - 30 * 86400, 80); } catch { continue; }
-    for (const s of rows) { let rs = []; try { rs = q(db, "select content from messages where session_id=? and role='tool' and tool_name='send_peer'", s.id); } catch {} for (const r of rs) { const m = /hermes-([0-9a-f]{32})\.sock/.exec(r.content || ''); if (m) map.set('hermes-' + m[1], { source: 'hermes', proj: p.proj, id: s.id, name: 'hermes:' + p.name + ':' + s.id.slice(-8), cwd: projectOf(s), group: placedOf(db, p, s) }); } }
+    for (const s of rows) { let rs = []; try { rs = q(db, "select content from messages where session_id=? and role='tool' and tool_name='send_peer'", s.id); } catch {} for (const r of rs) { const m = /hermes-([0-9a-f]{32})\.sock/.exec(r.content || ''); if (m) map.set('hermes-' + m[1], { source: 'hermes', proj: p.proj, id: s.id, name: 'hermes:' + p.name + ':' + s.id.slice(-8), cwd: projectOf(s), get group() { const d = open(p.db); return d ? placedOf(d, p, s) : groupOf(p, s); } }); } }
   }
   addrMemo = { at: Date.now(), map }; return map;
 }

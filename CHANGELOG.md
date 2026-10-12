@@ -1,16 +1,27 @@
 # Changelog
 
-## Fork (personal, 2026-10-11)
+## Fork (personal, 2026-10-12)
 Tom's fork: one overview of Claude Code, Codex CLI and Hermes, and the agent-peers messages between them. Not published.
-- **Codex CLI and Hermes sessions** next to Claude Code's (adapters in `adapters/`), and **agent-peers messages** as edges with their delivery state. Native Codex sub-agents and Hermes `delegate_task` children sit under their root.
-- **Sessions board first**: every recent session, grouped by project (git root; a worktree counts as its repo) or Hermes profile + thread, one colour per project, one-offs last, ranked blocked → busy → your turn → done. `npm run check:placement` checks that every busy session has a project.
-- **Who is who, at a glance**: every agent wears its project's colour as a tee: the project's name across the chest (on the laptop lid while it works), a neckline, sleeve stripes and a badge with the project's initials; agents of other sessions are not at a desk but chips on an *On the line* strip in their project's colour, only while the exchange is current (10 min; the board's "talks to" likewise); your shirt says `Tom`, with a gold collar and a star (`OWNER` in `public/index.html`). In a call the header is the project's name in its colour, with a stripe of it.
-- **Functional names**: Codex roots by thread name or their first prompt without the model/effort boilerplate, Codex sub-agents by their `agent_path` leaf with their kind (worker, explorer) as the role, Claude sub-agents by their task, Hermes delegates by their goal; cut at a word.
-- **Voice**: ElevenLabs by default (key, model and voice from the Hermes profile, cached per line); content only; the sound only when an agent newly needs a human. Under load nothing more than 12 s behind the newest event is read (the call jumps to the freshest lines, the most important first), sentences are never cut, a background reload finishes the sentence being said and carries on after it, and only lines that will be read are synthesised. Invented chatter is off by default.
-- **Voice director** (live): one batched triage call to `gpt-6-luna` via codex-lb (strict JSON schema: drop / at most two lines to say) with what was already said and the session on screen; needs-you never dropped, 45 s / 2 min freshness windows, local fallback after 20 s, pipelined so the next batch is decided while a line is spoken. Replays summarise long lines one by one (`/api/summary`, at most 3 calls at once).
-- Fixes: the page no longer throws on load; `list_peers` listings and echoed send results are not counted as messages; a send between agents of the same Codex session stays inside it; a sub-agent given more work after finishing shows as working; context warnings only for agents still at work.
+- **Three runtimes**: Codex CLI and Hermes sessions next to Claude Code's (`adapters/`), and agent-peers messages as edges with their delivery state (📨 sent, 📥 received, ✋ held, ✗ failed). Native Codex sub-agents and Hermes `delegate_task` children sit under their root.
+- **One call per project**:
+  - Every live session of a project (Claude lead, Codex thread, Hermes thread) is in one call, each session's agents under its own lead.
+  - Placement is by git root (a worktree counts as its repo). A Hermes thread with no folder is placed by the sessions it messages and the repos its tools touch. `npm run check:placement` checks that every busy session has one.
+  - Guests (*On the line*) are other projects only.
+- **The call**:
+  - Up to four shared screens in the centre, labelled with who shares them.
+  - The project's workers as a graph in the side panel: tokens as dot area, state as colour, parent and message lines.
+  - The team as a compact tile bar.
+  - The transcript behind a tab (L).
+- **Header**: a project switcher that says what it follows (*Following everything*, *Following <project>*, *Pinned: <call>*), switches with a 20 s hold and says why. Plus one sound control in words (*Sound on*, *Muted*, *Click anywhere for sound*, *ElevenLabs: …*, *Sound in another window*), echoed in the tab title.
+- **Status in one vocabulary**: a dot and a word (working, needs you, waiting, finished, idle) on the board, the rail, the tiles and the CLI. The model on every tile and row. A sub-agent stays 10 minutes after its own last event.
+- **Who is who**: functional names (thread name, `agent_path` leaf, task, goal); each agent wears its project's shirt with its role; Tom's says `Tom`.
+- **Voice**:
+  - ElevenLabs automatically from the Hermes key (`HERMES_HOME`, else the gaming profile, else `~/.hermes`). With a key, no other voice speaks; a line it cannot make is skipped and marked.
+  - The sound plays only when an agent newly needs you.
+  - The live director (`gpt-6-luna` via codex-lb) says almost everything, up to 4 lines a batch, about content: what each agent is doing and why, sub-agent starts and finishes, commits, test results, and a status line after 20 s of quiet. Generic lines are never said, needs-you is never dropped, nothing stale, never cut mid-line.
+- **CLI**: `agent-standup` (bin/agent-standup.js) serves on 4747; `status` and `statusline` use the app's words.
+- **Removed**: the Join gate, the chatter level, the *Agent voices* switch, the rail's follow select, the tile tool strip and ✗ badge, the bare mute button, invented first names.
 - No coffee or support links.
-- **Round 4** (after an independent review): Codex cross-thread messages from their thread, Hermes Discord mentions and gateway preambles dropped, busy one-shots stay in their project, one tile per Codex thread, speech under the voice limit at a sentence, a board that folds quiet rows (3030 px down to about 1300), no session polling on the board or in hidden tabs, read budgets for huge trees (cold load 2.4 s down to 0.45 s, 1.36 GB down to 410 MB for three big sessions), no middle dots, roles on the shirts, and a calls rail with follow modes in the call view.
 
 ## 1.25.1
 - Fix: in a live call, the first line after a silence (typically your own order) was skipped or rushed. The call measured how far behind it was against the previous event, which after a few idle minutes looked like a huge backlog. The lag is now the gap between the line being played and the newest line of the session, so an idle session is never “behind”.

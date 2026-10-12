@@ -8,7 +8,7 @@
   "config.port.description": "Port local du serveur Agent Standup. 0 (par défaut) choisit automatiquement un port libre pour chaque fenêtre VS Code.",
   "config.autoOpen.description": "Ouvrir l’appel en direct automatiquement au démarrage de VS Code.",
   "config.onlyThisWorkspace.description": "Ne suivre que les sessions Claude Code lancées dans le dossier de travail actuel.",
-  "config.statusBar.description": "Afficher des compteurs en direct dans la barre d’état (agents au travail, besoin de vous, à vous) pour cet espace de travail ; l’élément devient rouge quand un agent attend peut-être votre feu vert.",
+  "config.statusBar.description": "Afficher des compteurs en direct dans la barre d’état (agents au travail, besoin de vous, terminé) pour cet espace de travail ; l’élément devient rouge quand un agent attend peut-être votre feu vert.",
   "config.shareUsage.description": "Aider le projet à compter les installations actives : une fois par jour, envoyer une requête vide vers un fichier d’un pixel sur GitHub (aucun identifiant, aucun contenu ; GitHub voit votre adresse IP comme pour tout téléchargement). Désactivé par défaut ; ignoré si la télémétrie de VS Code est désactivée.",
   "config.claudePath.description": "Chemin complet de l’exécutable Claude Code, s’il n’est pas trouvé automatiquement (utilisé pour la traduction en français).",
   "config.charactersPath.description": "Dossier contenant vos propres images de personnages (PNG, GIF ou WebP, 300 Ko maximum chacune). Vide : ~/.agent-standup/characters. lead.png est le chef, you.png est vous, toute autre image est un sous-agent, nom-talk.png est une image facultative bouche ouverte."

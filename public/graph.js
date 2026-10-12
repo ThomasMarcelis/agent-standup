@@ -65,7 +65,7 @@
 .wg-node { cursor:pointer } .wg-dot { fill:var(--dim, #9aa0b6); transition:fill .3s } .wg-working .wg-dot { fill:var(--ok, #58d68d) } .wg-needs .wg-dot { fill:var(--warn, #f0a020) } .wg-waiting .wg-dot { fill:var(--accent, #7c9cff) }
 .wg-node:hover .wg-dot { stroke:var(--text, #e9eaf0); stroke-width:1.5 } .wg-node:hover .wg-label { fill:var(--text, #e9eaf0) }
 .wg-label { fill:var(--dim, #9aa0b6); font-size:10.5px; text-anchor:middle; pointer-events:none; paint-order:stroke; stroke:var(--bg, #12131a); stroke-width:3px; stroke-linejoin:round }   /* a halo: a label stays legible over a line */
-.wg-pulse { fill:var(--text, #e9eaf0); pointer-events:none }
+.wg-pulse { fill:var(--text, #e9eaf0); pointer-events:none } .wg-lh { opacity:0 } .wg-node:hover .wg-lh { opacity:1 }   /* a crowded label shows on hover */
 .wg-in { animation:wg-in .4s cubic-bezier(.2,.8,.2,1) both } @keyframes wg-in { from { opacity:0; transform:scale(.3) } }
 @media (prefers-reduced-motion:reduce) { .wg-in { animation:none } .wg-dot { transition:none } }`;
   const hash = (s) => { let h = 2166136261; s = String(s); for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0) / 4294967296; };   // a stable angle per id: the same picture on every load
@@ -117,8 +117,17 @@
       }
       alpha -= alpha * DECAY;
     }
+    function sortLabels() {   // a label that would cover another label or a dot stays hidden until its dot is pointed at: the lead and the biggest dots keep theirs
+      const order = [...list].sort((a, b) => (b.id === 'main') - (a.id === 'main') || b.dr - a.dr), boxes = [];
+      for (const p of order) {
+        const w = String(p.lb || '').length * 5.8 + 4, h = 12, x = p.x - w / 2, y = p.y + p.dr + 2;
+        const over = boxes.some((b) => x < b.x + b.w && b.x < x + w && y < b.y + b.h && b.y < y + h) || list.some((o) => { if (o === p) return false; const nx = Math.max(x, Math.min(o.x, x + w)), ny = Math.max(y, Math.min(o.y, y + h)); return (nx - o.x) ** 2 + (ny - o.y) ** 2 < o.dr * o.dr; });
+        if (!over) boxes.push({ x, y, w, h }); const cls = over ? 'wg-label wg-lh' : 'wg-label'; if (p.lc !== cls) p.t.setAttribute('class', (p.lc = cls));
+      }
+    }
     function draw() {
       for (const p of list) { const tr = 'translate(' + p.x.toFixed(1) + ' ' + p.y.toFixed(1) + ')'; if (tr !== p.tr) p.g.setAttribute('transform', (p.tr = tr)); if (p.dr !== p.shown) { p.shown = p.dr; p.c.setAttribute('r', p.dr.toFixed(1)); p.t.setAttribute('y', (p.dr + 11).toFixed(1)); } }
+      sortLabels();
       for (const l of links) { l.el.setAttribute('x1', l.a.x.toFixed(1)); l.el.setAttribute('y1', l.a.y.toFixed(1)); l.el.setAttribute('x2', l.b.x.toFixed(1)); l.el.setAttribute('y2', l.b.y.toFixed(1)); }
     }
     function stepPulses(now) {
