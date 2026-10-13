@@ -125,7 +125,7 @@ function stamp(proj, id) {
   return n;
 }
 const tlCache = new Map(), revSeen = new Map();   // "proj/id" → { st (file stamp), tl, at, ms, files[], json?, gz? }; the last revision of each, kept past eviction
-const MAX_CACHED_SESSIONS = 16, MAX_CACHE_BYTES = () => (+process.env.AGENT_STANDUP_CACHE_MB || 200) * 1048576;   // at most 16 sessions (a project's call holds up to 6, and Everything reads the other live projects), and their served JSON within the byte budget (the newest is always kept)
+const MAX_CACHED_SESSIONS = 16, MAX_CACHE_BYTES = () => (+process.env.AGENT_STANDUP_CACHE_MB || 200) * 1048576;   // keep at most 16 source timelines within the byte budget; a project call includes every live member on the board
 const entryBytes = (e) => e.bytes || e.tl.events.length * 600;   // before its first response, an estimate from its events
 function timelineEntry(proj, id) {
   const key = proj + '/' + id, st = stamp(proj, id), hit = tlCache.get(key), now = Date.now();
@@ -143,11 +143,11 @@ function timelineEntry(proj, id) {
 // ---- A call is a project's (Tom: "a call is per PROJECT, not per session"): every live session placed in the project of the one opened (a Claude lead, a Codex thread,
 // a Hermes thread) joins it with all its agents; guests are only sessions of other projects. The session opened stays "main"; another session's agents get its short id in
 // front ("s0a56b7__main" is that session's lead). Every event carries its session (sess) and its index in it (si), so the page asks only for what is new in each.
-const CALL_LIVE_MS = 10 * 60e3, CALL_MAX = 6, callCache = new Map();
+const CALL_LIVE_MS = 10 * 60e3, callCache = new Map();
 function callMates(proj, id, group, rows, now = Date.now()) {   // the other live sessions of the same project, the most recent first
   if (!group || group.other || !group.key) return [];
   return rows.filter((r) => r.group && r.group.key === group.key && !(r.proj === proj && r.id === id) && !r.stopped && !r.oneshot && (/^(working|waiting|blocked)$/.test(r.state) || now - r.mtime < CALL_LIVE_MS))   // a one-shot run (a cron's report) is no part of a call
-    .sort((a, b) => b.mtime - a.mtime).slice(0, CALL_MAX - 1);
+    .sort((a, b) => b.mtime - a.mtime);   // the board is already bounded; do not silently drop this project's workers
 }
 const callPrefix = (id) => 's' + String(id).replace(/[^0-9a-z]/gi, '').slice(-6) + '__';   // safe in an element id and a CSS selector (#t-s0a56b7__main)
 function mergeCall(main, mates) {   // main, mates: { proj, id, tl }; one timeline for the call, each session's agents under its own lead, a message seen in two logs kept once

@@ -328,7 +328,7 @@ function board(now = Date.now()) {
     }
     let subActive = 0; const active = []; for (const m of all.slice(1)) { const s = statOf(m); if (s && (now - s.mtime < 90e3 || (now - s.mtime < QUIET_MS && tail(m.file).lastTask !== 'complete'))) { subActive++; if (active.length < 4) active.push(peers.label(human(String(m.agentPath || '').split('/').pop() || m.nickname || 'sub-agent').replace(/ (?:ultra|max|xhigh)$/i, ''), 32)); } }
     if (subActive && /^(turn|idle)$/.test(state)) { state = 'waiting'; ageMs = now - mtime; }   // the lead's turn ended while its sub-agents still work: the call is theirs, not over
-    return { proj: '_codex', id: meta.id, title: titleOf(meta), mtime, state, tool, arg, ageMs, subActive, active, subTotal: all.length - 1, ...(t.model ? { model: t.model, effort: t.effort || '' } : headModel(meta.file)), source: 'codex', project: meta.cwd, group: project.groupOf(meta.cwd), ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(t.peers, now)), oneshot: meta.originator === 'codex_exec' && all.length === 1 };   // a `codex exec` run with no agents of its own: a one-shot job
+    return { proj: '_codex', id: meta.id, title: titleOf(meta), mtime, state, tool, arg, ageMs, subActive, active, subTotal: all.length - 1, ...(t.model ? { model: t.model, effort: t.effort || '' } : headModel(meta.file)), source: 'codex', project: meta.cwd, group: project.groupOf(meta.cwd), ...((tk) => ({ peers: tk.names, msgs: tk.n }))(peers.talksNow(t.peers, now)), oneshot: meta.originator === 'codex_exec' && all.length === 1 && !/^(working|waiting|blocked)$/.test(state) };   // hide finished one-offs, never a live implementation worker
   });
 }
 const exists = (proj, id) => !!fileOf(id);

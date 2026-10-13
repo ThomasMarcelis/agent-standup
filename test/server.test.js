@@ -81,6 +81,14 @@ test("a call is the project's: a Claude lead, a Codex thread and a Hermes sessio
   assert.deepEqual(callMates('-w-gladiator-game', 'c1', G, rows, now).map((r) => r.id), [codex.id, 'h1'], 'live sessions of the same project (working, or written in the last 10 min); not stopped, not a finished one-shot, not another project');
 });
 
+test('a project call does not silently omit workers after six live sessions', () => {
+  const { callMates } = require('../server.js'), now = Date.now(), group = { key: '/w/game', name: 'game' };
+  const rows = Array.from({ length: 9 }, (_, i) => ({ proj: '_codex', id: 'worker-' + i, state: 'working', mtime: now - i * 1000, group }));
+  const mates = callMates('_codex', 'worker-0', group, rows, now);
+  assert.equal(mates.length, 8);
+  assert.equal(new Set(mates.map(r => r.id)).size, 8);
+});
+
 test('everything: the feed has the newest events of the other live projects (not the one on screen, never a one-shot), named and cheap', () => {
   const { feed } = require('../server.js'), now = Date.now(), gg = { key: '/w/gladiator-game', name: 'gladiator-game' }, ms = { key: '/w/MarketSimulator', name: 'MarketSimulator' };
   const tls = { 'ms-claude': { title: 'Review the news gate', agents: [{ id: 'main', name: 'Claude', type: 'main' }, { id: 'a1', name: 'news polish', role: 'general-purpose', type: 'subagent' }],

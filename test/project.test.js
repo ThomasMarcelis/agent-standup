@@ -3,6 +3,42 @@
 const test = require('node:test'), assert = require('node:assert'), fs = require('fs'), os = require('os'), path = require('path');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'as-project-'));
 const project = require('../adapters/project.js');
+const { execFileSync } = require('node:child_process');
+function git(dir, ...args) { return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
+function repo(name, origin) {
+  const dir = path.join(tmp, name); fs.mkdirSync(dir, { recursive: true }); git(dir, 'init', '-q');
+  if (origin) git(dir, 'remote', 'add', 'origin', origin);
+  return dir;
+}
+test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+test('local worker clones share their owning project and voice key, including nested relative origins', () => {
+  const main = repo('main-game', 'git@github.com:owner/game.git');
+  const worker = repo('worker-look', main), nested = repo('worker-render', '../worker-look');
+  fs.mkdirSync(path.join(nested, 'src'), { recursive: true });
+  const expected = { key: main, name: 'main-game' };
+  assert.deepEqual(project.groupOf(worker), expected);
+  assert.deepEqual(project.groupOf(path.join(nested, 'src')), expected);
+  assert.equal(project.groupOf(main).key, project.groupOf(nested).key);
+});
+
+test('clone identity is safe for file URLs, worktrees, missing origins, cycles and unrelated upstreams', () => {
+  const { pathToFileURL } = require('node:url');
+  const main = repo('safe-main'), fileClone = repo('file-clone', pathToFileURL(main).href);
+  const worktree = path.join(tmp, 'real-worktree');
+  git(main, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '--allow-empty', '-qm', 'fixture');
+  git(main, 'worktree', 'add', '--detach', worktree);
+  assert.equal(project.groupOf(worktree).key, main);
+  assert.equal(project.groupOf(fileClone).key, main);
+  const worker = repo('worktree-clone', worktree);
+  assert.equal(project.groupOf(worker).key, main);
+  const broken = repo('broken-origin', '../missing');
+  assert.equal(project.groupOf(broken).key, broken);
+  const a = repo('cycle-a', '../cycle-b'), b = repo('cycle-b', '../cycle-a');
+  assert.equal(project.groupOf(a).key, a); assert.equal(project.groupOf(b).key, b);
+  const x = repo('independent-a', 'https://example.invalid/game.git'), y = repo('independent-b', 'https://example.invalid/game.git');
+  assert.notEqual(project.groupOf(x).key, project.groupOf(y).key);
+});
 
 test('a folder maps to its git repository; a worktree to the main repository; outside git to "other"; unknown to nothing', () => {
   const repo = path.join(tmp, 'repos', 'gladiator-game'); fs.mkdirSync(path.join(repo, '.git'), { recursive: true }); fs.mkdirSync(path.join(repo, 'src', 'deep'), { recursive: true });

@@ -21,7 +21,7 @@ agent-standup status          # ✋ needs you, ⚙ working, ✓ finished, across
 
 - **Sessions board**: every recent session, grouped by project, one card each, ranked needs you, working, finished, idle. The top line says *Nobody needs you* or *N need you*.
 - **One call per project**: every live session placed in a project joins that project's call, whatever its runtime, with all its sub-agents, each session's agents under their own lead.
-  - Claude Code and Codex sessions are placed by their repository: the git root of their folder, a worktree counting as its parent repo.
+  - Claude Code and Codex sessions are placed by their repository: the git root of their folder, with worktrees and local-origin worker clones grouped under the owning repository. Nested local clones follow their origin chain; unrelated repositories are not merged merely because they share a remote URL.
   - A Hermes thread with no folder is placed by the sessions it messages and the repositories its tools work in.
   - *On the line* is only for sessions of other projects that messaged in during the last 10 minutes.
 - **The call's screen**:
@@ -43,7 +43,7 @@ agent-standup status          # ✋ needs you, ⚙ working, ✓ finished, across
 - Every tile, row and card says the model it runs on.
 - A sub-agent stays in the call until 10 minutes after its own last event, and comes back whenever it acts again; silent for 10 minutes, it is finished, whatever it did last.
 - A lead whose sub-agents are working is *waiting on* them, never *finished*.
-- One-shot runs (a cron's progress report) are not calls: they stay out of the rail and the project's call.
+- Scheduled one-shot reports stay out of calls and the rail. Active `codex exec` workers are included while working, waiting or blocked; finished one-offs are hidden. A project call includes every live session on the board, without a six-session cutoff.
 
 ## Sound and voice
 

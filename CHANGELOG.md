@@ -4,8 +4,8 @@
 Tom's fork: one overview of Claude Code, Codex CLI and Hermes, and the agent-peers messages between them. Not published.
 - **Three runtimes**: Codex CLI and Hermes sessions next to Claude Code's (`adapters/`), and agent-peers messages as edges with their delivery state (📨 sent, 📥 received, ✋ held, ✗ failed). Native Codex sub-agents and Hermes `delegate_task` children sit under their root.
 - **One call per project**:
-  - Every live session of a project (Claude lead, Codex thread, Hermes thread) is in one call, each session's agents under its own lead.
-  - Placement is by git root (a worktree counts as its repo). A Hermes thread with no folder is placed by the sessions it messages and the repos its tools touch. `npm run check:placement` checks that every busy session has one.
+  - Every live session of a project (Claude lead, Codex thread, Hermes thread) is in one call, each session's agents under its own lead. The former six-session cutoff is removed so larger teams are not silently omitted.
+  - Placement is by the owning git root: worktrees and local-origin worker clones count as their parent repository. Local clone chains are bounded and cycle-safe; sharing a remote URL alone never merges unrelated repositories. A Hermes thread with no folder is placed by the sessions it messages and the repos its tools touch. `npm run check:placement` checks that every busy session has one.
   - Guests (*On the line*) are other projects only.
 - **The call**:
   - Up to four shared screens in the centre, labelled with who shares them.
@@ -13,7 +13,7 @@ Tom's fork: one overview of Claude Code, Codex CLI and Hermes, and the agent-pee
   - The team as a compact tile bar.
   - The transcript behind a tab (L).
 - **Header**: a project switcher that says what it follows (*Following everything*, *Following <project>*, *Pinned: <call>*), switches with a 20 s hold and says why. *Everything* follows whoever needs you, else the clearly busiest project (all its sessions and sub-agents), and narrates every live project, naming the other ones. Plus one sound control in words (*Sound on*, *Muted*, *Click anywhere for sound*, *ElevenLabs: …*, *Sound in another window*), echoed in the tab title.
-- **Status in one vocabulary**: a dot and a word (working, needs you, waiting, finished, idle) on the board, the rail, the tiles and the CLI. The model on every tile and row. A sub-agent stays 10 minutes after its own last event; a lead whose sub-agents work is waiting on them, never finished; one-shot runs are not calls.
+- **Status in one vocabulary**: a dot and a word (working, needs you, waiting, finished, idle) on the board, the rail, the tiles and the CLI. The model on every tile and row. A sub-agent stays 10 minutes after its own last event; a lead whose sub-agents work is waiting on them, never finished; scheduled one-shot reports and finished one-offs are not calls, but active `codex exec` workers remain visible.
 - **Who is who**: functional names (thread name, `agent_path` leaf, task, goal); each agent wears its project's shirt with its role; Tom's says `Tom`.
 - **Voice**:
   - ElevenLabs automatically from the Hermes key (`HERMES_HOME`, else the gaming profile, else `~/.hermes`). With a key, no other voice speaks; a line it cannot make is skipped and marked.
